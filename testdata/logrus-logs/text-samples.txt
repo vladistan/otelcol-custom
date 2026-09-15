@@ -1,0 +1,5 @@
+time="2024-10-15T09:23:45Z" level=info msg="Server started" port=8080 host="0.0.0.0"
+time="2024-10-15T09:23:46Z" level=debug msg="Processing request" method=GET path="/api/v1/users" request_id=abc123
+time="2024-10-15T09:23:47Z" level=warning msg="Rate limit approaching" current_rate=95 max_rate=100
+time="2024-10-15T09:23:48Z" level=error msg="Database connection failed" error="connection refused" host="db.example.com" port=5432
+time="2024-10-15T09:23:49Z" level=fatal msg="Unable to start server" error="port already in use"

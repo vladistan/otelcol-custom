@@ -1,0 +1,11 @@
+# Test asset database for unit tests
+assets:
+  - mac: "aa:bb:cc:dd:ee:ff"
+    hostname: "switch-core-01"
+    location: "dc1-rack-a1"
+  - mac: "11:22:33:44:55:66"
+    hostname: "ap-office-lobby"
+    location: "office-floor2"
+  - mac: "de:ad:be:ef:ca:fe"
+    hostname: "router-edge-01"
+    location: "dc1-rack-b2"

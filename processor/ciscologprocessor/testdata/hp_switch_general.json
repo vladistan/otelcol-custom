@@ -1,0 +1,42 @@
+{
+  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
+  "_id": "AZslAJCYuuchI90RbtY8",
+  "_version": 1,
+  "_seq_no": 5309306,
+  "_primary_term": 2,
+  "found": true,
+  "_source": {
+    "observed_timestamp": "1765852290444.206652",
+    "@timestamp": "1765852290444.206652",
+    "resource": {
+      "attributes": {
+        "collector.gateway.version": "0.1.21"
+      }
+    },
+    "data_stream": {
+      "namespace": "default",
+      "type": "logs",
+      "dataset": "generic.otel"
+    },
+    "severity_text": "ERROR",
+    "severity_number": 17,
+    "scope": {},
+    "attributes": {
+      "net.host.name": "::",
+      "net.transport": "IP.UDP",
+      "net.peer.name": "switch-c.home.example.com",
+      "net.peer.port": "514",
+      "net.host.port": "4319",
+      "source.ip": "192.0.2.1",
+      "log.source": "syslog",
+      "original_message": " Dec 15 21:31:30 switch-c-1 General[tRpcsrv.00001]: usmdb_sim.c(3847) 2805 %% Event(0x0)",
+      "net.peer.ip": "192.0.2.1",
+      "priority": "10",
+      "message": " Dec 15 21:31:30 switch-c-1 General[tRpcsrv.00001]: usmdb_sim.c(3847) 2805 %% Event(0x0)",
+      "net.host.ip": "::"
+    },
+    "body": {
+      "text": "<10> Dec 15 21:31:30 switch-c-1 General[tRpcsrv.00001]: usmdb_sim.c(3847) 2805 %% Event(0x0)"
+    }
+  }
+}

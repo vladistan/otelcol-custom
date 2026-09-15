@@ -1,0 +1,44 @@
+{
+  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
+  "_id": "AZsk2Q9CPSMYvmRPgIRV",
+  "_version": 1,
+  "_seq_no": 5304827,
+  "_primary_term": 2,
+  "found": true,
+  "_source": {
+    "observed_timestamp": "1765849754602.126269",
+    "@timestamp": "1765849754602.126269",
+    "resource": {
+      "attributes": {
+        "collector.gateway.version": "0.1.21"
+      }
+    },
+    "data_stream": {
+      "namespace": "default",
+      "type": "logs",
+      "dataset": "generic.otel"
+    },
+    "severity_text": "INFO",
+    "severity_number": 9,
+    "scope": {},
+    "attributes": {
+      "net.host.name": "::",
+      "net.transport": "IP.UDP",
+      "net.peer.port": "44418",
+      "client.mac": "c4:4f:33:91:a6:58",
+      "log.source": "syslog",
+      "original_message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+      "priority": "133",
+      "message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+      "net.peer.ip": "192.0.2.1",
+      "net.host.ip": "::",
+      "client.hostname": "WifiPlug-1",
+      "net.peer.name": "wifi-ap.home.example.com",
+      "net.host.port": "4319",
+      "source.ip": "192.0.2.1"
+    },
+    "body": {
+      "text": "<133>DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1."
+    }
+  }
+}

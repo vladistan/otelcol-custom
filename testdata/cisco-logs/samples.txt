@@ -1,0 +1,14 @@
+# Sample Cisco IOS logs
+<189>: %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to up
+<189>: %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
+<190>: %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/1, changed state to up
+<134>Oct 15 09:23:45 switch-core-1: %SYS-5-CONFIG_I: Configured from console by admin on vty0 (192.168.1.100)
+<134>Oct 15 09:24:00 switch-core-1: %SEC-6-IPACCESSLOGP: list ACL-IN permitted tcp 10.0.0.5(12345) -> 10.0.0.10(443), 1 packet
+
+# Sample Cisco WLC logs
+<134>Oct 15 09:23:45 wlc-office-1 kernel: *apfReceiveTask: Oct 15 09:23:45.123: %APF-6-AP_ASSOC_SUCCESS: AP associated: slotId 0 wlanId 1 radio 0 apMac 00:11:22:33:44:55 clientMac 66:77:88:99:aa:bb
+<134>Oct 15 09:23:50 wlc-office-1 kernel: *apfReceiveTask: Oct 15 09:23:50.456: %APF-4-AP_DISASSOC: AP disassociated: slotId 0 wlanId 1 radio 0 apMac 00:11:22:33:44:55 clientMac 66:77:88:99:aa:bb reason 8
+
+# Sample Cisco NX-OS logs
+<190>: 2024 Oct 15 09:30:00 nexus-dc-1 %ETHPORT-5-IF_UP: Interface Ethernet1/1 is up
+<190>: 2024 Oct 15 09:30:05 nexus-dc-1 %VPC-2-PEER_KEEP_ALIVE_RECV_FAIL: VPC peer keep-alive receive failed

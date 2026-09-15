@@ -1,0 +1,1 @@
+Reply NA: address 2603:3005:2b58:6700:0:b3ed:b897:98db to client with duid 00:03:00:01:26:d9:e0:17:39:3d iaid = 0 valid for 7200 seconds

@@ -1,0 +1,198 @@
+# NEW (4.2): the scrape profile had no builder config yet - the justfile's
+# generate-scrape/build-scrape recipes referenced this file before it existed
+# (see plans/phase2-baseline/baseline-functionality.md). Structurally parallel
+# to builder-gateway.yaml by design: same component set, so Dockerfile.scrape
+# stays a real, maintainable twin of Dockerfile.gateway rather than a
+# hand-picked pipeline (out of scope per this plan's Non-goals). Narrowing the
+# component list to what "cloud source scraping" actually needs is future work.
+dist:
+  name: otelcol-scrape
+  description: Scrape collector for cloud source scraping
+  output_path: ./build/scrape
+  # Skip compilation - we compile manually after injecting custom main.go for Sentry
+  skip_compilation: true
+# =============================================================================
+# Replaces - Local module overrides for custom components
+# =============================================================================
+replaces:
+  # Custom components from this repository (paths relative to build/scrape/ directory)
+  - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../../receiver/psireceiver
+  - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
+  - github.com/vladistan/otelcol-custom/processor/resourceversionprocessor => ../../processor/resourceversionprocessor
+  - github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
+  - github.com/vladistan/otelcol-custom/processor/assetdbprocessor => ../../processor/assetdbprocessor
+  - github.com/vladistan/otelcol-custom/processor/macextractorprocessor => ../../processor/macextractorprocessor
+  - github.com/vladistan/otelcol-custom/processor/ipextractorprocessor => ../../processor/ipextractorprocessor
+  - github.com/vladistan/otelcol-custom/processor/ciscologprocessor => ../../processor/ciscologprocessor
+  - github.com/vladistan/otelcol-custom/processor/filterlogprocessor => ../../processor/filterlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/nginxlogprocessor => ../../processor/nginxlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/pgbouncerlogprocessor => ../../processor/pgbouncerlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/sentrylogprocessor => ../../processor/sentrylogprocessor
+  - github.com/vladistan/otelcol-custom/processor/redislogprocessor => ../../processor/redislogprocessor
+  - github.com/vladistan/otelcol-custom/processor/snubalogprocessor => ../../processor/snubalogprocessor
+  - github.com/vladistan/otelcol-custom/processor/kafkalogprocessor => ../../processor/kafkalogprocessor
+  - github.com/vladistan/otelcol-custom/processor/postgreslogprocessor => ../../processor/postgreslogprocessor
+  - github.com/vladistan/otelcol-custom/processor/uvicornlogprocessor => ../../processor/uvicornlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/logruslogprocessor => ../../processor/logruslogprocessor
+  - github.com/vladistan/otelcol-custom/processor/klogprocessor => ../../processor/klogprocessor
+  - github.com/vladistan/otelcol-custom/processor/k8seventprocessor => ../../processor/k8seventprocessor
+  - github.com/vladistan/otelcol-custom/processor/cronlogprocessor => ../../processor/cronlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/syslogprocessor => ../../processor/syslogprocessor
+  - github.com/vladistan/otelcol-custom/processor/containerdlogprocessor => ../../processor/containerdlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/kernellogprocessor => ../../processor/kernellogprocessor
+  - github.com/vladistan/otelcol-custom/processor/charonlogprocessor => ../../processor/charonlogprocessor
+  - github.com/vladistan/otelcol-custom/processor/tektonlogprocessor => ../../processor/tektonlogprocessor
+  # Custom stanza operators (for log processing pipelines)
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/arraytostring => ../../stanza/operator/transformer/arraytostring
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../../stanza/operator/transformer/ansistrip
+# =============================================================================
+# Extensions
+# =============================================================================
+extensions:
+  # Debug endpoints (/debug/tracez, /debug/pipelinez)
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.140.0
+  # Health check endpoint for k8s probes and monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.140.0
+  # Persistent queue storage for sending_queue resilience
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.140.0
+# =============================================================================
+# Receivers
+# =============================================================================
+receivers:
+  # --- Core ---
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.140.0
+  # --- Logs ---
+  # System journal logs (for gateway's own logs if needed)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.140.0
+  # File-based logs (application logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.140.0
+  # BSD/RFC 3164/5424 syslog (network devices)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.140.0
+  # Raw TCP log input (syslog fallback)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcplogreceiver v0.140.0
+  # Raw UDP log input (syslog fallback)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/udplogreceiver v0.140.0
+  # --- Metrics ---
+  # Host metrics (CPU, memory, disk, network, load, paging)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.140.0
+  # Prometheus scraping (for node_exporter PSI interim solution)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.140.0
+  # --- Kubernetes ---
+  # K8s events and pod specs via API
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver v0.140.0
+  # K8s cluster-level metrics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.140.0
+  # Kubelet and node metrics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.140.0
+  # --- Cloud (AWS) ---
+  # AWS S3 (CloudTrail, access logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.140.0
+  # AWS CloudWatch Logs (logs from CloudWatch Log Groups)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.140.0
+  # --- Cloud (GCP) ---
+  # GCP Pub/Sub (audit logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.140.0
+  # --- Cloud (Azure) ---
+  # Azure Event Hub (activity logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.140.0
+  # --- Custom (local) ---
+  # PSI (Pressure Stall Information) metrics from /proc/pressure
+  - gomod: github.com/vladistan/otelcol-custom/receiver/psireceiver v0.0.0
+# =============================================================================
+# Processors
+# =============================================================================
+processors:
+  # --- Core ---
+  # Batch telemetry for efficiency
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.140.0
+  # Prevent OOM conditions
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.140.0
+  # --- Transform ---
+  # OTTL-based field transformations (log parsing, field extraction)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.140.0
+  # Add/modify/delete attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.140.0
+  # Modify resource attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.140.0
+  # Auto-detect host/cloud info
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.140.0
+  # --- Filtering ---
+  # Drop unwanted telemetry (metrics cleanup)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.140.0
+  # --- Kubernetes ---
+  # Enrich with K8s metadata (pod, namespace, deployment, etc.)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.140.0
+  # --- Custom (local) ---
+  # Normalized load average (load / CPU count)
+  - gomod: github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor v0.0.0
+  # Resource version (adds collector.{role}.version to resources)
+  - gomod: github.com/vladistan/otelcol-custom/processor/resourceversionprocessor v0.0.0
+  # Log recombine (multiline log combination without noisy errors)
+  - gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
+  # Asset DB enrichment (MAC address to hostname/location lookup)
+  - gomod: github.com/vladistan/otelcol-custom/processor/assetdbprocessor v0.0.0
+  # MAC address extraction (extracts MACs from log body/attributes)
+  - gomod: github.com/vladistan/otelcol-custom/processor/macextractorprocessor v0.0.0
+  # IP address extraction (extracts IPs from log body/attributes)
+  - gomod: github.com/vladistan/otelcol-custom/processor/ipextractorprocessor v0.0.0
+  # Cisco/HP network log parsing (extracts facility, severity, mnemonic)
+  - gomod: github.com/vladistan/otelcol-custom/processor/ciscologprocessor v0.0.0
+  # pfSense/OPNsense filterlog parsing (extracts firewall fields)
+  - gomod: github.com/vladistan/otelcol-custom/processor/filterlogprocessor v0.0.0
+  # Nginx access log parsing (extracts HTTP request/response fields)
+  - gomod: github.com/vladistan/otelcol-custom/processor/nginxlogprocessor v0.0.0
+  # PgBouncer log parsing (extracts connection pool metrics and events)
+  - gomod: github.com/vladistan/otelcol-custom/processor/pgbouncerlogprocessor v0.0.0
+  # Sentry application log parsing (extracts HTTP and request fields)
+  - gomod: github.com/vladistan/otelcol-custom/processor/sentrylogprocessor v0.0.0
+  # Redis log parsing (extracts role, level, clean message)
+  - gomod: github.com/vladistan/otelcol-custom/processor/redislogprocessor v0.0.0
+  # Snuba log parsing (Rust tracing JSON and Python logging formats)
+  - gomod: github.com/vladistan/otelcol-custom/processor/snubalogprocessor v0.0.0
+  # Kafka log parsing (Java-style log4j format)
+  - gomod: github.com/vladistan/otelcol-custom/processor/kafkalogprocessor v0.0.0
+  # PostgreSQL log parsing (native PG format with DETAIL/STATEMENT)
+  - gomod: github.com/vladistan/otelcol-custom/processor/postgreslogprocessor v0.0.0
+  # Uvicorn/ASGI Python access log parsing
+  - gomod: github.com/vladistan/otelcol-custom/processor/uvicornlogprocessor v0.0.0
+  # Logrus/zap JSON log parsing (generic structured JSON logs)
+  - gomod: github.com/vladistan/otelcol-custom/processor/logruslogprocessor v0.0.0
+  # Kubernetes klog format parsing (kube-apiserver, kube-controller-manager, etc.)
+  - gomod: github.com/vladistan/otelcol-custom/processor/klogprocessor v0.0.0
+  # Kubernetes Event parsing (k8sobjectsreceiver events)
+  - gomod: github.com/vladistan/otelcol-custom/processor/k8seventprocessor v0.0.0
+  # Cron log parsing (CMD execution and PAM session logs)
+  - gomod: github.com/vladistan/otelcol-custom/processor/cronlogprocessor v0.0.0
+  # Syslog format parsing (RFC3164, RFC5424, Cisco IOS, embedded formats)
+  - gomod: github.com/vladistan/otelcol-custom/processor/syslogprocessor v0.0.0
+  # Containerd log parsing (logrus text format from containerd.service)
+  - gomod: github.com/vladistan/otelcol-custom/processor/containerdlogprocessor v0.0.0
+  # Kernel log parsing (SCSI errors, network events, disk failures)
+  - gomod: github.com/vladistan/otelcol-custom/processor/kernellogprocessor v0.0.0
+  # strongSwan charon log parsing (IPsec IKE/CHILD_SA, SPI, auth events)
+  - gomod: github.com/vladistan/otelcol-custom/processor/charonlogprocessor v0.0.0
+  # Tekton Pipelines log parsing (Event ObjectReference, PipelineRun status)
+  - gomod: github.com/vladistan/otelcol-custom/processor/tektonlogprocessor v0.0.0
+# =============================================================================
+# Connectors
+# =============================================================================
+connectors:
+  # Route telemetry to different pipelines based on attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.140.0
+# =============================================================================
+# Exporters
+# =============================================================================
+exporters:
+  # --- Core ---
+  # OTLP gRPC (forwarding to other gateways)
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.140.0
+  # OTLP HTTP (forwarding via HTTP)
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.140.0
+  # --- Storage ---
+  # Direct export to Elasticsearch
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v0.140.0
+  # Write to local files (debugging/buffering)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.140.0
+  # --- Debug ---
+  # Console output for debugging
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.140.0

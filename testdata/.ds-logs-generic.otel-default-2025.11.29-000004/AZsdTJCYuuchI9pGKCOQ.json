@@ -1,0 +1,57 @@
+{
+  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
+  "_id": "AZsdTJCYuuchI9pGKCOQ",
+  "_version": 1,
+  "_seq_no": 5042337,
+  "_primary_term": 2,
+  "found": true,
+  "_source": {
+    "observed_timestamp": "1765723081742.647943",
+    "@timestamp": "1765723081309.618000",
+    "resource": {
+      "schema_url": "https://opentelemetry.io/schemas/1.6.1",
+      "attributes": {
+        "host.ip": [
+          "192.0.2.1",
+          "2603:3005:2b58:6700:0:7303:79c6:d5c6",
+          "fe80::847e:32ff:fe7b:1cfa",
+          "172.17.0.1",
+          "fe80::42:54ff:fe65:36f7",
+          "fe80::907e:1fff:fe4c:dc31",
+          "fe80::e4e7:baff:fe01:b51",
+          "fe80::e055:86ff:feef:262c",
+          "fe80::5425:b1ff:fe32:516b"
+        ],
+        "container.name": "litellm",
+        "container.image.name": "ghcr.io/berriai/litellm-database:main-stable",
+        "service.name": "litellm",
+        "host.name": "cicd-dkr2",
+        "os.type": "linux",
+        "host.id": "841cb60138a44bab838b0f15126c2512",
+        "container.id": "abcf5330f520",
+        "deployment.environment": "production"
+      }
+    },
+    "data_stream": {
+      "namespace": "default",
+      "type": "logs",
+      "dataset": "generic.otel"
+    },
+    "severity_text": "INFO",
+    "scope": {},
+    "attributes": {
+      "client.address": "192.0.2.1",
+      "_container_name": "litellm",
+      "url.path": "/spend/logs/ui?start_date=2025-12-13+14%3A24%3A00&end_date=2025-12-14+14%3A38%3A00&page=1&page_size=50",
+      "http.request.method": "GET",
+      "client.port": "63935",
+      "log_level": "INFO",
+      "log.source": "docker",
+      "original_message": "INFO:     192.0.2.1:63935 - \"GET /spend/logs/ui?start_date=2025-12-13+14%3A24%3A00&end_date=2025-12-14+14%3A38%3A00&page=1&page_size=50 HTTP/1.1\" 200 OK\nINFO:     192.0.2.1:63935 - \"GET /spend/logs/ui/c8f4edaf-9290-4086-9fa2-e9a77c01d5a2?start_date=2025-12-13%2014%3A24%3A00 HTTP/1.1\" 200 OK\nINFO:     192.0.2.1:63941 - \"GET /spend/logs/ui/4050f2db-cc45-4b56-a908-30af29d4b448?start_date=2025-12-13%2014%3A24%3A00 HTTP/1.1\" 200 OK\nINFO:     192.0.2.1:63942 - \"GET /spend/logs/ui/5da8a695-fd85-45a7-8c5a-4f4f9f991c72?start_date=2025-12-13%2014%3A24%3A00 HTTP/1.1\" 200 OK",
+      "http.response.status_code": "200"
+    },
+    "body": {
+      "text": "GET /spend/logs/ui?start_date=2025-12-13+14%3A24%3A00&end_date=2025-12-14+14%3A38%3A00&page=1&page_size=50 200"
+    }
+  }
+}

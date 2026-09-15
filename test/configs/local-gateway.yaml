@@ -1,0 +1,214 @@
+# Local Gateway Collector Test Configuration
+# Use for local development and debugging with VS Code
+#
+# Run: ./build/otelcol-custom --config test/configs/local-gateway.yaml
+#      ./build/gateway/otelcol-gateway --config test/configs/local-gateway.yaml
+# Or use VS Code launch configuration: "Debug Full Collector" or "Debug Gateway Collector"
+#
+# This config:
+# - Receives OTLP from edge collectors or test tools
+# - Receives syslog for network device testing
+# - Uses debug exporter (stdout) instead of Elasticsearch
+# - Includes transform processors for log parsing
+# - No external dependencies required
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+
+  zpages:
+    endpoint: 127.0.0.1:55679
+
+receivers:
+  # OTLP receiver - accepts from edge collectors and instrumented apps
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # UDP log receiver for syslog/network device logs
+  udplog/syslog:
+    listen_address: 0.0.0.0:1514
+    operators:
+      - type: regex_parser
+        regex: '^<(?P<priority>\d+)>(?P<message>.*)'
+        parse_from: body
+        parse_to: attributes
+        on_error: send
+
+  # TCP log receiver for syslog/network device logs
+  tcplog/syslog:
+    listen_address: 0.0.0.0:1515
+    operators:
+      - type: regex_parser
+        regex: '^<(?P<priority>\d+)>(?P<message>.*)'
+        parse_from: body
+        parse_to: attributes
+        on_error: send
+
+  # File-based log receiver for testing with sample data
+  filelog/testdata:
+    include:
+      - testdata/**/*.txt
+      - testdata/**/*.log
+      - testdata/**/*.raw
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    operators:
+      - type: add
+        field: attributes.source
+        value: testdata
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  batch:
+    timeout: 5s
+    send_batch_size: 500
+    send_batch_max_size: 1000
+
+  # Transform journald logs from edge collectors
+  transform/journald:
+    log_statements:
+      - context: log
+        conditions:
+          - IsMap(body)
+        statements:
+          # Host and machine information
+          - set(resource.attributes["host.name"], body["_HOSTNAME"]) where body["_HOSTNAME"] != nil
+          - set(resource.attributes["host.id"], body["_MACHINE_ID"]) where body["_MACHINE_ID"] != nil
+          # Process information
+          - set(resource.attributes["process.pid"], body["_PID"]) where body["_PID"] != nil
+          - set(resource.attributes["process.command"], body["_COMM"]) where body["_COMM"] != nil
+          # Service information
+          - set(resource.attributes["service.name"], body["_SYSTEMD_UNIT"]) where body["_SYSTEMD_UNIT"] != nil
+          # Convert PRIORITY to OTEL severity levels
+          - set(severity_number, SEVERITY_NUMBER_FATAL) where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2
+          - set(severity_text, "FATAL") where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2
+          - set(severity_number, SEVERITY_NUMBER_ERROR) where body["PRIORITY"] == "3"
+          - set(severity_text, "ERROR") where body["PRIORITY"] == "3"
+          - set(severity_number, SEVERITY_NUMBER_WARN) where body["PRIORITY"] == "4"
+          - set(severity_text, "WARN") where body["PRIORITY"] == "4"
+          - set(severity_number, SEVERITY_NUMBER_INFO) where body["PRIORITY"] == "5" or body["PRIORITY"] == "6"
+          - set(severity_text, "INFO") where body["PRIORITY"] == "5" or body["PRIORITY"] == "6"
+          - set(severity_number, SEVERITY_NUMBER_DEBUG) where body["PRIORITY"] == "7"
+          - set(severity_text, "DEBUG") where body["PRIORITY"] == "7"
+
+  # Transform syslog logs (pfsense, network devices)
+  transform/syslog:
+    log_statements:
+      - context: log
+        statements:
+          # Copy priority to syslog.priority attribute
+          - set(attributes["syslog.priority"], attributes["priority"]) where attributes["priority"] != nil
+          # Save original message for ciscolog processor
+          - set(attributes["original_message"], attributes["message"]) where attributes["message"] != nil
+          # Copy message body if parsed
+          - set(body, attributes["message"]) where attributes["message"] != nil
+
+  # Cisco/HP network log parser - extracts facility, severity, mnemonic
+  # Handles formats not parsed by transform/syslog (WLC, bare mnemonics, HP switches)
+  ciscolog:
+    source_attribute: original_message
+    set_hostname: true
+    clean_body: true
+
+  # Add dataset attribute for ELK routing
+  attributes/dataset:
+    actions:
+      - key: event.dataset
+        from_attribute: data_stream.dataset
+        action: upsert
+
+  # Resource detection for local testing
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+
+  # Add development environment marker
+  resource/dev:
+    attributes:
+      - key: deployment.environment
+        value: development
+        action: insert
+
+exporters:
+  # Debug exporter - prints to stdout with sampling
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 20
+
+  # File exporter for persistent output review
+  file/logs:
+    path: /tmp/otel-gateway-logs.json
+    rotation:
+      max_megabytes: 50
+      max_backups: 3
+
+  file/metrics:
+    path: /tmp/otel-gateway-metrics.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 3
+
+  file/traces:
+    path: /tmp/otel-gateway-traces.json
+    rotation:
+      max_megabytes: 10
+      max_backups: 3
+
+service:
+  extensions: [health_check, zpages]
+  telemetry:
+    logs:
+      level: debug
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
+  pipelines:
+    # Logs from OTLP (edge collectors, instrumented apps)
+    logs/otlp:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/journald, attributes/dataset, batch]
+      exporters: [debug, file/logs]
+
+    # Logs from syslog (network devices)
+    logs/syslog:
+      receivers: [udplog/syslog, tcplog/syslog]
+      processors: [memory_limiter, transform/syslog, ciscolog, resourcedetection, resource/dev, batch]
+      exporters: [debug, file/logs]
+
+    # Logs from testdata files
+    logs/testdata:
+      receivers: [filelog/testdata]
+      processors: [memory_limiter, resourcedetection, resource/dev, batch]
+      exporters: [debug, file/logs]
+
+    # Metrics pipeline
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug, file/metrics]
+
+    # Traces pipeline
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug, file/traces]

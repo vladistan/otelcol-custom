@@ -1,0 +1,49 @@
+{
+  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
+  "_id": "AZsknQ9CPSMYvmTMdYE_",
+  "_version": 1,
+  "_seq_no": 5299321,
+  "_primary_term": 2,
+  "found": true,
+  "_source": {
+    "observed_timestamp": "1765845864132.247921",
+    "@timestamp": "1765845864132.247921",
+    "resource": {
+      "attributes": {
+        "collector.gateway.version": "0.1.21",
+        "service.name": "SW_MATM",
+        "host.name": "base-cluster3-48.home.example.com"
+      }
+    },
+    "data_stream": {
+      "namespace": "default",
+      "type": "logs",
+      "dataset": "generic.otel"
+    },
+    "severity_text": "WARN",
+    "severity_number": 13,
+    "scope": {},
+    "attributes": {
+      "net.host.name": "::",
+      "net.transport": "IP.UDP",
+      "net.peer.port": "1027",
+      "client.mac": "62:12:24:a7:dd:56",
+      "log.source": "syslog",
+      "original_message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+      "priority": "188",
+      "message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+      "net.peer.ip": "192.0.2.1",
+      "net.host.ip": "::",
+      "cisco_seq": "661",
+      "client.hostname": "Mac",
+      "net.peer.name": "base-cluster3-48.home.example.com",
+      "cisco_mnemonic": "MACFLAP_NOTIF",
+      "cisco_facility": "SW_MATM",
+      "net.host.port": "4319",
+      "source.ip": "192.0.2.1"
+    },
+    "body": {
+      "text": "Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43"
+    }
+  }
+}

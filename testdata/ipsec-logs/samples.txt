@@ -1,0 +1,18 @@
+# strongSwan charon daemon logs
+Oct 15 09:23:45 vpn-gw charon: 14[IKE] initiating IKE_SA vpn-client[1] to 203.0.113.50
+Oct 15 09:23:45 vpn-gw charon: 14[IKE] establishing CHILD_SA tunnel{1}
+Oct 15 09:23:46 vpn-gw charon: 14[IKE] IKE_SA vpn-client[1] established between 192.168.1.1[gw.example.com]...203.0.113.50[client.example.com]
+Oct 15 09:23:46 vpn-gw charon: 14[IKE] CHILD_SA tunnel{1} established with SPIs c12345ab_i d67890cd_o and TS 10.0.0.0/24 === 10.1.0.0/24
+Oct 15 09:30:00 vpn-gw charon: 14[IKE] received DPD request, sending DPD response
+Oct 15 09:45:00 vpn-gw charon: 14[IKE] deleting IKE_SA vpn-client[1] between 192.168.1.1[gw.example.com]...203.0.113.50[client.example.com]
+Oct 15 09:45:00 vpn-gw charon: 14[IKE] IKE_SA deleted
+
+# Failed connection attempts
+Oct 15 10:00:00 vpn-gw charon: 15[IKE] initiating IKE_SA vpn-bad-client[2] to 198.51.100.100
+Oct 15 10:00:05 vpn-gw charon: 15[IKE] received AUTH_FAILED notify error
+Oct 15 10:00:05 vpn-gw charon: 15[IKE] peer didn't accept the proposal
+
+# Rekey events
+Oct 15 11:00:00 vpn-gw charon: 16[IKE] initiating IKE_SA rekey
+Oct 15 11:00:01 vpn-gw charon: 16[IKE] IKE_SA vpn-client[3] established, rekeying IKE_SA vpn-client[1]
+Oct 15 11:00:01 vpn-gw charon: 16[IKE] deleting IKE_SA vpn-client[1] after rekeying

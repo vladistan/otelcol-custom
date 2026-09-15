@@ -1,0 +1,16 @@
+# Build output
+build/
+
+# Binary artifacts
+*.exe
+/otelcol-custom
+/otelcol-custom-linux
+
+# Python virtual environments
+.venv/
+__pycache__/
+*.pyc
+
+# Test coverage artifacts
+coverage.out
+coverage.html

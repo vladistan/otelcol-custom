@@ -1,0 +1,93 @@
+# cspell:ignore GOTOOLCHAIN
+# Dockerfile for otelcol-gateway
+# Real multi-stage build: the collector is generated and compiled inside the
+# builder stage from a clean checkout, no host pre-build required.
+
+# ---- builder stage ----
+FROM golang@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+
+ARG OCB_VERSION=0.140.0
+ARG VERSION=dev
+ARG COMMIT=unknown
+
+WORKDIR /src
+
+# The official golang image pins GOTOOLCHAIN=local, which blocks Go from
+# fetching a newer toolchain a dependency declares it needs. Match the
+# behavior of a developer's host (GOTOOLCHAIN=auto is Go's own default)
+# rather than freezing the toolchain - this is a build-environment choice,
+# not a version bump of any pinned dependency.
+ENV GOTOOLCHAIN=auto
+
+# Install the OpenTelemetry Collector Builder (OCB) at the pinned version.
+RUN go install go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}
+
+# Copy only what the gateway build needs: the root module, the shared
+# entrypoint, the custom in-tree components, and the builder config.
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY processor ./processor
+COPY receiver ./receiver
+COPY stanza ./stanza
+COPY builder-gateway.yaml ./
+
+# Generate the gateway distribution (skip_compilation: true - OCB wires the
+# components and go.mod but does not compile; compilation happens below,
+# same as the local `just build-gateway` recipe). OCB does not create the
+# output path recursively, so it must exist first.
+RUN mkdir -p build/gateway && /go/bin/builder --config=builder-gateway.yaml
+
+# Inject the shared entrypoint (adds Sentry init) and resolve dependencies,
+# mirroring `just build-gateway`.
+RUN cp cmd/otelcol-custom/main.go build/gateway/main.go && \
+    cd build/gateway && \
+    go get github.com/getsentry/sentry-go@v0.29.1 && \
+    go mod tidy
+
+# Compile the binary.
+RUN cd build/gateway && \
+    CGO_ENABLED=0 go build \
+        -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.serviceName=otelcol-gateway" \
+        -o otelcol-gateway .
+
+# ---- runtime stage ----
+FROM alpine@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+
+# Install ca-certificates for TLS connections to Elasticsearch
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user for security
+RUN addgroup -g 10001 -S otel && \
+    adduser -u 10001 -S otel -G otel
+
+# Create directories for config and storage
+RUN mkdir -p /etc/otel /var/lib/otel/storage && \
+    chown -R otel:otel /etc/otel /var/lib/otel
+
+# Copy the binary compiled in the builder stage
+COPY --from=builder --chown=otel:otel /src/build/gateway/otelcol-gateway /otelcol-gateway
+
+# Use non-root user
+USER otel
+
+# Expose ports
+# OTLP gRPC
+EXPOSE 4317
+# OTLP HTTP
+EXPOSE 4318
+# Syslog UDP
+EXPOSE 4319/udp
+# Syslog TCP
+EXPOSE 4320
+# Health check
+EXPOSE 13133
+# zpages (debug)
+EXPOSE 55679
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:13133/ || exit 1
+
+# Default entrypoint
+ENTRYPOINT ["/otelcol-gateway"]
+CMD ["--config", "/etc/otel/config.yaml"]

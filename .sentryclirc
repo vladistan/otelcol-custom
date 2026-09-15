@@ -1,0 +1,9 @@
+[defaults]
+url = https://sentry.r4.example.com
+org = sentry
+project = otel-collector
+
+[auth]
+# Set SENTRY_AUTH_TOKEN environment variable or add token here
+# Generate at: https://sentry.r4.example.com/settings/account/api/auth-tokens/
+# token = your-auth-token-here

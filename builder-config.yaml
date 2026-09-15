@@ -1,0 +1,124 @@
+dist:
+  name: otelcol-custom
+  description: Custom OpenTelemetry Collector distribution with extended log-parsing processors
+  output_path: ./build
+  # Skip compilation - we compile manually after injecting custom main.go for Sentry
+  skip_compilation: true
+# =============================================================================
+# Replaces - Local module overrides for custom components
+# =============================================================================
+replaces:
+  # Custom components from this repository (paths relative to build/ directory)
+  - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../receiver/psireceiver
+  - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../processor/normalizedloadprocessor
+  - github.com/vladistan/otelcol-custom/processor/resourceversionprocessor => ../processor/resourceversionprocessor
+  # Custom stanza operators (for log processing pipelines)
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/arraytostring => ../stanza/operator/transformer/arraytostring
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../stanza/operator/transformer/ansistrip
+# =============================================================================
+# Extensions
+# =============================================================================
+extensions:
+  # Debug endpoints (/debug/tracez, /debug/pipelinez)
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.115.0
+  # Health check endpoint for k8s probes and monitoring
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.115.0
+  # Persistent queue storage for sending_queue resilience
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.115.0
+# =============================================================================
+# Receivers
+# =============================================================================
+receivers:
+  # --- Core ---
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.115.0
+  # --- Logs ---
+  # System journal logs (primary log source for edge collectors)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.115.0
+  # File-based logs (application logs, Docker container logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.115.0
+  # BSD/RFC 3164/5424 syslog (network devices)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/syslogreceiver v0.115.0
+  # Raw TCP log input (syslog fallback)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcplogreceiver v0.115.0
+  # Raw UDP log input (syslog fallback)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/udplogreceiver v0.115.0
+  # --- Metrics ---
+  # Host metrics (CPU, memory, disk, network, load, paging)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.115.0
+  # Prometheus scraping (for node_exporter PSI interim solution)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.115.0
+  # --- Kubernetes ---
+  # K8s events and pod specs via API
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver v0.115.0
+  # K8s cluster-level metrics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.115.0
+  # Kubelet and node metrics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.115.0
+  # --- Cloud (AWS) ---
+  # AWS S3 (CloudTrail, access logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.115.0
+  # AWS CloudWatch Logs (logs from CloudWatch Log Groups)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.115.0
+  # AWS CloudWatch Metrics
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchmetricsreceiver v0.115.0
+  # --- Cloud (GCP) ---
+  # GCP Pub/Sub (audit logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.115.0
+  # --- Cloud (Azure) ---
+  # Azure Event Hub (activity logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.115.0
+  # --- Custom (local) ---
+  # PSI (Pressure Stall Information) metrics from /proc/pressure
+  - gomod: github.com/vladistan/otelcol-custom/receiver/psireceiver v0.0.0
+# =============================================================================
+# Processors
+# =============================================================================
+processors:
+  # --- Core ---
+  # Batch telemetry for efficiency
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.115.0
+  # Prevent OOM conditions
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.115.0
+  # --- Transform ---
+  # OTTL-based field transformations (log parsing, field extraction)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.115.0
+  # Add/modify/delete attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.115.0
+  # Modify resource attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.115.0
+  # Auto-detect host/cloud info
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.115.0
+  # --- Filtering ---
+  # Drop unwanted telemetry (metrics cleanup)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.115.0
+  # --- Kubernetes ---
+  # Enrich with K8s metadata (pod, namespace, deployment, etc.)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.115.0
+  # --- Custom (local) ---
+  # Normalized load average (load / CPU count)
+  - gomod: github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor v0.0.0
+  # Collector version stamping
+  - gomod: github.com/vladistan/otelcol-custom/processor/resourceversionprocessor v0.0.0
+# =============================================================================
+# Connectors
+# =============================================================================
+connectors:
+  # Route telemetry to different pipelines based on attributes
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconnector v0.115.0
+# =============================================================================
+# Exporters
+# =============================================================================
+exporters:
+  # --- Core ---
+  # OTLP gRPC (edge → gateway)
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.115.0
+  # OTLP HTTP (k8s → gateway)
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.115.0
+  # --- Storage ---
+  # Direct export to Elasticsearch
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v0.115.0
+  # Write to local files (debugging/buffering)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.115.0
+  # --- Debug ---
+  # Console output for debugging
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.115.0

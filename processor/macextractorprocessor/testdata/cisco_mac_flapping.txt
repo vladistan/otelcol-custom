@@ -1,0 +1,1 @@
+Host 26d9.e017.393d in vlan 1 is flapping between port Gi4/0/43 and port Gi4/0/45

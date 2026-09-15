@@ -1,0 +1,5 @@
+{"level":"info","msg":"Server started","time":"2024-10-15T09:23:45Z","port":8080,"host":"0.0.0.0"}
+{"level":"debug","msg":"Processing request","time":"2024-10-15T09:23:46Z","method":"GET","path":"/api/v1/users","request_id":"abc123"}
+{"level":"warn","msg":"Rate limit approaching","time":"2024-10-15T09:23:47Z","current_rate":95,"max_rate":100}
+{"level":"error","msg":"Database connection failed","time":"2024-10-15T09:23:48Z","error":"connection refused","host":"db.example.com","port":5432}
+{"level":"fatal","msg":"Unable to start server","time":"2024-10-15T09:23:49Z","error":"port already in use"}
