@@ -5,7 +5,8 @@
 # Structurally parallel to Dockerfile.gateway - keep the two in sync.
 
 # ---- builder stage ----
-FROM golang@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+# go1.26.8, debian bookworm
+FROM golang@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS builder
 
 ARG OCB_VERSION=0.140.0
 ARG VERSION=dev
@@ -13,12 +14,14 @@ ARG COMMIT=unknown
 
 WORKDIR /src
 
-# The official golang image pins GOTOOLCHAIN=local, which blocks Go from
-# fetching a newer toolchain a dependency declares it needs. Match the
-# behavior of a developer's host (GOTOOLCHAIN=auto is Go's own default)
-# rather than freezing the toolchain - this is a build-environment choice,
-# not a version bump of any pinned dependency.
-ENV GOTOOLCHAIN=auto
+# The builder digest above already ships go1.26.8, above every in-tree
+# go.mod directive (highest is 1.24.0), so the toolchain is pinned to the
+# image's own local go rather than left to auto-fetch. `auto` is what let
+# the version drift silently before this phase - the Phase 0 baseline
+# observed it fetching go1.26.8 mid-build even though the pin claimed an
+# older version. `local` is Go's actual no-auto-fetch value; `off` is not
+# a recognized GOTOOLCHAIN setting.
+ENV GOTOOLCHAIN=local
 
 # Install the OpenTelemetry Collector Builder (OCB) at the pinned version.
 RUN go install go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}
@@ -52,7 +55,8 @@ RUN cd build/scrape && \
         -o otelcol-scrape .
 
 # ---- runtime stage ----
-FROM alpine@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+# alpine 3.22.5
+FROM alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
 
 # Install ca-certificates for TLS connections to Elasticsearch
 RUN apk add --no-cache ca-certificates tzdata
@@ -81,9 +85,12 @@ EXPOSE 13133
 # zpages (debug)
 EXPOSE 55679
 
-# Health check
+# Health check. Targets 127.0.0.1 explicitly, not localhost: the
+# health_check extension binds 127.0.0.1 only, and busybox wget resolves
+# `localhost` to the ::1 entry in Docker's /etc/hosts first, refusing the
+# connection before it ever tries the v4 address.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:13133/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:13133/ || exit 1
 
 # Default entrypoint
 ENTRYPOINT ["/otelcol-scrape"]

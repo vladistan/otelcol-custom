@@ -1,6 +1,9 @@
 # Build output
 build/
 
+# Staged public release artifacts (Phase 2 of the public-release plan)
+dist/
+
 # Binary artifacts
 *.exe
 /otelcol-custom
@@ -14,3 +17,10 @@ __pycache__/
 # Test coverage artifacts
 coverage.out
 coverage.html
+
+# Netlify/GHCR credentials for the public-release just recipes (Phase 1 decision,
+# see docs/public-release.md) — same pattern as tools/elk-tool/.gitignore
+.envrc
+
+# Assembled download site (Phase 4 of the public-release plan)
+_site/

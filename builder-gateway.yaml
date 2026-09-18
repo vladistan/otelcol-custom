@@ -184,6 +184,8 @@ exporters:
   # --- Storage ---
   # Direct export to Elasticsearch
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v0.140.0
+  # Direct export to ClickHouse
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.140.0
   # Write to local files (debugging/buffering)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.140.0
   # --- Debug ---

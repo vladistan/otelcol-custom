@@ -1,0 +1,95 @@
+name: Release
+# Plan 02-publish-artifacts, Phase 7 Step 7.2 — accepted automation.
+#
+# This directory is published verbatim as the root of the public repo
+# (github.com/vladistan/otelcol-custom, see ../../PUB_MANIFEST.md), so this
+# file becomes that repo's own .github/workflows/release.yml. The `just`
+# recipes it calls already exist (justfile) and were proven manually in
+# Phase 6 Step 6.3; this workflow only removes the human from the loop.
+#
+# ---------- Credential friction this resolves ----------
+#
+# The manual Phase 6.3 run needed two different tokens and manual env
+# toggling: the ambient fine-grained PAT could authenticate to ghcr.io but
+# lacked write:packages, and separately lacked permission to create Releases
+# on this repo at all (403), so release-upload needed GH_TOKEN unset (falling
+# back to a classic keyring token) while docker-push-ghcr needed it set with
+# the extra scope. See ../docs/public-release.md, "Credential Storage".
+#
+# Here that split does not exist: this workflow's own repo IS
+# vladistan/otelcol-custom, the same repo release-tag/release-upload target,
+# so the automatic ${{ github.token }} - scoped below via
+# permissions.contents=write and permissions.packages=write - covers both
+# legs with one token. `gh auth token` (used by docker-push-ghcr) reads
+# GH_TOKEN from the environment, so the justfile recipes run unmodified.
+#
+# ---------- The tag-to-version convention ----------
+#
+# Tags are `v<VERSION file contents>`. The tag does not SET the version, it
+# ASSERTS it — the VERSION file stays the single source of truth (existing
+# justfile convention) and a mismatch fails loudly rather than silently
+# tagging the wrong build.
+on:
+  push:
+    tags:
+      - "v*"
+# Two tags pushed close together must not race for the same Release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: write # create/update the Release and upload assets
+  packages: write # push the public image to ghcr.io
+jobs:
+  release:
+    name: Build, release and publish the GHCR image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/otel-collector
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.8"
+      - name: Install just
+        uses: extractions/setup-just@v2
+      # Cheap first: a version-file/tag mismatch fails here in seconds
+      # instead of after a full cross-compile.
+      - name: Assert the tag matches the VERSION file
+        run: |
+          expected="v$(cat VERSION | tr -d '\n')"
+          actual="${{ github.ref_name }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::tag '$actual' does not match VERSION file ('$expected')." \
+                 "The VERSION file is the source of truth - bump it and commit," \
+                 "then tag that commit, rather than tagging a mismatched VERSION."
+            exit 1
+          fi
+          echo "tag $actual matches VERSION file"
+      - name: Stage public artifacts
+        run: just stage-public-artifacts
+      - name: Create/update the GitHub Release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just release-upload
+      # Downloads the assets back over anonymous HTTPS (no GH_TOKEN) and
+      # hashes the bytes actually received, never trusting the upload step's
+      # exit code alone: a 200 with a truncated or wrong body would pass a
+      # status-code-only check.
+      - name: Verify the uploaded Release assets anonymously
+        run: just verify-release-download
+      - name: Build the public gateway image
+        run: just docker-build-gateway-ghcr
+      - name: Push the public gateway image to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just docker-push-ghcr
+
+# No anonymous-pull check here: GHCR packages are created PRIVATE by
+# default and the flip to public visibility is a recorded manual
+# step (../docs/public-release.md, "Manual step - visibility and
+# anonymous pull verification") done once after the first push. An
+# automated pull check here would fail on every run until that manual
+# step has happened, for a package that is already known private.

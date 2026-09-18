@@ -1,0 +1,52 @@
+name: Publish download site
+# Plan 02-publish-artifacts, Phase 7 Step 7.2 — accepted automation.
+#
+# Published verbatim as this repo's root (see release.yml's header for the
+# PUB_MANIFEST.md path mapping), so this becomes the public repo's own
+# .github/workflows/publish.yml.
+#
+# Separately triggerable and idempotent on purpose, distinct from release.yml:
+# the site is a PROJECTION of whatever the Release currently holds (`just
+# publish-site` re-downloads, reassembles and redeploys from scratch every
+# run), so a site-assembly bugfix, a Netlify outage retry, or a manual
+# republish must not require rebuilding binaries or re-touching the Release.
+# `release: published` re-runs this right after release.yml creates/updates
+# the Release, matching the desktop-release reference's pattern; unlike that
+# two-machine case there is only one producer here, so this is a convenience
+# trigger rather than a join point - workflow_dispatch remains the one that
+# matters for an out-of-band republish.
+on:
+  workflow_dispatch: {}
+  release:
+    types: [published]
+# One publish at a time; never cancel one mid-deploy.
+concurrency:
+  group: publish-site
+  cancel-in-progress: false
+# `just publish-site` only reads the Release (gh release download) and writes
+# to Netlify; it never touches this repo's contents.
+permissions:
+  contents: read
+jobs:
+  publish:
+    name: Assemble, deploy, verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/otel-collector
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install just
+        uses: extractions/setup-just@v2
+      # publish-site itself hard-fails on zero downloaded assets and verifies
+      # the deploy by content (checksums against downloaded bytes), not a
+      # status code - see the recipe body in justfile. Nothing here
+      # re-implements those checks.
+      - name: Publish the download site
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: |
+          npm install -g netlify-cli
+          just publish-site

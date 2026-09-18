@@ -22,6 +22,32 @@ go install go.opentelemetry.io/collector/cmd/builder@v0.115.0
 builder --config builder-config.yaml
 ```
 
+## Installation
+
+Prebuilt `edge` and `gateway` binaries and a gateway container image are
+published for each release — no Go toolchain required.
+
+### Binary download (edge/gateway, linux/amd64)
+
+```bash
+version=$(curl -fsSL https://api.github.com/repos/vladistan/otelcol-custom/releases/latest | jq -r .tag_name)
+curl -fsSLO "https://github.com/vladistan/otelcol-custom/releases/download/${version}/otelcol-edge-${version#v}-linux-amd64"
+curl -fsSLO "https://github.com/vladistan/otelcol-custom/releases/download/${version}/otelcol-gateway-${version#v}-linux-amd64"
+curl -fsSLO "https://github.com/vladistan/otelcol-custom/releases/download/${version}/SHA256SUMS"
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+Releases and assets are also browsable at
+https://github.com/vladistan/otelcol-custom/releases.
+
+### Gateway container image
+
+```bash
+version=$(curl -fsSL https://api.github.com/repos/vladistan/otelcol-custom/releases/latest | jq -r .tag_name)
+docker pull "ghcr.io/vladistan/otelcol-gateway:${version}"
+docker run --rm "ghcr.io/vladistan/otelcol-gateway:${version}" --version
+```
+
 ## Deployment Profiles
 
 - **default** (`otelcol-custom`) - full component set, built via `builder-config.yaml`.
