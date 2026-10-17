@@ -1,0 +1,56 @@
+# Edge collector with the gpu receiver, for the non-GPU host smoke test.
+# Run: otelcol-edge --config test/configs/gpu-edge.yaml
+# Requires OTLP_ENDPOINT (e.g. gateway:4317) in the environment.
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  hostmetrics:
+    collection_interval: 10s
+    scrapers:
+      cpu:
+      load:
+      memory:
+
+  psi:
+    collection_interval: 10s
+
+  gpu:
+    collection_interval: 10s
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+  batch:
+    timeout: 5s
+
+  resourcedetection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+
+exporters:
+  otlp:
+    endpoint: ${env:OTLP_ENDPOINT}
+    tls:
+      insecure: true
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [hostmetrics, psi]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlp]
+    metrics/gpu:
+      receivers: [gpu]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlp]

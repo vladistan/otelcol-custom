@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
+### Added
+
+- **GPU receiver (`gpu`)** in `otelcol-edge`: reads NVIDIA GPU metrics through NVML and emits them with OpenTelemetry semantic-convention names, pinned to semconv v1.44.0 plus three extension metrics. It is a modified copy of `github.com/pmady/otel-gpu-receiver` (Apache-2.0), ported down to collector v0.140.0. See `receiver/gpureceiver/README.md` for the metric table and provenance. Hosts without NVIDIA run the receiver unchanged: NVML loads lazily.
+- **Two edge artifacts.** `otelcol-edge-0.2.0-linux-amd64-gpu` includes `gpu`, is built with cgo against glibc, and needs glibc 2.35 or newer. `otelcol-edge-0.2.0-linux-amd64` is the static build without `gpu` and behaves as 0.1.64, for hosts below glibc 2.35. Both are in `SHA256SUMS`.
+
+### Changed
+
+- **Linux edge build** moved into a pinned `ubuntu:22.04` container with a glibc-symbol check that fails the build above 2.35. The gpu artifact is built with `netgo` and `osusergo`; the static artifact is `CGO_ENABLED=0` with no tags, as in 0.1.64.
+- **`generate-edge`** creates `build/` first, so a fresh checkout builds without a manual `mkdir`.
+- **`verify-public-artifacts`** runs the gpu artifact in `ubuntu:22.04` and the static artifact in `rockylinux:9` (glibc 2.34), `ubuntu:20.04` (2.31) and `centos:7` (2.17).
+
+### Edge binary size (bytes)
+
+| Build | Bytes |
+|---|---|
+| 0.1.64 published edge | 120344738 |
+| 0.2.0 gpu edge | 121624488 (+1.06%) |
+| 0.2.0 static edge | 120279202 |
+
+### Hosts below glibc 2.35
+
+Hosts with glibc older than 2.35 use the static artifact.
+
+### Real-GPU verification
+
+Run natively on one NVIDIA L4 (driver 580.126.09, Ubuntu 24.04, glibc 2.39), 10 minutes with the receiver and 10 minutes without.
+
+- **Scrape time:** first scrape 43 ms, slowest 41 ms (limit 2500 ms).
+- **CPU:** 0.00108 core with `gpu`, 0.00073 without; the 0.00035 core difference is under the 0.01 limit.
+- **Gateway:** all 12 `hw.*` metric names arrived at a 0.1.64 gateway.
+- **Against `nvidia-smi`:** power 27.24 W vs 27.14 W, temperature 40 vs 40, memory limit equal, utilization 0 vs 0. Memory usage reads 21641 MiB vs 21171 MiB (470 MiB higher; suspected NVML v1 reserved memory, not confirmed). Clock reads 1770 MHz vs 2040 MHz SM clock at idle (not confirmed).
+
+### Known limits
+
+- The gpu artifact runs only on glibc 2.35 or newer.
+- The 470 MiB memory-usage difference and the idle clock difference above are unexplained.
+- No GPU host other than the one L4 was tested.
+
 ## [0.1.64] - 2026-09-18
 
 ### Added

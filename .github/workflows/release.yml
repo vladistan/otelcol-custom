@@ -44,9 +44,6 @@ jobs:
   release:
     name: Build, release and publish the GHCR image
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tools/otel-collector
     steps:
       - uses: actions/checkout@v4
       - name: Install Go

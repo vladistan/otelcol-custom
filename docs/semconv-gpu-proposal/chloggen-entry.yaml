@@ -1,0 +1,8 @@
+# Repo path: .chloggen/add-gpu-clock-power-limit-pcie.yaml (create with `make chlog-new`)
+change_type: enhancement
+component: hw
+note: >-
+  Add `hw.gpu.clock`, `hw.gpu.clock.limit`, `hw.gpu.power.limit`, `hw.gpu.pcie.throughput` and the `hw.gpu.clock.domain` attribute.
+issues: [0] # replace with the proposal issue number
+subtext: |
+  Docs for hardware GPU metrics are regenerated with `make generate-all`.

@@ -1,0 +1,26 @@
+# Gateway side of the gpu smoke test: OTLP in, one JSON file out.
+# Run: otelcol-gateway --config test/configs/gpu-gateway.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    timeout: 2s
+
+exporters:
+  file:
+    path: /out/metrics.json
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file]

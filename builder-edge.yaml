@@ -10,6 +10,7 @@ dist:
 replaces:
   # Custom components from this repository (paths relative to build/edge/ directory)
   - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../../receiver/psireceiver
+  - github.com/vladistan/otelcol-custom/receiver/gpureceiver => ../../receiver/gpureceiver
   - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
   - github.com/vladistan/otelcol-custom/processor/resourceversionprocessor => ../../processor/resourceversionprocessor
   - github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
@@ -41,6 +42,7 @@ receivers:
   # --- Custom (local) ---
   # PSI (Pressure Stall Information) metrics from /proc/pressure
   - gomod: github.com/vladistan/otelcol-custom/receiver/psireceiver v0.0.0
+  - gomod: github.com/vladistan/otelcol-custom/receiver/gpureceiver v0.0.0
 # =============================================================================
 # Processors - Minimal processing for edge
 # =============================================================================

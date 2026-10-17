@@ -1,0 +1,80 @@
+# DRAFT additions to model/hardware/gpu-metrics.yaml (file_format: definition/2).
+#
+# Registry addition (model/hardware/registry.yaml), next to hw.gpu.task:
+#
+#      - id: hw.gpu.clock.domain
+#        type:
+#          members:
+#            - {id: graphics, value: 'graphics', brief: 'Graphics clock', stability: development}
+#            - {id: sm,       value: 'sm',       brief: 'Streaming multiprocessor clock', stability: development}
+#            - {id: memory,   value: 'memory',   brief: 'Memory clock', stability: development}
+#            - {id: video,    value: 'video',    brief: 'Video encoder/decoder clock', stability: development}
+#        stability: development
+#        brief: >
+#          Clock domain of the GPU.
+#
+# Metrics (append under `metrics:`):
+- name: hw.gpu.clock
+  requirement_level: recommended
+  annotations:
+    code_generation:
+      metric_value_type: int
+    naming_conventions:
+      # hw.gpu.clock is used as a namespace by hw.gpu.clock.limit
+      policy_exceptions:
+        - metric_namespace_collision
+  stability: development
+  brief: "Current GPU clock frequency."
+  instrument: gauge
+  unit: "Hz"
+  attributes:
+    - ref_group: metric_attributes.hw.gpu
+    - ref: hw.gpu.clock.domain
+      requirement_level: required
+- name: hw.gpu.clock.limit
+  requirement_level: recommended
+  annotations:
+    code_generation:
+      metric_value_type: int
+  stability: development
+  brief: "GPU maximum clock frequency."
+  instrument: gauge
+  unit: "Hz"
+  attributes:
+    - ref_group: metric_attributes.hw.gpu
+    - ref: hw.gpu.clock.domain
+      requirement_level: required
+    - ref: hw.limit_type
+      examples: ["max", "throttled"]
+      requirement_level: recommended
+- name: hw.gpu.power.limit
+  requirement_level: recommended
+  annotations:
+    code_generation:
+      metric_value_type: double
+  stability: development
+  brief: "GPU power management limit."
+  instrument: gauge
+  unit: "W"
+  attributes:
+    - ref_group: metric_attributes.hw.gpu
+    - ref: hw.limit_type
+      examples: ["max", "throttled"]
+      requirement_level: recommended
+- name: hw.gpu.pcie.throughput
+  requirement_level: recommended
+  annotations:
+    code_generation:
+      metric_value_type: int
+  stability: development
+  brief: "Current PCIe throughput of the GPU."
+  note: >
+    Use `hw.gpu.io` when a cumulative byte count is available.
+
+  instrument: gauge
+  unit: "By/s"
+  attributes:
+    - ref_group: metric_attributes.hw.gpu
+    - ref: network.io.direction
+      examples: ["receive", "transmit"]
+      requirement_level: required

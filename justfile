@@ -27,6 +27,21 @@ dist_public_dir := "dist/public/" + version
 # Dockerfile.scrape - check-base-images-sync (below) fails if it drifts.
 alpine_verify_image := "alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce"
 
+# ubuntu 22.04 image that runs the cgo edge binary in verify-public-artifacts.
+# Must match the FROM digest in Dockerfile.edge-build (check-base-images-sync).
+ubuntu_verify_image := "ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401"
+
+# Images that run the static edge artifact on older glibc: rockylinux:9 (2.34),
+# ubuntu:20.04 (2.31), centos:7 (2.17). check-base-images-sync resolves each.
+rocky9_verify_image := "rockylinux@sha256:d7be1c094cc5845ee815d4632fe377514ee6ebcf8efaed6892889657e5ddaaa6"
+ubuntu2004_verify_image := "ubuntu@sha256:8feb4d8ca5354def3d8fce243717141ce31e2c428701f6682bd2fafe15388214"
+centos7_verify_image := "centos@sha256:be65f488b7764ad3638f236b7b515b3678369a5124c47b8d32916d6487418ea4"
+
+# Container CLI; set DOCKER="sudo docker" on hosts without docker group access.
+docker_bin := env_var_or_default("DOCKER", "docker")
+edge_build_image := "otelcol-edge-build:local"
+edge_gomod_volume := "otelcol-edge-gomod"
+
 # Default recipe - show available commands
 default:
     @just --list
@@ -123,6 +138,7 @@ verify:
 
 # Generate edge collector code using OCB (pinned to the v0.140.0-component OCB version)
 generate-edge:
+    mkdir -p build
     go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge.yaml
 
 # Build the edge collector
@@ -135,15 +151,106 @@ build-edge: generate-edge
     @echo "Binary size:"
     ls -lh build/edge/otelcol-edge
 
-# Build edge collector for Linux (cross-compile from macOS)
-build-edge-linux: generate-edge
-    @echo "Building otelcol-edge {{version}} for Linux amd64..."
+# Build the cgo edge build container (ubuntu 22.04, glibc 2.35, pinned Go).
+# The Dockerfile goes in on stdin so the build context stays empty.
+build-edge-image:
+    {{docker_bin}} build --platform linux/amd64 -t {{edge_build_image}} - < Dockerfile.edge-build
+
+# Build the edge collector for Linux with cgo, inside the build container.
+# The repo is mounted at its host path so embedded source paths match the host
+# (Sentry source context). -buildvcs=false: a worktree's .git points outside
+# the mount, so VCS stamping would fail.
+build-edge-linux: build-edge-image
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building otelcol-edge {{version}} for linux/amd64 (cgo)..."
+    mkdir -p build/edge
+    {{docker_bin}} run --rm -i --platform linux/amd64 \
+        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache \
+        -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
+        {{edge_build_image}} bash -euo pipefail -s <<'EOF'
+    export CGO_ENABLED=1
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge.yaml
+    (cd receiver/gpureceiver && go vet ./... && go test ./...)
     cp cmd/otelcol-custom/main.go build/edge/main.go
-    cd build/edge && go get github.com/getsentry/sentry-go@v0.29.1
-    cd build/edge && go mod tidy
-    cd build/edge && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" -o otelcol-edge .
-    @echo "Binary size:"
+    cd build/edge
+    go get github.com/getsentry/sentry-go@v0.29.1
+    go mod tidy
+    go build -buildvcs=false -tags netgo,osusergo \
+        -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
+        -o otelcol-edge .
+    EOF
+    echo "Binary size:"
     ls -lh build/edge/otelcol-edge
+    just build-edge-static-linux
+
+# Build the static edge (no gpu receiver) for hosts below glibc 2.35. Same
+# container and mount as build-edge-linux; CGO_ENABLED=0, no build tags, as 0.1.64.
+build-edge-static-linux: build-edge-image
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Building static otelcol-edge {{version}} for linux/amd64..."
+    mkdir -p build/edge-static
+    {{docker_bin}} run --rm -i --platform linux/amd64 \
+        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache \
+        -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
+        {{edge_build_image}} bash -euo pipefail -s <<'EOF'
+    export CGO_ENABLED=0
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge-static.yaml
+    cp cmd/otelcol-custom/main.go build/edge-static/main.go
+    cd build/edge-static
+    go get github.com/getsentry/sentry-go@v0.29.1
+    go mod tidy
+    go build -buildvcs=false \
+        -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
+        -o otelcol-edge .
+    EOF
+    echo "Binary size:"
+    ls -lh build/edge-static/otelcol-edge
+
+# Fail unless the binary is static and lists no gpu receiver. ldd runs in the
+# ubuntu 22.04 verify image.
+check-edge-static binary="build/edge-static/otelcol-edge":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="{{binary}}"
+    [ -f "$bin" ] || { echo "Missing binary: $bin" >&2; exit 1; }
+    dir="$(cd "$(dirname "$bin")" && pwd)"
+    name="$(basename "$bin")"
+    ldd_out=$({{docker_bin}} run --rm --platform linux/amd64 -v "$dir:/check:ro" {{ubuntu_verify_image}} ldd "/check/$name" 2>&1 || true)
+    echo "ldd: $ldd_out"
+    echo "$ldd_out" | grep -q "not a dynamic executable" || { echo "FAIL: $name is not static" >&2; exit 1; }
+    gpu=$({{docker_bin}} run --rm --platform linux/amd64 -v "$dir:/check:ro" {{ubuntu_verify_image}} "/check/$name" components | grep -c gpu || true)
+    [ "$gpu" = 0 ] || { echo "FAIL: $name lists the gpu receiver" >&2; exit 1; }
+    echo "OK: $name is static with no gpu receiver"
+
+# Fail when the binary needs glibc newer than 2.35 or a shared library outside
+# libc.so.6 and ld-linux-x86-64.so.2. A static binary passes with no entries.
+check-edge-glibc binary="build/edge/otelcol-edge": build-edge-image
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="{{binary}}"
+    [ -f "$bin" ] || { echo "Missing binary: $bin" >&2; exit 1; }
+    {{docker_bin}} run --rm -i --platform linux/amd64 \
+        -v "$(cd "$(dirname "$bin")" && pwd):/check:ro" -e BIN="$(basename "$bin")" \
+        {{edge_build_image}} bash -euo pipefail -s <<'EOF'
+    needed=$(readelf -d "/check/$BIN" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' || true)
+    max=$(readelf -V "/check/$BIN" 2>/dev/null | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1 || true)
+    echo "max GLIBC_: ${max:-none}"
+    echo "NEEDED: $(echo $needed)"
+    status=0
+    for lib in $needed; do
+        case "$lib" in
+            libc.so.6|ld-linux-x86-64.so.2) ;;
+            *) echo "FAIL: unexpected NEEDED entry $lib" >&2; status=1 ;;
+        esac
+    done
+    if [ -n "$max" ] && [ "$(printf '%s\n2.35\n' "$max" | sort -V | tail -1)" != "2.35" ]; then
+        echo "FAIL: GLIBC_$max exceeds the 2.35 floor" >&2
+        status=1
+    fi
+    exit "$status"
+    EOF
 
 # Verify edge collector binary
 verify-edge:
@@ -356,6 +463,12 @@ test-nested-modules:
     done
     exit "$status"
 
+# Real-GPU verification on an NVIDIA host, run natively (no nvidia container
+# runtime). Needs build/edge/otelcol-edge from build-edge-linux. Writes
+# build/gpu-real/REPORT.md.
+test-gpu-real minutes="10" gateway_image="ghcr.io/vladistan/otelcol-gateway:v0.1.64":
+    DOCKER="{{docker_bin}}" scripts/test-gpu-real.sh --minutes {{minutes}} --gateway-image {{gateway_image}}
+
 # Run tests for generated build
 test-build:
     cd build && go test ./...
@@ -459,8 +572,11 @@ release-edge: build-edge-linux sentry-release
 stage-public-artifacts: build-edge-linux build-gateway-linux
     #!/usr/bin/env bash
     set -euo pipefail
+    just check-edge-glibc build/edge/otelcol-edge
+    just check-edge-static build/edge-static/otelcol-edge
     mkdir -p "{{dist_public_dir}}"
-    cp build/edge/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64"
+    cp build/edge-static/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64"
+    cp build/edge/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64-gpu"
     cp build/gateway/otelcol-gateway "{{dist_public_dir}}/otelcol-gateway-{{version}}-linux-amd64"
     just checksum-public-artifacts
     echo "Staged public artifacts for {{version}}:"
@@ -498,17 +614,27 @@ verify-public-artifacts:
     set -euo pipefail
     dir="{{dist_public_dir}}"
     ver="{{version}}"
-    for variant in edge gateway; do
-        bin="otelcol-${variant}-${ver}-linux-amd64"
+    # The -gpu edge is dynamic glibc (cgo) and runs on ubuntu 22.04; the plain edge
+    # is static and runs on glibc 2.34, 2.31 and 2.17; the gateway is static on alpine.
+    checks=(
+        "otelcol-edge-${ver}-linux-amd64-gpu {{ubuntu_verify_image}}"
+        "otelcol-edge-${ver}-linux-amd64 {{rocky9_verify_image}}"
+        "otelcol-edge-${ver}-linux-amd64 {{ubuntu2004_verify_image}}"
+        "otelcol-edge-${ver}-linux-amd64 {{centos7_verify_image}}"
+        "otelcol-gateway-${ver}-linux-amd64 {{alpine_verify_image}}"
+    )
+    for check in "${checks[@]}"; do
+        bin="${check%% *}"
+        image="${check#* }"
         path="${dir}/${bin}"
         if [ ! -f "$path" ]; then
             echo "Missing staged binary: $path - run stage-public-artifacts first" >&2
             exit 1
         fi
-        echo "Verifying ${bin}..."
-        version_out=$(docker run --rm --platform linux/amd64 -v "$PWD/${dir}:/artifacts:ro" {{alpine_verify_image}} "/artifacts/${bin}" --version)
+        echo "Verifying ${bin} in ${image}..."
+        version_out=$({{docker_bin}} run --rm --platform linux/amd64 -v "$PWD/${dir}:/artifacts:ro" "$image" "/artifacts/${bin}" --version)
         echo "$version_out" | grep -q "$ver" || { echo "Version mismatch for ${bin}: expected ${ver}, got: ${version_out}" >&2; exit 1; }
-        components_out=$(docker run --rm --platform linux/amd64 -v "$PWD/${dir}:/artifacts:ro" {{alpine_verify_image}} "/artifacts/${bin}" components)
+        components_out=$({{docker_bin}} run --rm --platform linux/amd64 -v "$PWD/${dir}:/artifacts:ro" "$image" "/artifacts/${bin}" components)
         [ -n "$components_out" ] || { echo "Empty components list for ${bin}" >&2; exit 1; }
         echo "OK: ${bin} reports version ${ver} ($(echo "$components_out" | wc -l | tr -d ' ') component lines)"
     done
@@ -523,7 +649,7 @@ check-base-images-sync:
     status=0
 
     ref_justfile="../../.claude/templates/go-cli-release/justfile.reference"
-    for f in Dockerfile.gateway Dockerfile.scrape .github/workflows/release.yml "$ref_justfile"; do
+    for f in Dockerfile.gateway Dockerfile.scrape Dockerfile.edge-build .github/workflows/release.yml "$ref_justfile"; do
         [ -f "$f" ] || { echo "error: expected file not found: $f" >&2; exit 1; }
     done
 
@@ -556,11 +682,55 @@ check-base-images-sync:
 
     # Resolve each digest to its real advertised version by inspecting the
     # image directly, rather than trusting the pin's own inline comment.
-    go_resolved=$(docker run --rm --platform linux/amd64 "$gw_go" go version | awk '{print $3}' | sed 's/^go//')
-    alpine_resolved=$(docker run --rm --platform linux/amd64 "$gw_alpine" cat /etc/os-release | grep '^VERSION_ID=' | cut -d= -f2 | tr -d '"')
+    go_resolved=$({{docker_bin}} run --rm --platform linux/amd64 "$gw_go" go version | awk '{print $3}' | sed 's/^go//')
+    alpine_resolved=$({{docker_bin}} run --rm --platform linux/amd64 "$gw_alpine" cat /etc/os-release | grep '^VERSION_ID=' | cut -d= -f2 | tr -d '"')
     release_go=$(grep -m1 -oE 'go-version:[[:space:]]*"[0-9.]+"' .github/workflows/release.yml | grep -m1 -oE '[0-9]+\.[0-9]+')
 
     echo "resolved: golang=${go_resolved} (release.yml declares ${release_go}), alpine=${alpine_resolved}"
+
+    # Edge build host: the Go tarball version joins the Go pin set, and the
+    # ubuntu digest must agree between the Dockerfile, justfile and reference.
+    edge_go=$(grep -m1 -oE '^ARG GO_VERSION=[0-9.]+' Dockerfile.edge-build | cut -d= -f2)
+    eb_ubuntu=$(extract_digest Dockerfile.edge-build ubuntu)
+    jf_ubuntu=$(grep -m1 -oE 'ubuntu@sha256:[0-9a-f]{64}' justfile)
+    ref_ubuntu=$(grep -m1 -oE 'ubuntu@sha256:[0-9a-f]{64}' "$ref_justfile")
+    ubuntu_resolved=$({{docker_bin}} run --rm --platform linux/amd64 "$eb_ubuntu" cat /etc/os-release | grep '^VERSION_ID=' | cut -d= -f2 | tr -d '"')
+
+    echo "edge-build: go=${edge_go} ubuntu=${ubuntu_resolved} (${eb_ubuntu})"
+    if [ "$edge_go" != "$go_resolved" ]; then
+        echo "DRIFT: Dockerfile.edge-build GO_VERSION (${edge_go}) disagrees with the golang image (${go_resolved})" >&2
+        status=1
+    fi
+    for pair in "justfile (ubuntu_verify_image):${jf_ubuntu}" "justfile.reference:${ref_ubuntu}"; do
+        if [ "${pair#*:}" != "$eb_ubuntu" ]; then
+            echo "DRIFT: ubuntu digest at ${pair%%:*} (${pair#*:}) disagrees with Dockerfile.edge-build (${eb_ubuntu})" >&2
+            status=1
+        fi
+    done
+    if [ "$ubuntu_resolved" != "22.04" ]; then
+        echo "DRIFT: Dockerfile.edge-build ubuntu digest resolves to ${ubuntu_resolved}, expected 22.04" >&2
+        status=1
+    fi
+    # Static-artifact verify images: each digest must resolve to its expected
+    # release, and justfile.reference must carry the same digest.
+    for spec in rocky9_verify_image:rockylinux:9 ubuntu2004_verify_image:ubuntu:20.04 centos7_verify_image:centos:7; do
+        var="${spec%%:*}"
+        rest="${spec#*:}"
+        repo="${rest%%:*}"
+        want="${rest#*:}"
+        jf_pin=$(grep -m1 -oE "^${var} := \"${repo}@sha256:[0-9a-f]{64}" justfile | grep -oE "${repo}@sha256:[0-9a-f]{64}")
+        ref_pin=$(grep -m1 -oE "^${var} := \"${repo}@sha256:[0-9a-f]{64}" "$ref_justfile" | grep -oE "${repo}@sha256:[0-9a-f]{64}" || true)
+        resolved=$({{docker_bin}} run --rm --platform linux/amd64 "$jf_pin" cat /etc/os-release | grep '^VERSION_ID=' | cut -d= -f2 | tr -d '"')
+        echo "static-verify: ${var}=${resolved} (${jf_pin})"
+        case "$resolved" in
+            "${want}"|"${want}".*) ;;
+            *) echo "DRIFT: ${var} resolves to ${resolved}, expected ${want}" >&2; status=1 ;;
+        esac
+        if [ "$ref_pin" != "$jf_pin" ]; then
+            echo "DRIFT: ${var} at justfile.reference (${ref_pin}) disagrees with justfile (${jf_pin})" >&2
+            status=1
+        fi
+    done
     case "$go_resolved" in
         "${release_go}".*|"${release_go}")
             ;;
@@ -629,7 +799,7 @@ verify-release-download:
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     base="https://github.com/${repo}/releases/download/${tag}"
-    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
+    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-edge-{{version}}-linux-amd64-gpu" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
         echo "Downloading $name anonymously..."
         curl -fsSL -o "$tmp/$name" "$base/$name"
     done

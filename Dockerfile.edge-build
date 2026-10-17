@@ -1,0 +1,31 @@
+# cspell:ignore GOTOOLCHAIN GOMODCACHE GOCACHE binutils netgo osusergo
+# Build host for the cgo edge binary. ubuntu 22.04 holds the glibc 2.35 floor
+# (FR-014), so the binary runs on every supported host. Used as a build
+# container only; the repo is mounted at run time by `just build-edge-linux`.
+
+# ubuntu 22.04
+FROM ubuntu@sha256:5ec03bb3441e8b0bf3b4f9cd4629a1ae763010dc3035bb8da3ae6cf026486401
+
+ARG GO_VERSION=1.26.8
+ARG GO_SHA256=d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b
+
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gcc libc6-dev binutils git && \
+    rm -rf /var/lib/apt/lists/*
+
+# The sha256 check fails the build on a tampered or wrong tarball.
+RUN curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" && \
+    echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c - && \
+    tar -C /usr/local -xzf /tmp/go.tgz && \
+    rm /tmp/go.tgz
+
+# Same value as Dockerfile.gateway: the image's own go, never an auto-fetch.
+ENV GOTOOLCHAIN=local \
+    GOPATH=/go \
+    GOMODCACHE=/go/pkg/mod \
+    PATH=/usr/local/go/bin:/go/bin:${PATH}
+
+# World-writable so a named volume mounted here is usable by the host uid.
+RUN mkdir -p /go/pkg/mod && chmod -R 0777 /go
