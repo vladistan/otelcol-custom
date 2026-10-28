@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - Unreleased
+
+Sentry crash reports for the Windows service.
+
+## [0.3.3] - Unreleased
+
+Per-window exponential histograms on every edge platform, `k8sevent` parity for `otel-cluster`, and the narrowed `otelcol-scrape` image with the Auth0 receiver.
+
+## [0.3.2] - Unreleased
+
+Searchable Windows event logs; `journald`, `snoozelog` and health-probe processors in the gateway image.
+
+## [0.3.1] - 2026-10-27
+
+Windows edge artifact; `otel-main` runs a gateway image built from this tree.
+
+### Added
+
+- **Windows edge** `otelcol-edge-0.3.1-windows-amd64.exe` (windows/amd64, CGO off, unsigned). It collects host metrics, Windows performance counters, Windows event logs and file logs, installs as a Windows service through the OCB service handler, and writes a rotating self-log (10 MiB, 5 backups). The sample config is `test/configs/windows-edge.yaml`.
+- **Event logs are on by default** with the Security channel unfiltered until 0.3.2 (user-accepted risk, SPARC 05 D-45). The service runs as LocalSystem (D-39).
+- **Gateway image** `ghcr.io/vladistan/otelcol-gateway:v0.3.1`, built from this tree. Its component set is unchanged from the image `otel-main` runs today.
+
+### Changed
+
+- **Collector base** moves from v0.140.0 to 0.154.0 in the edge, edge-static, gateway and scrape manifests and in every local component module. The gpu receiver calls `scraperhelper.AddMetricsScraper`, since `AddScraper` is deprecated. The Linux edge exports the same metrics and lists the same components as 0.2.0 (checked on macOS against the 0.2.0 build); the `components` command now prints snake_case display names such as `file_log`, and config keys are unchanged.
+
+### Binary size (bytes)
+
+| Build | Bytes |
+|---|---|
+| 0.2.0 static edge | 120279202 |
+| 0.3.1 static edge | 126886050 (+5.49%) |
+| 0.2.0 gpu edge | 121624488 |
+| 0.3.1 gpu edge | 128229544 (+5.43%) |
+| 0.3.1 Windows edge | 130072064 |
+| 0.3.1 gateway | 226672800 |
+
+The Linux edge growth comes from the 14-minor base bump.
+
 ## [0.2.0] - 2026-10-16
 
 ### Added

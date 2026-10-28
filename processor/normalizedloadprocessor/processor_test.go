@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/processor/processortest"
@@ -21,11 +22,11 @@ func TestNormalizedLoadProcessor(t *testing.T) {
 	addGaugeMetric(sm, "system.cpu.load_average.1m", 4.0)
 	addGaugeMetric(sm, "system.cpu.load_average.5m", 8.0)
 	addGaugeMetric(sm, "system.cpu.load_average.15m", 16.0)
-	addGaugeMetric(sm, "system.cpu.utilization", 50.0) // Should be unchanged
+	addGaugeMetric(sm, "system.cpu.utilization", 50.0) // Original kept; a percpu copy is added
 
 	// Create processor with 8 CPUs
 	sink := &consumertest.MetricsSink{}
-	settings := processortest.NewNopSettings()
+	settings := processortest.NewNopSettings(component.MustNewType(typeStr))
 	cfg := &Config{CPUCount: 8}
 
 	proc, err := newNormalizedLoadProcessor(settings, cfg, sink)
@@ -42,8 +43,7 @@ func TestNormalizedLoadProcessor(t *testing.T) {
 	// Find the normalized metrics
 	metrics := outputMD.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics()
 
-	// Should have original 4 + 3 normalized = 7 metrics
-	assert.Equal(t, 7, metrics.Len(), "Expected 7 metrics (4 original + 3 normalized)")
+	assert.Equal(t, 8, metrics.Len(), "Expected 8 metrics (4 original + 3 normalized + 1 percpu)")
 
 	// Verify normalized values
 	normalizedMetrics := make(map[string]float64)
@@ -69,7 +69,7 @@ func TestNormalizedLoadProcessor(t *testing.T) {
 func TestNormalizedLoadProcessorAutoDetect(t *testing.T) {
 	// Create processor with auto-detect (CPUCount = 0)
 	sink := &consumertest.MetricsSink{}
-	settings := processortest.NewNopSettings()
+	settings := processortest.NewNopSettings(component.MustNewType(typeStr))
 	cfg := &Config{CPUCount: 0}
 
 	proc, err := newNormalizedLoadProcessor(settings, cfg, sink)
@@ -90,7 +90,7 @@ func TestNormalizedLoadProcessorNoLoadMetrics(t *testing.T) {
 
 	// Create processor
 	sink := &consumertest.MetricsSink{}
-	settings := processortest.NewNopSettings()
+	settings := processortest.NewNopSettings(component.MustNewType(typeStr))
 	cfg := &Config{CPUCount: 4}
 
 	proc, err := newNormalizedLoadProcessor(settings, cfg, sink)
@@ -100,10 +100,9 @@ func TestNormalizedLoadProcessorNoLoadMetrics(t *testing.T) {
 	err = proc.ConsumeMetrics(context.Background(), md)
 	require.NoError(t, err)
 
-	// Verify output - should have same number of metrics (no normalized added)
 	outputMD := sink.AllMetrics()[0]
 	metrics := outputMD.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics()
-	assert.Equal(t, 2, metrics.Len(), "Expected 2 metrics (no load averages)")
+	assert.Equal(t, 3, metrics.Len(), "Expected 3 metrics (2 original + 1 percpu, no load averages)")
 }
 
 func addGaugeMetric(sm pmetric.ScopeMetrics, name string, value float64) {

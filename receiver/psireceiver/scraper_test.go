@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 	"go.uber.org/zap/zaptest"
@@ -249,7 +250,7 @@ func TestReceiverStartStop(t *testing.T) {
 		0644))
 
 	// Create receiver
-	settings := receivertest.NewNopSettings()
+	settings := receivertest.NewNopSettings(component.MustNewType(typeStr))
 	settings.Logger = zaptest.NewLogger(t)
 	cfg := &Config{
 		CollectionInterval: time.Second,

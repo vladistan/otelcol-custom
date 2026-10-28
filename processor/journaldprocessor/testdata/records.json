@@ -1,0 +1,42 @@
+[
+  {
+    "MESSAGE": "Accepted publickey for deploy",
+    "PRIORITY": "6",
+    "SYSLOG_IDENTIFIER": "sshd",
+    "_COMM": "sshd",
+    "_HOSTNAME": "host-a.example.com",
+    "_MACHINE_ID": "00000000000000000000000000000a01",
+    "_PID": "1201",
+    "_SYSTEMD_UNIT": "ssh.service",
+    "_TRANSPORT": "syslog"
+  },
+  {
+    "MESSAGE": "failed to sync pod",
+    "PRIORITY": "3",
+    "_COMM": "kubelet",
+    "_HOSTNAME": "host-b.example.com",
+    "_MACHINE_ID": "00000000000000000000000000000b02",
+    "_PID": "877",
+    "_SYSTEMD_UNIT": "kubelet.service",
+    "_TRANSPORT": "stdout"
+  },
+  {
+    "MESSAGE": "upstream timed out",
+    "PRIORITY": "4",
+    "_COMM": "nginx",
+    "_HOSTNAME": "host-a.example.com",
+    "_MACHINE_ID": "00000000000000000000000000000a01",
+    "_PID": "4410",
+    "_SYSTEMD_UNIT": "nginx.service",
+    "_TRANSPORT": "stdout"
+  },
+  {
+    "PRIORITY": "7",
+    "_COMM": "sshd",
+    "_HOSTNAME": "host-a.example.com",
+    "_MACHINE_ID": "00000000000000000000000000000a01",
+    "_PID": "1201",
+    "_SYSTEMD_UNIT": "ssh.service",
+    "_TRANSPORT": "syslog"
+  }
+]

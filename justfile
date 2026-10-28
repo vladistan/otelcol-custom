@@ -1,14 +1,18 @@
 # otelcol-custom build commands
 # Requires: Go 1.23+, OCB (OpenTelemetry Collector Builder)
 
+# Track recipe files (plan 08): T1 Windows edge, T4 scrape collector.
+import 'just/windows.just'
+import 'just/scrape.just'
+
 # OCB and collector versions
 # Two OCB versions are pinned: default uses v0.115.0, edge/gateway/scrape use
-# v0.140.0. OCB's generated go.mod tracks the OCB release, not the component
+# v0.154.0. OCB's generated go.mod tracks the OCB release, not the component
 # versions it builds, so a mismatched OCB produces an unresolvable go.mod
 # (Phase 10 Steps 10.3/10.4). Each generate recipe pins its own OCB version
 # via `go run ...@version` instead of sharing one installed `builder` binary.
 ocb_version := "0.115.0"
-ocb_version_v140 := "0.140.0"
+ocb_version_v154 := "0.154.0"
 otel_version := "0.115.0"
 
 # Read version from VERSION file (single source of truth)
@@ -136,10 +140,10 @@ verify:
 # Edge Collector (otelcol-edge) - lean collector for VMs and bare metal
 # =============================================================================
 
-# Generate edge collector code using OCB (pinned to the v0.140.0-component OCB version)
+# Generate edge collector code using OCB (pinned to the v0.154.0-component OCB version)
 generate-edge:
     mkdir -p build
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge.yaml
 
 # Build the edge collector
 build-edge: generate-edge
@@ -170,7 +174,7 @@ build-edge-linux: build-edge-image
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=1
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge.yaml
     (cd receiver/gpureceiver && go vet ./... && go test ./...)
     cp cmd/otelcol-custom/main.go build/edge/main.go
     cd build/edge
@@ -196,7 +200,7 @@ build-edge-static-linux: build-edge-image
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-edge-static.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-static.yaml
     cp cmd/otelcol-custom/main.go build/edge-static/main.go
     cd build/edge-static
     go get github.com/getsentry/sentry-go@v0.29.1
@@ -223,6 +227,22 @@ check-edge-static binary="build/edge-static/otelcol-edge":
     gpu=$({{docker_bin}} run --rm --platform linux/amd64 -v "$dir:/check:ro" {{ubuntu_verify_image}} "/check/$name" components | grep -c gpu || true)
     [ "$gpu" = 0 ] || { echo "FAIL: $name lists the gpu receiver" >&2; exit 1; }
     echo "OK: $name is static with no gpu receiver"
+
+# Generate the Windows edge sources with OCB, without compiling (the Windows
+# build recipes arrive with the build-edge-windows work).
+generate-edge-windows:
+    mkdir -p build
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-windows.yaml --skip-compilation
+
+# Fail unless builder-edge-windows.yaml differs from builder-edge-static.yaml
+# only by the allowed list in the script; extend that list when a step adds
+# a component to the Windows manifest.
+check-edge-windows-manifest:
+    scripts/check-edge-windows-manifest.sh
+
+# Tests for check-edge-windows-manifest; no network.
+test-check-edge-windows-manifest:
+    scripts/test-check-edge-windows-manifest.sh
 
 # Fail when the binary needs glibc newer than 2.35 or a shared library outside
 # libc.so.6 and ld-linux-x86-64.so.2. A static binary passes with no entries.
@@ -266,9 +286,9 @@ all-edge: test-custom build-edge verify-edge
 # Scrape Collector (otelcol-scrape) - cloud source scraping (future)
 # =============================================================================
 
-# Generate scrape collector code using OCB (pinned to the v0.140.0-component OCB version)
+# Generate scrape collector code using OCB (pinned to the v0.154.0-component OCB version)
 generate-scrape:
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-scrape.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-scrape.yaml
 
 # Build the scrape collector
 build-scrape: generate-scrape
@@ -311,9 +331,9 @@ docker-build-scrape:
 # Gateway Collector (otelcol-gateway) - central aggregation (future)
 # =============================================================================
 
-# Generate gateway collector code using OCB (pinned to the v0.140.0-component OCB version)
+# Generate gateway collector code using OCB (pinned to the v0.154.0-component OCB version)
 generate-gateway:
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v140}} --config builder-gateway.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-gateway.yaml
 
 # Build the gateway collector
 build-gateway: generate-gateway
@@ -440,15 +460,18 @@ test-custom:
     @echo ""
     @echo "Testing custom stanza operators..."
     cd stanza/operator/transformer/arraytostring && go test -v
+    @echo ""
+    @echo "Testing the rotating self-log sink..."
+    just test-rotating-sink
 
-# Run tests for every nested Go module under processor/, receiver/, stanza/,
-# dynamically discovered rather than hardcoded (FR-029).
+# Run tests for every nested Go module under processor/, receiver/, stanza/
+# and test/, dynamically discovered rather than hardcoded (FR-029).
 test-nested-modules:
     #!/usr/bin/env bash
     set -uo pipefail
-    modules=$(find processor receiver stanza -name go.mod -exec dirname {} \; | sort)
+    modules=$(find processor receiver stanza test -name go.mod -exec dirname {} \; | sort)
     if [ -z "$modules" ]; then
-        echo "error: no nested Go modules found under processor/, receiver/, stanza/" >&2
+        echo "error: no nested Go modules found under processor/, receiver/, stanza/, test/" >&2
         exit 1
     fi
     status=0
@@ -462,6 +485,16 @@ test-nested-modules:
         fi
     done
     exit "$status"
+
+# Fail when a generated go.mod changes a core, contrib or aws-sdk-go-v2
+# version against test/baselines/gomod (stop rules 05-S1, 07-S1). Arguments
+# pass to the script: manifest names, or --update to rewrite baselines.
+check-gomod-graph *args:
+    OCB_VERSION={{ocb_version_v154}} scripts/check-gomod-graph.sh {{args}}
+
+# Tests for check-gomod-graph against scratch go.mod files; no network.
+test-check-gomod-graph:
+    scripts/test-check-gomod-graph.sh
 
 # Real-GPU verification on an NVIDIA host, run natively (no nvidia container
 # runtime). Needs build/edge/otelcol-edge from build-edge-linux. Writes
@@ -569,7 +602,7 @@ release-edge: build-edge-linux sentry-release
 # =============================================================================
 
 # Stage edge and gateway binaries under public artifact names, with a checksum manifest
-stage-public-artifacts: build-edge-linux build-gateway-linux
+stage-public-artifacts: build-edge-linux build-edge-windows build-gateway-linux
     #!/usr/bin/env bash
     set -euo pipefail
     just check-edge-glibc build/edge/otelcol-edge
@@ -577,6 +610,7 @@ stage-public-artifacts: build-edge-linux build-gateway-linux
     mkdir -p "{{dist_public_dir}}"
     cp build/edge-static/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64"
     cp build/edge/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64-gpu"
+    cp build/edge-windows/otelcol-edge.exe "{{dist_public_dir}}/otelcol-edge-{{version}}-windows-amd64.exe"
     cp build/gateway/otelcol-gateway "{{dist_public_dir}}/otelcol-gateway-{{version}}-linux-amd64"
     just checksum-public-artifacts
     echo "Staged public artifacts for {{version}}:"
@@ -638,6 +672,8 @@ verify-public-artifacts:
         [ -n "$components_out" ] || { echo "Empty components list for ${bin}" >&2; exit 1; }
         echo "OK: ${bin} reports version ${ver} ($(echo "$components_out" | wc -l | tr -d ' ') component lines)"
     done
+    # The Windows exe cannot run in these linux images: check its build settings and stamp.
+    just check-edge-windows "${dir}/otelcol-edge-${ver}-windows-amd64.exe"
 
 # Prove the golang and alpine base-image pins agree everywhere they are
 # consumed, by resolving each digest to its real advertised version rather

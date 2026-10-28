@@ -83,6 +83,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: just docker-push-ghcr
+      # The scrape image publishes only once the repository variable
+      # PUBLISH_SCRAPE is 'true' (plan 08 Step 6.2). Until then these steps skip.
+      - name: Build the public scrape image
+        if: vars.PUBLISH_SCRAPE == 'true'
+        run: just docker-build-scrape-ghcr
+      - name: Verify both image versions
+        if: vars.PUBLISH_SCRAPE == 'true'
+        run: just verify-ghcr-images
+      - name: Push the public scrape image to GHCR
+        if: vars.PUBLISH_SCRAPE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just docker-push-scrape-ghcr
 
 # No anonymous-pull check here: GHCR packages are created PRIVATE by
 # default and the flip to public visibility is a recorded manual

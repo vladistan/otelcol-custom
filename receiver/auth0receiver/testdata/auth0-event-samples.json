@@ -1,0 +1,87 @@
+[
+  {
+    "account": "111122223333",
+    "detail": {
+      "data": {
+        "$event_schema": {
+          "version": "1.0.0"
+        },
+        "audience": null,
+        "client_id": "CLIENTID00000000000000EXAMPLE",
+        "connection_id": "",
+        "date": "2026-10-25T14:32:40.317Z",
+        "description": "Unknown client: CLIENTID00000000000000EXAMPLE",
+        "details": {
+          "body": {},
+          "error": {
+            "message": "Unknown client: CLIENTID00000000000000EXAMPLE",
+            "oauthError": "invalid_request",
+            "type": "request-error"
+          },
+          "qs": {
+            "client_id": "CLIENTID00000000000000EXAMPLE",
+            "redirect_uri": "https://app.example.com/oauth2/idpresponse",
+            "response_type": "code",
+            "scope": "openid email profile",
+            "state": "REDACTED.xml"
+          }
+        },
+        "environment_name": "prod-eu-2",
+        "hostname": "auth.example.com",
+        "ip": "192.0.2.10",
+        "log_id": "90020261025143240391299000000000000001223372079833344945",
+        "scope": "openid email profile",
+        "tenant_name": "tenant-example",
+        "type": "f",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36"
+      },
+      "log_id": "90020261025143240391299000000000000001223372079833344945"
+    },
+    "detail-type": "Auth0 log",
+    "id": "d5c5fe08-2185-f1a3-45a3-401750b94caf",
+    "note": "Live type f event from the auth0.logs stream (sanitized: account, tenant, client id, IP, hostnames). The auth0.events stream had no messages, so no sample exists for it.",
+    "region": "eu-central-1",
+    "resources": [],
+    "source": "aws.partner/auth0.com/tenant-example-00000000/auth0.logs",
+    "time": "2026-10-25T14:32:40Z",
+    "version": "0"
+  },
+  {
+    "detail": {
+      "data": {
+        "$event_schema": {
+          "version": "1.0.0"
+        },
+        "client_id": "CLIENTID00000000000000EXAMPLE",
+        "client_name": "Example App",
+        "connection": "Username-Password-Authentication",
+        "description": "Success Login",
+        "hostname": "auth.example.com",
+        "ip": "192.0.2.10",
+        "type": "s",
+        "user_id": "auth0|0000000000",
+        "user_name": "user@example.com"
+      }
+    },
+    "detail-type": "Auth0 log",
+    "note": "Reconstructed type s (Success Login). Shape only; unconfirmed against live data.",
+    "source": "aws.partner/auth0.com/tenant-example-00000000/auth0.logs"
+  },
+  {
+    "detail": {
+      "data": {
+        "$event_schema": {
+          "version": "1.0.0"
+        },
+        "client_id": "CLIENTID00000000000000EXAMPLE",
+        "client_name": "Example App",
+        "description": "Success Exchange",
+        "hostname": "auth.example.com",
+        "type": "seacft"
+      }
+    },
+    "detail-type": "Auth0 log",
+    "note": "Reconstructed type seacft (Success Exchange). Shape only; unconfirmed against live data.",
+    "source": "aws.partner/auth0.com/tenant-example-00000000/auth0.logs"
+  }
+]
