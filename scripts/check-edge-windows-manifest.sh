@@ -25,6 +25,8 @@ readonly REMOVED=(
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"
 	"$CONTRIB/receiver/windowsperfcountersreceiver"
+	"$LOCAL/processor/winlogprocessor"
+	"replace:$LOCAL/processor/winlogprocessor"
 )
 
 die() {

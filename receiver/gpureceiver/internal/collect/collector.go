@@ -19,7 +19,7 @@ const (
 type Option func(*Collector)
 
 // WithInterval sets the configured collection interval. A gap between io
-// samples of more than three intervals re-baselines the io integrator (D-25).
+// samples of more than three intervals re-baselines the io integrator.
 func WithInterval(interval time.Duration) Option {
 	return func(c *Collector) { c.interval = interval }
 }
@@ -131,7 +131,7 @@ func (c *Collector) deviceHandle(d *deviceState) (port.Device, bool) {
 	return dev, true
 }
 
-// emitStatus writes hw.status per D-14. known is false when no enabled call
+// emitStatus writes hw.status. known is false when no enabled call
 // answered and the GPU is not lost, so all three states report 0.
 func (c *Collector) emitStatus(b *batch, d *deviceState, known bool) {
 	if !c.on(semconv.MetricStatus) {

@@ -1,0 +1,73 @@
+[
+  {
+    "httpRequest": {
+      "requestMethod": "GET",
+      "requestUrl": "https://api.example.com/healthz",
+      "status": 200,
+      "userAgent": "kube-probe/1.29"
+    },
+    "logName": "projects/proj-example/logs/run.googleapis.com%2Frequests",
+    "resource": {
+      "labels": {
+        "location": "us-central1",
+        "project_id": "proj-example",
+        "revision_name": "api-001",
+        "service_name": "api"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "timestamp": "2026-10-25T10:00:00Z"
+  },
+  {
+    "httpRequest": {
+      "requestMethod": "GET",
+      "requestUrl": "https://api.example.com/api/items?page=2",
+      "status": 200,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64)"
+    },
+    "logName": "projects/proj-example/logs/run.googleapis.com%2Frequests",
+    "resource": {
+      "labels": {
+        "location": "us-central1",
+        "project_id": "proj-example",
+        "revision_name": "api-001",
+        "service_name": "api"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "timestamp": "2026-10-25T10:00:01Z"
+  },
+  {
+    "logName": "projects/proj-example/logs/run.googleapis.com%2Fstdout",
+    "resource": {
+      "labels": {
+        "location": "us-central1",
+        "project_id": "proj-example",
+        "service_name": "api"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "INFO",
+    "textPayload": "listening on port 8080",
+    "timestamp": "2026-10-25T10:00:02Z"
+  },
+  {
+    "jsonPayload": {
+      "code": 7,
+      "message": "request failed"
+    },
+    "logName": "projects/proj-example/logs/run.googleapis.com%2Fstderr",
+    "resource": {
+      "labels": {
+        "location": "us-central1",
+        "project_id": "proj-example",
+        "service_name": "api"
+      },
+      "type": "cloud_run_revision"
+    },
+    "severity": "ERROR",
+    "timestamp": "2026-10-25T10:00:03Z"
+  }
+]

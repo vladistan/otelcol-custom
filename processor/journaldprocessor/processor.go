@@ -76,8 +76,8 @@ func (p *journaldProcessor) processInPlace(rl plog.ResourceLogs) {
 	}
 }
 
-// split moves map records into new ResourceLogs keyed by resource tuple (AD-3).
-// Non-map records stay in rl with its resource unchanged (R-3).
+// split moves map records into new ResourceLogs keyed by resource tuple.
+// Non-map records stay in rl with its resource unchanged.
 func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSlice) {
 	groups := map[string]plog.ResourceLogs{}
 	scopes := map[string][]plog.ScopeLogs{}

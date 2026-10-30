@@ -11,4 +11,4 @@
 //   - cisco.message, network.interface, host.name
 package ciscologreceiver // import "github.com/vladistan/otelcol-custom/receiver/ciscologreceiver"
 
-// TODO: Implement in Phase 3.4
+// TODO: not implemented yet.

@@ -1,0 +1,66 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/vladistan/otelcol-custom/test/bench
+cpu: x86-64
+BenchmarkJournald/single/impl=ottl-32         	     324	   3459844 ns/op	      3460 ns/record	  490794 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     382	   2944162 ns/op	      2944 ns/record	  490773 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     421	   3120603 ns/op	      3121 ns/record	  490765 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     358	   3542290 ns/op	      3542 ns/record	  490775 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     297	   3523649 ns/op	      3524 ns/record	  490804 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     360	   3581177 ns/op	      3581 ns/record	  490773 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     345	   3336271 ns/op	      3336 ns/record	  490750 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     417	   3259073 ns/op	      3259 ns/record	  490786 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     428	   2887698 ns/op	      2888 ns/record	  490777 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=ottl-32         	     436	   3331389 ns/op	      3331 ns/record	  490738 B/op	   31510 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     955	   1219065 ns/op	      1219 ns/record	  336608 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     892	   1293246 ns/op	      1293 ns/record	  336608 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     782	   1497421 ns/op	      1497 ns/record	  336609 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     788	   1548606 ns/op	      1549 ns/record	  336609 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     777	   1553586 ns/op	      1554 ns/record	  336608 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     769	   1565747 ns/op	      1566 ns/record	  336609 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     789	   1567585 ns/op	      1568 ns/record	  336609 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     788	   1552813 ns/op	      1553 ns/record	  336608 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     745	   1586753 ns/op	      1587 ns/record	  336608 B/op	   13004 allocs/op
+BenchmarkJournald/single/impl=journald-32     	     818	   1578342 ns/op	      1578 ns/record	  336609 B/op	   13004 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     243	   4889076 ns/op	      4889 ns/record	  490742 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     247	   4950183 ns/op	      4950 ns/record	  490747 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     250	   4906437 ns/op	      4906 ns/record	  490723 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     250	   4920993 ns/op	      4921 ns/record	  490743 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     241	   4872104 ns/op	      4872 ns/record	  490757 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     230	   4831108 ns/op	      4831 ns/record	  490751 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     232	   4859514 ns/op	      4860 ns/record	  490772 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     247	   4845448 ns/op	      4845 ns/record	  490767 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     232	   4904434 ns/op	      4904 ns/record	  490731 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=ottl-32          	     230	   4979835 ns/op	      4980 ns/record	  490771 B/op	   31510 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     361	   3534185 ns/op	      3534 ns/record	 1274844 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     354	   3583088 ns/op	      3583 ns/record	 1274845 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     338	   3561169 ns/op	      3561 ns/record	 1274844 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     356	   3608634 ns/op	      3609 ns/record	 1274846 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     334	   3684539 ns/op	      3685 ns/record	 1274846 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     336	   3547143 ns/op	      3547 ns/record	 1274860 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     345	   3536069 ns/op	      3536 ns/record	 1274846 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     361	   3373408 ns/op	      3373 ns/record	 1274846 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     368	   3468710 ns/op	      3469 ns/record	 1274846 B/op	   30088 allocs/op
+BenchmarkJournald/mixed/impl=journald-32      	     314	   3216315 ns/op	      3216 ns/record	 1274842 B/op	   30088 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      54	  22595433 ns/op	     22595 ns/record	 2501671 B/op	   31329 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      55	  22752132 ns/op	     22752 ns/record	 2496640 B/op	   31328 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      56	  22582493 ns/op	     22582 ns/record	 2493794 B/op	   31326 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      48	  21015183 ns/op	     21015 ns/record	 2495284 B/op	   31327 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      49	  20535550 ns/op	     20536 ns/record	 2489494 B/op	   31325 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      54	  22596258 ns/op	     22596 ns/record	 2493996 B/op	   31327 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      52	  23171808 ns/op	     23172 ns/record	 2502956 B/op	   31328 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      54	  21666316 ns/op	     21666 ns/record	 2497625 B/op	   31327 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      91	  22488586 ns/op	     22489 ns/record	 2502442 B/op	   31329 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser-32         	      54	  24098308 ns/op	     24098 ns/record	 2496699 B/op	   31326 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      49	  21422213 ns/op	     21422 ns/record	 2504297 B/op	   31447 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      58	  21740411 ns/op	     21740 ns/record	 2500041 B/op	   31447 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      54	  22187650 ns/op	     22188 ns/record	 2507340 B/op	   31453 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      55	  22027266 ns/op	     22027 ns/record	 2504010 B/op	   31450 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      54	  22136121 ns/op	     22136 ns/record	 2497905 B/op	   31448 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      56	  21682798 ns/op	     21683 ns/record	 2502209 B/op	   31448 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      50	  22071976 ns/op	     22072 ns/record	 2503738 B/op	   31451 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      55	  21647761 ns/op	     21648 ns/record	 2492605 B/op	   31449 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      55	  23191411 ns/op	     23191 ns/record	 2501231 B/op	   31448 allocs/op
+BenchmarkNginxHealthProbe/chain/impl=parser+healthprobe-32         	      51	  22510329 ns/op	     22510 ns/record	 2505580 B/op	   31453 allocs/op
+PASS
+ok  	github.com/vladistan/otelcol-custom/test/bench	114.354s

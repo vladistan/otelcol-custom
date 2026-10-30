@@ -1,4 +1,4 @@
-// Modified by Vlad Korolev, 2026-10: lazy NVML init on first scrape; metric building moved behind port.Collector.
+// Modified: lazy NVML init on first scrape; metric building moved behind port.Collector.
 // Original: https://github.com/pmady/otel-gpu-receiver@ac756935ca040923d98af5a0d0547dca02a3b23b/scraper.go
 
 package gpureceiver

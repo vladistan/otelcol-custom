@@ -32,7 +32,7 @@ func twoGPUs(t *testing.T, toggles port.Toggles) (*fixture, *fakeport.Device, *f
 	return newFixture(t, p, toggles), first, second
 }
 
-// AC-012: two GPUs give two series per metric, distinct hw.id.
+// Two GPUs give two series per metric, distinct hw.id.
 func TestTwoGPUDistinctSeriesAndIdentity(t *testing.T) {
 	f, _, _ := twoGPUs(t, nil)
 
@@ -66,7 +66,7 @@ func TestTwoGPUTemperaturePointsUseSensorIdentity(t *testing.T) {
 	assert.Len(t, points[0].attrs, 4)
 }
 
-// AC-013: NOT_SUPPORTED omits only that metric, once-logged, never re-asked.
+// NOT_SUPPORTED omits only that metric, once-logged, never re-asked.
 func TestNotSupportedOmitsOnlyThatMetricAndLogsOnce(t *testing.T) {
 	p := fakeport.New()
 	fullDevice(p, "GPU-0", "A100").Queue(fakeport.CallPowerUsage, fakeport.Fail(port.NotSupported))
@@ -104,7 +104,7 @@ func TestNotSupportedIsRememberedPerGPU(t *testing.T) {
 	assert.Equal(t, "GPU-1", power[0].attrs[semconv.AttrID])
 }
 
-// D-13: points collected before the loss are kept; then only hw.status.
+// Points collected before the loss are kept; then only hw.status.
 func TestLostKeepsCollectedPointsThenOnlyStatus(t *testing.T) {
 	f, dev := oneGPU(t, nil)
 	dev.Queue(fakeport.CallTemperature, fakeport.Fail(port.GPULost))
@@ -227,7 +227,7 @@ func TestStatusDegradedIsAlwaysZero(t *testing.T) {
 	assert.Equal(t, map[string]int64{"ok": 1, "degraded": 0, "failed": 0}, status(t, f.collect(t0), "GPU-0"))
 }
 
-// EC-008: transient errors skip the point and warn once per call and kind.
+// Transient errors skip the point and warn once per call and kind.
 func TestTransientErrorWarnsOncePerKindThenDebug(t *testing.T) {
 	f, dev := oneGPU(t, nil)
 	dev.Queue(fakeport.CallPowerUsage,

@@ -1,6 +1,6 @@
 # cspell:ignore GOTOOLCHAIN GOMODCACHE GOCACHE binutils netgo osusergo
-# Build host for the cgo edge binary. ubuntu 22.04 holds the glibc 2.35 floor
-# (FR-014), so the binary runs on every supported host. Used as a build
+# Build host for the cgo edge binary. ubuntu 22.04 holds the glibc 2.35 floor,
+# so the binary runs on every supported host. Used as a build
 # container only; the repo is mounted at run time by `just build-edge-linux`.
 
 # ubuntu 22.04
@@ -14,6 +14,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates curl gcc libc6-dev binutils git && \
     rm -rf /var/lib/apt/lists/*
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # The sha256 check fails the build on a tampered or wrong tarball.
 RUN curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" && \

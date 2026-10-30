@@ -2,7 +2,7 @@ dist:
   name: otelcol-gateway
   description: Gateway collector for central aggregation and processing
   output_path: ./build/gateway
-  # Skip compilation - we compile manually after injecting custom main.go for Sentry
+  # dist is generated only; the entrypoint with Sentry init is injected and compiled afterwards
   skip_compilation: true
 # =============================================================================
 # Replaces - Local module overrides for custom components
@@ -38,9 +38,10 @@ replaces:
   # Custom stanza operators (for log processing pipelines)
   - github.com/vladistan/otelcol-custom/stanza/operator/transformer/arraytostring => ../../stanza/operator/transformer/arraytostring
   - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../../stanza/operator/transformer/ansistrip
-  # - github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler   # Step 4.1, 07 C-3
-  # - github.com/vladistan/otelcol-custom/processor/snoozelogprocessor => ../../processor/snoozelogprocessor   # Step 4.1, 07 C-2
-  # - github.com/vladistan/otelcol-custom/processor/journaldprocessor => ../../processor/journaldprocessor   # Step 4.1, 07 C-1
+  - github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler
+  - github.com/vladistan/otelcol-custom/processor/snoozelogprocessor => ../../processor/snoozelogprocessor
+  - github.com/vladistan/otelcol-custom/processor/journaldprocessor => ../../processor/journaldprocessor
+  - github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
 # =============================================================================
 # Extensions
 # =============================================================================
@@ -51,6 +52,8 @@ extensions:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.154.0
   # Persistent queue storage for sending_queue resilience
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.154.0
+  # Google Cloud log entry encoding (for the Pub/Sub receiver; used by otel-cluster)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.154.0
 # =============================================================================
 # Receivers
 # =============================================================================
@@ -88,6 +91,8 @@ receivers:
   # --- Cloud (GCP) ---
   # GCP Pub/Sub (audit logs)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.154.0
+  # GCP Cloud Monitoring metrics (used by otel-cluster)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v0.154.0
   # --- Cloud (Azure) ---
   # Azure Event Hub (activity logs)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.154.0
@@ -169,9 +174,9 @@ processors:
   - gomod: github.com/vladistan/otelcol-custom/processor/charonlogprocessor v0.0.0
   # Tekton Pipelines log parsing (Event ObjectReference, PipelineRun status)
   - gomod: github.com/vladistan/otelcol-custom/processor/tektonlogprocessor v0.0.0
-    # - gomod: github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0   # Step 4.1, 07 C-3
-    # - gomod: github.com/vladistan/otelcol-custom/processor/snoozelogprocessor v0.0.0   # Step 4.1, 07 C-2
-    # - gomod: github.com/vladistan/otelcol-custom/processor/journaldprocessor v0.0.0   # Step 4.1, 07 C-1
+  - gomod: github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
+  - gomod: github.com/vladistan/otelcol-custom/processor/snoozelogprocessor v0.0.0
+  - gomod: github.com/vladistan/otelcol-custom/processor/journaldprocessor v0.0.0
 # =============================================================================
 # Connectors
 # =============================================================================

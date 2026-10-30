@@ -101,7 +101,7 @@ func rxPoints(points []point) []point {
 	return pickAll(points, semconv.MetricIO, semconv.AttrNetworkDir, "receive")
 }
 
-// AC-011: measured elapsed time, monotonic output.
+// Measured elapsed time, monotonic output.
 func TestIoCollectorUsesMeasuredTimeBetweenUnevenScrapes(t *testing.T) {
 	f, _ := oneGPU(t, nil)
 
@@ -151,7 +151,7 @@ func TestIoCollectorFirstSampleIsZeroForBothDirections(t *testing.T) {
 	}
 }
 
-// AC-009: single-bit maps to corrected, double-bit to uncorrected.
+// Single-bit maps to corrected, double-bit to uncorrected.
 func TestEccCollectorMapsKindsToErrorType(t *testing.T) {
 	f, dev := oneGPU(t, nil)
 	f.collect(t0)

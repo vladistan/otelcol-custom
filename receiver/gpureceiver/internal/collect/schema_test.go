@@ -21,7 +21,7 @@ type schemaRow struct {
 	points    int
 }
 
-// AC-008: the nine semconv metrics match semconv v1.44.0.
+// The nine semconv metrics match semconv v1.44.0.
 var semconvRows = []schemaRow{
 	{semconv.MetricUtilization, "1", pmetric.MetricTypeGauge, false, []string{semconv.AttrGPUTask}, 3},
 	{semconv.MetricMemoryUsage, "By", pmetric.MetricTypeSum, false, nil, 1},
@@ -33,7 +33,7 @@ var semconvRows = []schemaRow{
 	{semconv.MetricPower, "W", pmetric.MetricTypeGauge, false, nil, 1},
 }
 
-// AC-010: the three extensions are asserted separately from semconv.
+// The three extensions are asserted separately from semconv.
 var extensionRows = []schemaRow{
 	{semconv.MetricClock, "Hz", pmetric.MetricTypeGauge, false, []string{semconv.AttrClockDomain}, 4},
 	{semconv.MetricPowerLimit, "W", pmetric.MetricTypeGauge, false, nil, 1},

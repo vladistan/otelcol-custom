@@ -1,0 +1,27 @@
+transform/journald:
+  log_statements:
+    - context: log
+      conditions:
+        - IsMap(body)
+      statements:
+        # Host and machine information
+        - set(resource.attributes["host.name"], body["_HOSTNAME"]) where body["_HOSTNAME"] != nil
+        - set(resource.attributes["host.id"], body["_MACHINE_ID"]) where body["_MACHINE_ID"] != nil
+        # Process information
+        - set(resource.attributes["process.pid"], body["_PID"]) where body["_PID"] != nil
+        - set(resource.attributes["process.command"], body["_COMM"]) where body["_COMM"] != nil
+        # Service information
+        - set(resource.attributes["service.name"], body["_SYSTEMD_UNIT"]) where body["_SYSTEMD_UNIT"] != nil
+        # Convert PRIORITY to OTEL severity levels
+        - set(severity_number, SEVERITY_NUMBER_FATAL) where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2
+        - set(severity_text, "FATAL") where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2
+        - set(severity_number, SEVERITY_NUMBER_ERROR) where body["PRIORITY"] == "3"
+        - set(severity_text, "ERROR") where body["PRIORITY"] == "3"
+        - set(severity_number, SEVERITY_NUMBER_WARN) where body["PRIORITY"] == "4"
+        - set(severity_text, "WARN") where body["PRIORITY"] == "4"
+        - set(severity_number, SEVERITY_NUMBER_INFO) where body["PRIORITY"] == "6"
+        - set(severity_text, "INFO") where body["PRIORITY"] == "6"
+        - set(severity_number, SEVERITY_NUMBER_DEBUG) where body["PRIORITY"] == "7"
+        - set(severity_text, "DEBUG") where body["PRIORITY"] == "7"
+        # Map MESSAGE field to body
+        - set(body, body["MESSAGE"]) where IsMap(body) and body["MESSAGE"] != nil

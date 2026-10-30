@@ -13,12 +13,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-)
-
-// Reasons a sample is discarded.
-const (
-	reasonInvalid = "invalid"
-	reasonLate    = "late"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // windowProcessor buffers the samples of grouped metrics and emits one point per
@@ -31,10 +26,12 @@ type windowProcessor struct {
 	// routes maps a metric name to its group; fixed after construction.
 	routes map[string]groupRoute
 
-	mu       sync.Mutex
-	windows  map[time.Duration]*window
-	series   map[string]*series
-	discards map[string]uint64
+	tel *telemetry
+
+	mu            sync.Mutex
+	windows       map[time.Duration]*window
+	series        map[string]*series
+	spacingWarned map[string]bool
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -42,7 +39,7 @@ type windowProcessor struct {
 
 var _ consumer.Metrics = (*windowProcessor)(nil)
 
-func newWindowProcessor(cfg *Config, next consumer.Metrics) (*windowProcessor, error) {
+func newWindowProcessor(cfg *Config, next consumer.Metrics, meter metric.Meter) (*windowProcessor, error) {
 	names := make([]string, 0, len(cfg.Groups))
 	for name := range cfg.Groups {
 		names = append(names, name)
@@ -62,15 +59,21 @@ func newWindowProcessor(cfg *Config, next consumer.Metrics) (*windowProcessor, e
 			routes[metric] = groupRoute{name: name, GroupSettings: s}
 		}
 	}
-	return &windowProcessor{
-		next:     next,
-		now:      time.Now,
-		warn:     func(string) {},
-		routes:   routes,
-		windows:  map[time.Duration]*window{},
-		series:   map[string]*series{},
-		discards: map[string]uint64{},
-	}, nil
+	p := &windowProcessor{
+		next:          next,
+		now:           time.Now,
+		warn:          func(string) {},
+		routes:        routes,
+		windows:       map[time.Duration]*window{},
+		series:        map[string]*series{},
+		spacingWarned: map[string]bool{},
+	}
+	tel, err := newTelemetry(meter, p.activeSeries)
+	if err != nil {
+		return nil, err
+	}
+	p.tel = tel
+	return p, nil
 }
 
 func (p *windowProcessor) Start(ctx context.Context, _ component.Host) error {
@@ -82,12 +85,12 @@ func (p *windowProcessor) Start(ctx context.Context, _ component.Host) error {
 	return nil
 }
 
-func (p *windowProcessor) Shutdown(context.Context) error {
+func (p *windowProcessor) Shutdown(ctx context.Context) error {
 	if p.cancel != nil {
 		p.cancel()
 	}
 	p.wg.Wait()
-	return nil
+	return p.flushAll(ctx)
 }
 
 func (p *windowProcessor) Capabilities() consumer.Capabilities {
@@ -130,9 +133,9 @@ func (p *windowProcessor) buffer(rm pmetric.ResourceMetrics, sm pmetric.ScopeMet
 	case pmetric.MetricTypeGauge:
 		points = m.Gauge().DataPoints()
 	case pmetric.MetricTypeSum:
-		// Counter rates are built in a later step; until then a counter in a
-		// histogram group goes on unchanged.
-		if route.Mode == ModeHistogram && m.Sum().IsMonotonic() {
+		// Only a cumulative counter can be turned into a rate.
+		if route.Mode == ModeHistogram && m.Sum().IsMonotonic() &&
+			m.Sum().AggregationTemporality() != pmetric.AggregationTemporalityCumulative {
 			return false
 		}
 		points = m.Sum().DataPoints()
@@ -147,14 +150,15 @@ func (p *windowProcessor) buffer(rm pmetric.ResourceMetrics, sm pmetric.ScopeMet
 
 func (p *windowProcessor) addSample(route groupRoute, rm pmetric.ResourceMetrics, sm pmetric.ScopeMetrics,
 	m pmetric.Metric, dp pmetric.NumberDataPoint) {
+	p.tel.receive()
 	value := numberValue(dp)
 	if route.Mode == ModeHistogram && (math.IsNaN(value) || math.IsInf(value, 0)) {
-		p.discards[reasonInvalid]++
+		p.tel.discard(reasonInvalid)
 		return
 	}
-	w := p.windows[route.SendInterval]
-	if w != nil && dp.Timestamp().AsTime().Before(w.start.Add(-route.SendInterval)) {
-		p.discards[reasonLate]++
+	at := dp.Timestamp().AsTime()
+	if w := p.windows[route.SendInterval]; w != nil && at.Before(w.start.Add(-route.SendInterval)) {
+		p.tel.discard(reasonLate)
 		return
 	}
 
@@ -164,18 +168,16 @@ func (p *windowProcessor) addSample(route groupRoute, rm pmetric.ResourceMetrics
 		s = newSeries(route, rm, sm, m, dp.Attributes(), p.now())
 		p.series[key] = s
 	}
+	p.checkSpacing(s, at)
 	s.samples++
-	if route.Mode == ModePlain {
+	switch {
+	case route.Mode == ModePlain:
 		if s.samples == 1 || dp.Timestamp() >= s.last.Timestamp() {
 			dp.CopyTo(s.last)
 		}
-		return
+	case s.counter:
+		p.addCounter(s, dp, value, at)
+	default:
+		s.window.Update(value)
 	}
-	s.window.Update(value)
-}
-
-func (p *windowProcessor) discarded(reason string) uint64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.discards[reason]
 }

@@ -1,0 +1,415 @@
+# yamllint disable rule:line-length
+mode: statefulset
+nameOverride: otel-cluster
+image:
+  # contrib, not the slim -k8s distro: the googlecloud* receivers below only
+  # ship in contrib. Pinned to the same version as otel-main; bump deliberately
+  # after `otelcol validate`.
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+  tag: "0.154.0"
+replicaCount: 1
+presets:
+  kubernetesAttributes:
+    enabled: true
+  clusterMetrics:
+    enabled: true
+  kubernetesEvents:
+    enabled: true
+ports:
+  otlp:
+    enabled: false
+config:
+  receivers:
+    # [K8s Objects Receiver]
+    # (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/k8sobjectsreceiver)
+    k8sobjects:
+      objects:
+        - name: events
+          mode: 'watch'
+          group: 'events.k8s.io'
+          exclude_watch_type:
+            - 'DELETED'
+        - name: pods
+          mode: 'watch'
+          group: ''
+          exclude_watch_type:
+            - 'DELETED'
+    # [K8s Cluster Receiver]
+    # (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/k8sclusterreceiver)
+    k8s_cluster:
+      auth_type: serviceAccount
+      node_conditions_to_report:
+        - Ready
+        - MemoryPressure
+        - DiskPressure
+      allocatable_types_to_report:
+        - cpu
+        - memory
+        - ephemeral-storage
+      metrics:
+        k8s.pod.status_reason:
+          enabled: true
+      resource_attributes:
+        k8s.kubelet.version:
+          enabled: true
+        os.description:
+          enabled: true
+        os.type:
+          enabled: true
+        k8s.container.status.last_terminated_reason:
+          enabled: true
+    # GCP-account streams (VPN + LB metrics, GCP logs) are polled/consumed here
+    # — this collector runs with native GKE Workload Identity on the otel-main
+    # GCP SA — and forwarded to otel-main as ordinary OTLP, tagged with the
+    # routing.stream marker its routing keys on.
+    googlecloudmonitoring/ipsec:
+      collection_interval: 2m # Can be specified in seconds (s), minutes (m), or hours (h)
+      project_id: example-project-hub
+      metrics_list:
+        - metric_name: 'vpn.googleapis.com/gateway/connections'
+        - metric_name: 'vpn.googleapis.com/network/dropped_received_packets_count'
+        - metric_name: 'vpn.googleapis.com/network/dropped_sent_packets_count'
+        - metric_name: 'vpn.googleapis.com/network/received_bytes_count'
+        - metric_name: 'vpn.googleapis.com/network/received_packets_count'
+        - metric_name: 'vpn.googleapis.com/network/sent_bytes_count'
+        - metric_name: 'vpn.googleapis.com/network/sent_packets_count'
+        - metric_name: 'vpn.googleapis.com/tunnel_established'
+    googlecloudmonitoring/loadbalancer:
+      collection_interval: 2m
+      project_id: example-project
+      metrics_list:
+        - metric_name: 'loadbalancing.googleapis.com/https/backend_latencies'
+        - metric_name: 'loadbalancing.googleapis.com/https/backend_request_bytes_count'
+        - metric_name: 'loadbalancing.googleapis.com/https/backend_request_count'
+        - metric_name: 'loadbalancing.googleapis.com/https/request_bytes_count'
+        - metric_name: 'loadbalancing.googleapis.com/https/request_count'
+        - metric_name: 'loadbalancing.googleapis.com/https/total_latencies'
+        - metric_name: 'loadbalancing.googleapis.com/l3/external/egress_bytes_count'
+        - metric_name: 'loadbalancing.googleapis.com/l3/external/ingress_packets_count'
+        - metric_name: 'loadbalancing.googleapis.com/l3/internal/rtt_latencies'
+        - metric_name: 'loadbalancing.googleapis.com/tcp_ssl_proxy/closed_connections'
+        - metric_name: 'loadbalancing.googleapis.com/tcp_ssl_proxy/new_connections'
+        - metric_name: 'loadbalancing.googleapis.com/tcp_ssl_proxy/open_connections'
+    googlecloudpubsub:
+      project: example-project
+      subscription: projects/example-project/subscriptions/gcp-logs
+      encoding: googlecloudlogentry_encoding
+    prometheus/self:
+      config:
+        scrape_configs:
+          - job_name: otel-cluster
+            scrape_interval: 30s
+            static_configs:
+              - targets: ['127.0.0.1:8888']
+  processors:
+    resourcedetection/gcp:
+      detectors: [env, gcp] # Detects resources from environment variables and GCP (Google Cloud Platform).
+      timeout: 2s
+      override: true
+    resource/k8s: # Resource attributes tailored for services within Kubernetes.
+      attributes:
+        - key: service.name
+          # Set the service.name resource attribute based on the well-known app.kubernetes.io/name label
+          from_attribute: app.label.name
+          action: insert
+        - key: service.name # Set the service.name resource attribute based on the k8s.container.name attribute
+          from_attribute: k8s.container.name
+          action: insert
+        - key: app.label.name # Delete app.label.name attribute previously used for service.name
+          action: delete
+        - key: service.version
+          # Set the service.version resource attribute based on the well-known app.kubernetes.io/version label
+          from_attribute: app.label.version
+          action: insert
+        - key: app.label.version # Delete app.label.version attribute previously used for service.version
+          action: delete
+    resource/hostname:
+      attributes:
+        - key: host.name
+          from_attribute: k8s.node.name
+          action: upsert
+    # Routing marker for the GCP-account streams: otel-main routes on
+    # routing.stream (and strips it again before export), so these pipelines
+    # must not reach it untagged.
+    resource/stream_vpn:
+      attributes:
+        - key: routing.stream
+          value: vpn
+          action: upsert
+    resource/stream_lb:
+      attributes:
+        - key: routing.stream
+          value: lb
+          action: upsert
+    resource/stream_gcp_logs:
+      attributes:
+        - key: routing.stream
+          value: gcp-logs
+          action: upsert
+    k8sattributes:
+      passthrough: false # Annotates resources with the pod IP and does not try to extract any other metadata.
+      pod_association:
+        # Below association takes a look at the k8s.pod.ip and k8s.pod.uid resource attributes or connection's context,
+        # and tries to match it with the pod having the same attribute.
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.ip
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+        - sources:
+            - from: connection
+      extract:
+        metadata:
+          - 'k8s.namespace.name'
+          - 'k8s.deployment.name'
+          - 'k8s.replicaset.name'
+          - 'k8s.statefulset.name'
+          - 'k8s.daemonset.name'
+          - 'k8s.cronjob.name'
+          - 'k8s.job.name'
+          - 'k8s.node.name'
+          - 'k8s.pod.name'
+          - 'k8s.pod.ip'
+          - 'k8s.pod.uid'
+          - 'k8s.pod.start_time'
+        labels:
+          - tag_name: app.label.name
+            key: app.kubernetes.io/name
+            from: pod
+          - tag_name: app.label.version
+            key: app.kubernetes.io/version
+            from: pod
+    memory_limiter:
+      check_interval: '1s'
+      limit_mib: 400
+      spike_limit_mib: 100
+    # Mandatory on every pipeline: the export hop crosses the VPN (~30ms RTT),
+    # so unbatched per-event requests cap throughput at a few hundred req/s
+    # and overflow the sending queue, which drops data.
+    batch:
+      send_batch_size: 1000
+      timeout: 5s
+      send_batch_max_size: 1500
+    # Extract useful fields from structured k8s object bodies
+    transform/k8s_objects:
+      # Skip the failing statement instead of dropping the whole batch
+      # if a future OTTL expression goes wrong on some object shape.
+      # Keeps the logs pipeline resilient to bad data.
+      error_mode: ignore
+      log_statements:
+        - context: log
+          statements:
+            # Set severity based on event type (for Events)
+            # The event type comes from object.reason and object.type, body["type"] is just the action
+            - set(severity_number, SEVERITY_NUMBER_WARN) where body["object"]["kind"] == "Event" and body["object"]["type"] == "Warning"
+            - set(severity_number, SEVERITY_NUMBER_INFO) where body["object"]["kind"] == "Event" and body["object"]["type"] == "Normal"
+            - set(severity_text, "WARN") where body["object"]["kind"] == "Event" and body["object"]["type"] == "Warning"
+            - set(severity_text, "INFO") where body["object"]["kind"] == "Event" and body["object"]["type"] == "Normal"
+            # Set default severity for non-Event objects
+            - set(severity_number, SEVERITY_NUMBER_INFO) where body["object"]["kind"] == "Pod"
+            - set(severity_text, "INFO") where body["object"]["kind"] == "Pod"
+            # Extract common fields with safe access
+            - set(attributes["k8s.object.kind"], body["object"]["kind"]) where body["object"]["kind"] != nil
+            - set(attributes["k8s.object.action"], body["type"]) where body["type"] != nil
+            - set(attributes["k8s.namespace"], body["object"]["metadata"]["namespace"]) where body["object"]["metadata"]["namespace"] != nil
+            - set(attributes["k8s.name"], body["object"]["metadata"]["name"]) where body["object"]["metadata"]["name"] != nil
+            # Event-specific fields
+            - set(attributes["k8s.event.type"], body["object"]["type"]) where body["object"]["kind"] == "Event" and body["object"]["type"] != nil
+            - set(attributes["k8s.event.reason"], body["object"]["reason"]) where body["object"]["kind"] == "Event" and body["object"]["reason"] != nil
+            - set(attributes["k8s.event.note"], body["object"]["note"]) where body["object"]["kind"] == "Event" and body["object"]["note"] != nil
+            - set(attributes["k8s.event.count"], body["object"]["deprecatedCount"]) where body["object"]["kind"] == "Event" and body["object"]["deprecatedCount"] != nil
+            - set(attributes["k8s.event.regarding.kind"], body["object"]["regarding"]["kind"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["kind"] != nil
+            - set(attributes["k8s.event.regarding.name"], body["object"]["regarding"]["name"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["name"] != nil
+            - set(attributes["k8s.event.regarding.namespace"], body["object"]["regarding"]["namespace"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["namespace"] != nil
+            # Pod-specific fields
+            - set(attributes["k8s.pod.phase"], body["object"]["status"]["phase"]) where body["object"]["kind"] == "Pod" and body["object"]["status"]["phase"] != nil
+            # Guard order matters: OTTL evaluates `where` left-to-right and
+            # short-circuits, but Len() throws on a nil argument — so we
+            # have to gate the containerStatuses access on `!= nil` BEFORE
+            # the Len call. Likewise gate `terminated.exitCode` on
+            # `terminated != nil`. Without these, every Pod event whose
+            # status doesn't yet have containerStatuses (or whose
+            # container is still running, hence no `terminated` block)
+            # fail with "failed processing logs" and the whole statement
+            # is dropped.
+            - set(attributes["k8s.container.exit_code"], body["object"]["status"]["containerStatuses"][0]["state"]["terminated"]["exitCode"]) where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"] != nil and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"]["exitCode"] != nil
+            - set(attributes["k8s.container.state"], "terminated") where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"] != nil
+            - set(attributes["k8s.container.state"], "running") where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["running"] != nil
+            # Extract important labels
+            - set(attributes["k8s.labels.app"], body["object"]["metadata"]["labels"]["app"]) where body["object"]["metadata"]["labels"]["app"] != nil
+            - set(attributes["k8s.labels.environment"], body["object"]["metadata"]["labels"]["environment"]) where body["object"]["metadata"]["labels"]["environment"] != nil
+            - set(attributes["k8s.labels.job_name"], body["object"]["metadata"]["labels"]["job-name"]) where body["object"]["metadata"]["labels"]["job-name"] != nil
+            # Set message type
+            - set(attributes["message_type"], "k8sobject") where body["object"]["kind"] != nil
+            # Build message field (will appear as "message" in Kibana)
+            # Format: K8S <ACTION> <KIND> <NAMESPACE>/<NAME> [DETAILS]
+            # Start with K8S prefix
+            - set(attributes["message"], "K8S") where body["object"]["kind"] != nil
+            # Add action (MODIFIED, ADDED, etc)
+            - set(attributes["message"], Concat([attributes["message"], body["type"]], " ")) where attributes["message"] != nil and body["type"] != nil
+            # Add object kind
+            - set(attributes["message"], Concat([attributes["message"], body["object"]["kind"]], " ")) where attributes["message"] != nil and body["object"]["kind"] != nil
+            # Add namespace/name
+            - set(attributes["message"], Concat([attributes["message"], body["object"]["metadata"]["namespace"], "/", body["object"]["metadata"]["name"]], " ")) where attributes["message"] != nil and body["object"]["metadata"]["namespace"] != nil and body["object"]["metadata"]["name"] != nil
+            # For Events, add the reason
+            - set(attributes["message"], Concat([attributes["message"], " ", body["object"]["reason"]], "")) where body["object"]["kind"] == "Event" and attributes["message"] != nil and body["object"]["reason"] != nil
+            # For Pods, add the phase
+            - set(attributes["message"], Concat([attributes["message"], " Phase:", body["object"]["status"]["phase"]], "")) where body["object"]["kind"] == "Pod" and attributes["message"] != nil and body["object"]["status"]["phase"] != nil
+            # Move structured data to attributes and set message as body for Kibana
+            - set(attributes["k8s.object.full"], body["object"]) where body["object"] != nil
+            - set(body, attributes["message"]) where attributes["message"] != nil
+  exporters:
+    otlphttp:
+      endpoint: 'http://otel-main.example.com:4318'
+      sending_queue:
+        enabled: true
+        num_consumers: 10
+        queue_size: 2000
+  extensions:
+    # Required by the googlecloudpubsub receiver's encoding.
+    googlecloudlogentry_encoding:
+      handle_json_payload_as: json
+      handle_proto_payload_as: json
+  service:
+    # Overriding service.extensions replaces the chart default, so health_check
+    # must be restated here.
+    extensions:
+      - health_check
+      - googlecloudlogentry_encoding
+    telemetry:
+      logs:
+        level: info
+      metrics:
+        address: 127.0.0.1:8888
+        level: detailed
+    pipelines:
+      metrics:
+        receivers:
+          - k8s_cluster
+        processors:
+          - k8sattributes
+          - resourcedetection/gcp
+          - resource/k8s
+          - resource/hostname
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+      logs:
+        receivers:
+          - k8sobjects
+        processors:
+          - transform/k8s_objects
+          - resourcedetection/gcp
+          - resource/hostname
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+      metrics/self:
+        receivers:
+          - prometheus/self
+        processors:
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+      # GCP-account streams, forwarded to otel-main as tagged OTLP. No
+      # resourcedetection/k8sattributes here: the resource shapes must stay
+      # exactly what the receivers emit, so series identity downstream
+      # (Prometheus/ES) is unchanged.
+      metrics/infra/vpn:
+        receivers:
+          - googlecloudmonitoring/ipsec
+        processors:
+          - resource/stream_vpn
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+      metrics/infra/loadbalancer:
+        receivers:
+          - googlecloudmonitoring/loadbalancer
+        processors:
+          - resource/stream_lb
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+      logs/gcp:
+        receivers:
+          - googlecloudpubsub
+        processors:
+          - resource/stream_gcp_logs
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp
+resources:
+  limits:
+    cpu: 250m
+    memory: 512Mi
+  requests:
+    cpu: 50m
+    memory: 256Mi
+statefulset:
+  persistentVolumeClaimRetentionPolicy:
+    enabled: true
+    whenDeleted: Delete
+    whenScaled: Delete
+  volumeClaimTemplates:
+    - metadata:
+        name: buffer
+      spec:
+        storageClassName: standard
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: '1Gi'
+serviceAccount:
+  create: true
+  annotations:
+    # Workload Identity onto the otel-main GCP SA, which carries the
+    # monitoring.viewer + pubsub.subscriber grants the googlecloud* receivers
+    # need.
+    iam.gke.io/gcp-service-account: otel-main@example-project.iam.gserviceaccount.com
+  name: 'otel-cluster'
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: ['']
+      resources:
+        - events
+        - pods
+        - nodes
+        - nodes/stats
+        - services
+        - endpoints
+        - namespaces
+        - replicationcontrollers
+        - resourcequotas
+        - persistentvolumes
+        - persistentvolumeclaims
+      verbs: ['get', 'list', 'watch']
+    - apiGroups: ['apps']
+      resources:
+        - replicasets
+        - deployments
+        - statefulsets
+        - daemonsets
+      verbs: ['get', 'list', 'watch']
+    - apiGroups: ['batch']
+      resources:
+        - jobs
+        - cronjobs
+      verbs: ['get', 'list', 'watch']
+    - apiGroups: ['autoscaling']
+      resources:
+        - horizontalpodautoscalers
+      verbs: ['get', 'list', 'watch']
+    - apiGroups: ['events.k8s.io']
+      resources:
+        - events
+      verbs: ['get', 'list', 'watch']

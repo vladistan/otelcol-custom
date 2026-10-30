@@ -1,0 +1,74 @@
+[
+  {
+    "Body": "Pod shop/worker-29883137-sccdh: Started - Started container worker",
+    "LogAttributes": {
+      "event.domain": "k8s",
+      "event.name": "worker-29883137-sccdh.18e1f9498097409b",
+      "k8s.event.reason": "Started",
+      "k8s.event.regarding.kind": "Pod",
+      "k8s.event.regarding.name": "worker-29883137-sccdh",
+      "k8s.event.regarding.namespace": "shop",
+      "k8s.event.source": "kubelet",
+      "k8s.event.type": "Normal",
+      "k8s.resource.name": "events"
+    },
+    "ResourceAttributes": {
+      "collector.gateway.host": "gateway-0",
+      "collector.gateway.node": "node-b",
+      "collector.gateway.version": "0.3.2",
+      "k8s.cluster.name": "k8s",
+      "k8s.namespace.name": "shop"
+    },
+    "ResourceSchemaUrl": "",
+    "ScopeAttributes": {},
+    "ScopeName": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver",
+    "ScopeSchemaUrl": "",
+    "ScopeVersion": "0.141.0",
+    "ServiceName": "",
+    "SeverityNumber": 9,
+    "SeverityText": "INFO",
+    "SpanId": "",
+    "Timestamp": "2026-10-26 04:17:00.763542",
+    "TraceFlags": 0,
+    "TraceId": ""
+  },
+  {
+    "Body": "Pod shop/worker-29882957-lhq7j: Failed (0/1 ready) on node-a",
+    "LogAttributes": {
+      "event.domain": "k8s",
+      "event.name": "worker-29882957-lhq7j",
+      "k8s.container.image.primary": "123456789012.dkr.ecr.us-east-1.amazonaws.com/shop/web:1.0.0",
+      "k8s.event.type": "MODIFIED",
+      "k8s.namespace.name": "shop",
+      "k8s.node.name": "node-a",
+      "k8s.pod.name": "worker-29882957-lhq7j",
+      "k8s.pod.namespace": "shop",
+      "k8s.pod.phase": "Failed",
+      "k8s.pod.ready": "0/1",
+      "k8s.pod.restarts": "0",
+      "k8s.pod.status.phase": "Failed",
+      "k8s.pod.uid": "00000000-0000-4000-8000-000000000001",
+      "k8s.resource.name": "pods",
+      "log.type": "k8s.pod.spec"
+    },
+    "ResourceAttributes": {
+      "collector.gateway.host": "gateway-0",
+      "collector.gateway.node": "node-b",
+      "collector.gateway.version": "0.3.2",
+      "k8s.cluster.name": "k8s",
+      "k8s.namespace.name": "shop"
+    },
+    "ResourceSchemaUrl": "",
+    "ScopeAttributes": {},
+    "ScopeName": "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver",
+    "ScopeSchemaUrl": "",
+    "ScopeVersion": "0.141.0",
+    "ServiceName": "",
+    "SeverityNumber": 17,
+    "SeverityText": "ERROR",
+    "SpanId": "",
+    "Timestamp": "2026-10-26 04:17:06.243760",
+    "TraceFlags": 0,
+    "TraceId": ""
+  }
+]

@@ -1,0 +1,205 @@
+# Reference config for otelcol-scrape.
+# Placeholders only: every credential and endpoint comes from ${env:...}.
+# Deploy only the sources whose Secret exists, with their pipelines;
+# a pipeline with no receivers fails config load.
+#
+# Env: OTEL_MAIN_OTLP_ENDPOINT, AWS_REGION, CLOUDTRAIL_SQS_URL,
+# S3ACCESS_BUCKET, S3ACCESS_PREFIX, S3ACCESS_SQS_URL, AUTH0_SQS_URL,
+# AUTH0_SQS_REGION, AUTH0_ROLE_ARN, AUTH0_EXTERNAL_ID, GCP_PROJECT,
+# GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, AZ_EH_CONN.
+# AWS and GCP credentials come from the SDK default chains and
+# GOOGLE_APPLICATION_CREDENTIALS, not from this file.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  zpages:
+    endpoint: 127.0.0.1:55679
+  file_storage:
+    directory: /var/lib/otel/storage
+    create_directory: true
+    timeout: 10s
+  aws_logs_encoding/cloudtrail:
+    format: cloudtrail
+  aws_logs_encoding/s3access:
+    format: s3access
+  google_cloud_logentry_encoding: {}
+receivers:
+  # CloudTrail: org trail bucket, SQS-driven, one log record per Records[] entry.
+  # The receiver strips .gz before it matches the suffix.
+  awss3/cloudtrail:
+    s3downloader:
+      region: ${env:AWS_REGION}
+      s3_bucket: example-cloudtrail-bucket
+      s3_prefix: AWSLogs/
+    sqs:
+      queue_url: ${env:CLOUDTRAIL_SQS_URL}
+      region: ${env:AWS_REGION}
+    encodings:
+      - extension: aws_logs_encoding/cloudtrail
+        suffix: .json
+  # S3 server access logs: object keys have no suffix, so the suffix is empty.
+  awss3/s3access:
+    s3downloader:
+      region: ${env:AWS_REGION}
+      s3_bucket: ${env:S3ACCESS_BUCKET}
+      s3_prefix: ${env:S3ACCESS_PREFIX}
+    sqs:
+      queue_url: ${env:S3ACCESS_SQS_URL}
+      region: ${env:AWS_REGION}
+    encodings:
+      - extension: aws_logs_encoding/s3access
+        suffix: ""
+  awscloudwatch/logs:
+    region: ${env:AWS_REGION}
+    storage: file_storage
+    logs:
+      poll_interval: 1m
+      groups:
+        autodiscover:
+          prefix: /aws/lambda/
+          limit: 50
+  # CloudWatch metrics: named metrics only, no discovery.
+  awscloudwatch/metrics:
+    region: ${env:AWS_REGION}
+    metrics:
+      collection_interval: 5m
+      period: 5m
+      delay: 10m
+      queries:
+        - {namespace: AWS/EC2, metric_name: CPUUtilization, stats: [Average]}
+        - {namespace: AWS/EC2, metric_name: NetworkIn, stats: [Sum]}
+        - {namespace: AWS/EC2, metric_name: NetworkOut, stats: [Sum]}
+        - {namespace: AWS/RDS, metric_name: CPUUtilization, stats: [Average]}
+        - {namespace: AWS/RDS, metric_name: DatabaseConnections, stats: [Average]}
+        - {namespace: AWS/RDS, metric_name: FreeStorageSpace, stats: [Minimum]}
+        - {namespace: AWS/Lambda, metric_name: Invocations, stats: [Sum]}
+        - {namespace: AWS/Lambda, metric_name: Errors, stats: [Sum]}
+        - {namespace: AWS/Lambda, metric_name: Duration, stats: [Average, p99]}
+        - {namespace: AWS/Lambda, metric_name: Throttles, stats: [Sum]}
+        - {namespace: AWS/ApplicationELB, metric_name: RequestCount, stats: [Sum]}
+        - {namespace: AWS/ApplicationELB, metric_name: HTTPCode_Target_5XX_Count, stats: [Sum]}
+        - {namespace: AWS/ApplicationELB, metric_name: TargetResponseTime, stats: [Average, p99]}
+  auth0:
+    queue_url: ${env:AUTH0_SQS_URL}
+    region: ${env:AUTH0_SQS_REGION}
+    role_arn: ${env:AUTH0_ROLE_ARN}
+    external_id: ${env:AUTH0_EXTERNAL_ID}
+  googlecloudpubsub/cloudrun:
+    project: ${env:GCP_PROJECT}
+    subscription: ${env:GCP_CLOUDRUN_SUBSCRIPTION}
+    encoding: google_cloud_logentry_encoding
+    ignore_encoding_error: true
+  googlecloudpubsub/audit:
+    project: ${env:GCP_PROJECT}
+    subscription: ${env:GCP_AUDIT_SUBSCRIPTION}
+    encoding: google_cloud_logentry_encoding
+    ignore_encoding_error: true
+  azure_event_hub:
+    connection: ${env:AZ_EH_CONN}
+    format: azure
+    storage: file_storage
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 20
+  batch: {}
+  resourcedetection:
+    detectors: [env]
+  transform/aws:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["log.source"], "aws.cloudtrail") where instrumentation_scope.attributes["encoding.format"] == "aws.cloudtrail"
+          - set(attributes["log.source"], "aws.s3access") where instrumentation_scope.attributes["encoding.format"] == "aws.s3access"
+          - |-
+            set(attributes["log.source"], "aws.cloudwatch")
+            where attributes["log.source"] == nil and resource.attributes["cloudwatch.log.group.name"] != nil
+          - set(attributes["event.category"], "audit") where attributes["log.source"] == "aws.cloudtrail"
+          - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.s3access"
+          - set(attributes["event.category"], "application") where attributes["log.source"] == "aws.cloudwatch"
+          - set(body, Concat([attributes["rpc.service"], attributes["rpc.method"]], " ")) where attributes["log.source"] == "aws.cloudtrail"
+          - set(severity_number, SEVERITY_NUMBER_INFO) where severity_number == SEVERITY_NUMBER_UNSPECIFIED
+          - |-
+            set(severity_number, SEVERITY_NUMBER_WARN)
+            where attributes["log.source"] == "aws.cloudtrail" and attributes["aws.error.code"] != nil
+          - set(severity_text, "INFO") where severity_number == SEVERITY_NUMBER_INFO
+          - set(severity_text, "WARN") where severity_number == SEVERITY_NUMBER_WARN
+      - context: resource
+        statements:
+          - set(attributes["cloud.provider"], "aws") where attributes["cloud.provider"] == nil and attributes["aws.region"] != nil
+          - |-
+            set(attributes["cloud.region"], attributes["aws.region"])
+            where attributes["cloud.region"] == nil and attributes["aws.region"] != nil
+  transform/gcp:
+    error_mode: ignore
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["cloud.provider"], "gcp")
+          - set(attributes["service.name"], attributes["gcp.label.service_name"]) where attributes["gcp.label.service_name"] != nil
+          - set(attributes["cloud.region"], attributes["gcp.label.location"]) where attributes["gcp.label.location"] != nil
+          - set(attributes["cloud.account.id"], attributes["gcp.label.project_id"]) where attributes["gcp.label.project_id"] != nil
+          - |-
+            set(attributes["cloud.account.id"], attributes["gcp.project"])
+            where attributes["cloud.account.id"] == nil and attributes["gcp.project"] != nil
+      - context: log
+        statements:
+          - set(attributes["log.source"], "gcp.audit") where IsMatch(resource.attributes["cloud.resource_id"], "^cloudaudit")
+          - |-
+            set(attributes["log.source"], "gcp.cloudrun")
+            where attributes["log.source"] == nil and resource.attributes["gcp.resource_type"] == "cloud_run_revision"
+          - set(attributes["event.category"], "audit") where attributes["log.source"] == "gcp.audit"
+          - set(attributes["event.category"], "application") where attributes["log.source"] == "gcp.cloudrun"
+  transform/azure:
+    error_mode: ignore
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["cloud.provider"], "azure")
+      - context: log
+        statements:
+          - set(attributes["log.source"], "azure.activity")
+          - set(attributes["event.category"], "audit")
+exporters:
+  otlphttp:
+    endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 0s
+    sending_queue:
+      enabled: true
+      queue_size: 10000
+      storage: file_storage
+  debug:
+    verbosity: basic
+service:
+  extensions:
+    - health_check
+    - zpages
+    - file_storage
+    - aws_logs_encoding/cloudtrail
+    - aws_logs_encoding/s3access
+    - google_cloud_logentry_encoding
+  pipelines:
+    logs/aws:
+      receivers: [awss3/cloudtrail, awss3/s3access, awscloudwatch/logs, auth0]
+      # No batch: the persistent queue in otlphttp must be the first buffer, because
+      # awss3 and auth0 delete queue messages once the next consumer accepts them.
+      processors: [memory_limiter, transform/aws, resourcedetection]
+      exporters: [otlphttp]
+    logs/gcp:
+      receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
+      processors: [memory_limiter, transform/gcp, resourcedetection, batch]
+      exporters: [otlphttp]
+    logs/azure:
+      receivers: [azure_event_hub]
+      processors: [memory_limiter, transform/azure, resourcedetection, batch]
+      exporters: [otlphttp]
+    metrics/aws:
+      receivers: [awscloudwatch/metrics]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp]

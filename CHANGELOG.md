@@ -15,9 +15,19 @@ Sentry crash reports for the Windows service.
 
 Per-window exponential histograms on every edge platform, `k8sevent` parity for `otel-cluster`, and the narrowed `otelcol-scrape` image with the Auth0 receiver.
 
-## [0.3.2] - Unreleased
+## [0.3.2] - 2026-10-30
 
 Searchable Windows event logs; `journald`, `snoozelog` and health-probe processors in the gateway image.
+
+### Added
+
+- **`winlog` processor** in `otelcol-edge` for Windows. It sets the body to the rendered message, keeps the event XML in `original_message` (capped at 64 KiB by default), sets `severity_*` from the event level, and adds `winlog.*` attributes. Counters `otelcol_winlog_events_read` and `otelcol_winlog_events_dropped` report per channel and rule. See `docs/windows-edge.md`.
+- **Drop rules** for Windows events. The default list drops Security events 4624, 4634, 4672, 4658, 5156 and 5158, and Information events from provider `otelcol-edge`. Setting `drop_rules` replaces the list.
+- **Gateway processors** `journald`, `snoozelog` and `healthprobe`, plus the `googlecloudmonitoring` receiver and the `googlecloudlogentry_encoding` extension. The `journald` processor maps journald `PRIORITY` 5 to INFO. The sample `test/configs/local-gateway.yaml` defines the three processors without wiring them into a pipeline.
+
+### Changed
+
+- **Security event log** is no longer unfiltered. In 0.3.1 the Security channel passed every event; 0.3.2 applies the default drop rules.
 
 ## [0.3.1] - 2026-10-27
 
@@ -26,7 +36,7 @@ Windows edge artifact; `otel-main` runs a gateway image built from this tree.
 ### Added
 
 - **Windows edge** `otelcol-edge-0.3.1-windows-amd64.exe` (windows/amd64, CGO off, unsigned). It collects host metrics, Windows performance counters, Windows event logs and file logs, installs as a Windows service through the OCB service handler, and writes a rotating self-log (10 MiB, 5 backups). The sample config is `test/configs/windows-edge.yaml`.
-- **Event logs are on by default** with the Security channel unfiltered until 0.3.2 (user-accepted risk, SPARC 05 D-45). The service runs as LocalSystem (D-39).
+- **Event logs are on by default** with the Security channel unfiltered; 0.3.2 adds default drop rules for it. The service runs as LocalSystem.
 - **Gateway image** `ghcr.io/vladistan/otelcol-gateway:v0.3.1`, built from this tree. Its component set is unchanged from the image `otel-main` runs today.
 
 ### Changed

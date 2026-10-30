@@ -3,10 +3,7 @@
 # Assemble the otelcol-custom download site from whatever a GitHub Release
 # actually holds, and verify what was published by reading response bodies.
 #
-# Plan 02 (publish-artifacts), Phase 4. Adapted from
-# .claude/templates/desktop/release/assemble_site.sh.reference for the
-# otelcol-edge/otelcol-gateway binary shape instead of DMGs. Two properties
-# carry over unchanged:
+# Two properties hold:
 #
 #   1. The page is a PROJECTION of the release. Which artifacts exist is
 #      never written down here — it is derived from the asset filenames

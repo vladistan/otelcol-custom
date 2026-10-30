@@ -11,6 +11,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"go.opentelemetry.io/collector/confmap"
+	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -24,6 +25,7 @@ import (
 const (
 	gatewayConfig   = "../configs/local-gateway.yaml"
 	journaldFixture = "../../processor/journaldprocessor/testdata/records.json"
+	otelMainText    = "testdata/otel-main-transform-journald.yaml"
 	ottlBlock       = "transform/journald"
 )
 
@@ -42,7 +44,7 @@ func loadRecords(t *testing.T) []map[string]any {
 	return records
 }
 
-func newOTTL(t *testing.T, sink *consumertest.LogsSink) processor.Logs {
+func newOTTL(t testing.TB, sink consumer.Logs) processor.Logs {
 	t.Helper()
 	raw, err := os.ReadFile(gatewayConfig)
 	if err != nil {
@@ -58,7 +60,29 @@ func newOTTL(t *testing.T, sink *consumertest.LogsSink) processor.Logs {
 	if !ok {
 		t.Fatalf("%s not found in %s", ottlBlock, gatewayConfig)
 	}
+	return newOTTLFromBlock(t, sink, block)
+}
 
+// newOTTLOtelMain builds the block from the text delivered for otel-main.
+func newOTTLOtelMain(t testing.TB, sink consumer.Logs) processor.Logs {
+	t.Helper()
+	raw, err := os.ReadFile(otelMainText)
+	if err != nil {
+		t.Fatalf("read otel-main text: %v", err)
+	}
+	var doc map[string]map[string]any
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse otel-main text: %v", err)
+	}
+	block, ok := doc[ottlBlock]
+	if !ok {
+		t.Fatalf("%s not found in %s", ottlBlock, otelMainText)
+	}
+	return newOTTLFromBlock(t, sink, block)
+}
+
+func newOTTLFromBlock(t testing.TB, sink consumer.Logs, block map[string]any) processor.Logs {
+	t.Helper()
 	factory := transformprocessor.NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	if err := confmap.NewFromStringMap(block).Unmarshal(cfg); err != nil {
@@ -71,7 +95,7 @@ func newOTTL(t *testing.T, sink *consumertest.LogsSink) processor.Logs {
 	return proc
 }
 
-func newJournald(t *testing.T, sink *consumertest.LogsSink) processor.Logs {
+func newJournald(t testing.TB, sink consumer.Logs) processor.Logs {
 	t.Helper()
 	factory := journaldprocessor.NewFactory()
 	proc, err := factory.CreateLogs(context.Background(), processortest.NewNopSettings(factory.Type()), factory.CreateDefaultConfig(), sink)
@@ -111,7 +135,7 @@ type setFields struct {
 	text     string
 }
 
-// fieldsSetByOTTL reads only what the transform/journald block sets (07 D-23).
+// fieldsSetByOTTL reads only what the transform/journald block sets.
 func fieldsSetByOTTL(res pcommon.Map, lr plog.LogRecord) setFields {
 	out := setFields{resource: map[string]any{}, number: lr.SeverityNumber(), text: lr.SeverityText()}
 	for _, key := range resourceKeys {
@@ -165,10 +189,10 @@ func TestJournaldParity_MixedUnits_OnlyD5Differs(t *testing.T) {
 	outJournald := runThrough(t, journald, journaldSink, batchOf(t, records...))
 
 	if outOTTL.ResourceLogs().Len() != 1 {
-		t.Fatalf("OTTL produced %d ResourceLogs, want 1 (the shared-resource behaviour D-5 replaces)", outOTTL.ResourceLogs().Len())
+		t.Fatalf("OTTL produced %d ResourceLogs, want 1 (the OTTL block keeps one shared resource; journaldprocessor splits by resource)", outOTTL.ResourceLogs().Len())
 	}
 	if outJournald.ResourceLogs().Len() != len(records) {
-		t.Fatalf("journald produced %d ResourceLogs, want %d (D-5 split)", outJournald.ResourceLogs().Len(), len(records))
+		t.Fatalf("journald produced %d ResourceLogs, want %d (split by resource)", outJournald.ResourceLogs().Len(), len(records))
 	}
 	if outJournald.LogRecordCount() != outOTTL.LogRecordCount() {
 		t.Errorf("record count %d, OTTL gave %d", outJournald.LogRecordCount(), outOTTL.LogRecordCount())
@@ -185,6 +209,34 @@ func TestJournaldParity_MixedUnits_OnlyD5Differs(t *testing.T) {
 			if got.resource[key] != value {
 				t.Errorf("split record %d %s = %v, per-record OTTL gave %v", i, key, got.resource[key], value)
 			}
+		}
+	}
+}
+
+func TestJournaldParity_OtelMainText_EachPriorityMatches(t *testing.T) {
+	ottlSink, journaldSink := new(consumertest.LogsSink), new(consumertest.LogsSink)
+	ottl, journald := newOTTLOtelMain(t, ottlSink), newJournald(t, journaldSink)
+
+	for _, priority := range []string{"0", "1", "2", "3", "4", "5", "6", "7"} {
+		record := map[string]any{"_HOSTNAME": "host-a.example.com", "PRIORITY": priority, "MESSAGE": "m"}
+
+		_, lrOTTL := singleRecord(t, runThrough(t, ottl, ottlSink, batchOf(t, record)))
+		_, lrJournald := singleRecord(t, runThrough(t, journald, journaldSink, batchOf(t, record)))
+
+		if priority == "5" {
+			// PRIORITY 5: the otel-main block has no rule for it, while journaldprocessor maps it to INFO. The difference is intended.
+			if lrOTTL.SeverityNumber() != plog.SeverityNumberUnspecified || lrOTTL.SeverityText() != "" {
+				t.Errorf("PRIORITY 5: otel-main OTTL gave %v/%q, expected the block to leave it unset",
+					lrOTTL.SeverityNumber(), lrOTTL.SeverityText())
+			}
+			if lrJournald.SeverityNumber() != plog.SeverityNumberInfo || lrJournald.SeverityText() != "INFO" {
+				t.Errorf("PRIORITY 5: journald gave %v/%q, want INFO", lrJournald.SeverityNumber(), lrJournald.SeverityText())
+			}
+			continue
+		}
+		if lrJournald.SeverityNumber() != lrOTTL.SeverityNumber() || lrJournald.SeverityText() != lrOTTL.SeverityText() {
+			t.Errorf("PRIORITY %s: journald %v/%q, otel-main OTTL %v/%q", priority,
+				lrJournald.SeverityNumber(), lrJournald.SeverityText(), lrOTTL.SeverityNumber(), lrOTTL.SeverityText())
 		}
 	}
 }

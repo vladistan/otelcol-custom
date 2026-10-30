@@ -16,8 +16,8 @@ WORKDIR /src
 # The builder digest above already ships go1.26.8, above every in-tree
 # go.mod directive (highest is 1.24.0), so the toolchain is pinned to the
 # image's own local go rather than left to auto-fetch. `auto` is what let
-# the version drift silently before this phase - the Phase 0 baseline
-# observed it fetching go1.26.8 mid-build even though the pin claimed an
+# the version drift silently: a baseline build was seen fetching
+# go1.26.8 mid-build even though the pin claimed an
 # older version. `local` is Go's actual no-auto-fetch value; `off` is not
 # a recognized GOTOOLCHAIN setting.
 ENV GOTOOLCHAIN=local
@@ -34,11 +34,11 @@ COPY receiver ./receiver
 COPY stanza ./stanza
 COPY builder-gateway.yaml ./
 
-# Generate the gateway distribution (skip_compilation: true - OCB wires the
+# Generate the gateway distribution (--skip-compilation - OCB wires the
 # components and go.mod but does not compile; compilation happens below,
 # same as the local `just build-gateway` recipe). OCB does not create the
 # output path recursively, so it must exist first.
-RUN mkdir -p build/gateway && /go/bin/builder --config=builder-gateway.yaml
+RUN mkdir -p build/gateway && /go/bin/builder --skip-compilation --config=builder-gateway.yaml
 
 # Inject the shared entrypoint (adds Sentry init) and resolve dependencies,
 # mirroring `just build-gateway`.

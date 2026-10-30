@@ -1,5 +1,5 @@
-# Windows edge recipes (plan 08 track T1). cmd/otelcol-custom compiles only
-# inside the OCB-generated module, so every check here runs in build/edge-windows.
+# Windows edge recipes. cmd/otelcol-custom compiles only inside the
+# OCB-generated module, so every check here runs in build/edge-windows.
 
 edge_windows_dir := "build/edge-windows"
 edge_windows_exe := edge_windows_dir + "/otelcol-edge.exe"

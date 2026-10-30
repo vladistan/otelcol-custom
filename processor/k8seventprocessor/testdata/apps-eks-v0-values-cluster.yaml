@@ -1,0 +1,292 @@
+# OpenTelemetry Collector Deployment for apps-eks-v0
+# Singleton collector running k8sclusterreceiver to emit cluster-wide metrics
+# (pod phase, node conditions, deployment desired/available, etc.) and forward
+# to the central collector in kube-v0.
+#
+# Must run as a single replica - k8sclusterreceiver queries the API server for
+# cluster-wide state, so multiple replicas would duplicate every metric.
+mode: deployment
+replicaCount: 1
+nameOverride: otel-cluster
+image:
+  # contrib, not the slim -k8s distro: the tcp_check receiver below only ships
+  # in contrib. Pinned to the same version as otel-main; bump deliberately.
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+  tag: "0.154.0"
+presets:
+  kubernetesAttributes:
+    enabled: false
+  kubeletMetrics:
+    enabled: false
+  hostMetrics:
+    enabled: false
+  logsCollection:
+    enabled: false
+  clusterMetrics:
+    enabled: false # configured manually below
+# Disable all default receiver ports - this collector only pulls from the
+# Kubernetes API, it does not accept incoming OTLP/Jaeger/Zipkin traffic.
+ports:
+  otlp:
+    enabled: false
+  otlp-http:
+    enabled: false
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+# No Service needed - this collector has no inbound listeners.
+service:
+  enabled: false
+config:
+  receivers:
+    # [K8s Objects Receiver]
+    # (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/k8sobjectsreceiver)
+    # Mirrors kube-v0's otel-cluster — same receiver, same transform/k8s_objects
+    # shape, so k8s object/event data exists on every cluster, not just GCP.
+    k8sobjects:
+      objects:
+        - name: events
+          mode: 'watch'
+          group: 'events.k8s.io'
+          exclude_watch_type:
+            - 'DELETED'
+        - name: pods
+          mode: 'watch'
+          group: ''
+          exclude_watch_type:
+            - 'DELETED'
+    k8s_cluster:
+      collection_interval: 60s
+      node_conditions_to_report:
+        - Ready
+        - MemoryPressure
+        - DiskPressure
+        - NetworkUnavailable
+        - PIDPressure
+      allocatable_types_to_report:
+        - cpu
+        - memory
+        - ephemeral-storage
+        - storage
+    # Service reachability checks. A TCP connect proves the path end-to-end
+    # (routing, firewalls, return path); control-plane state can look healthy
+    # while traffic is dropped.
+    tcp_check:
+      collection_interval: 60s
+      targets:
+        # Two independent hosts, so a single host reboot is distinguishable
+        # from a dead path (alert only when all targets are down).
+        - endpoint: 192.0.2.11:8006 # hypervisor
+          dialer:
+            timeout: 5s
+        # Other links have no probe target because their endpoints do not
+        # accept TCP from this VPC; those are monitored via absence of the
+        # live kube-v0 producer stream instead.
+        - endpoint: 192.0.2.34:8007 # backup server
+          dialer:
+            timeout: 5s
+    # Self-metrics: scrape the collector's own internal telemetry endpoint.
+    prometheus/self:
+      config:
+        scrape_configs:
+          - job_name: otel-collector-self
+            scrape_interval: 30s
+            static_configs:
+              - targets:
+                  - ${env:MY_POD_IP}:8888
+  processors:
+    batch:
+      send_batch_size: 1000
+      timeout: 10s
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 400
+      spike_limit_mib: 100
+    resource/cluster:
+      attributes:
+        - key: cloud.provider
+          value: aws
+          action: upsert
+        - key: k8s.cluster.name
+          value: apps-eks-v0
+          action: upsert
+        - key: deployment.environment
+          value: production
+          action: upsert
+    # Extract useful fields from structured k8s object bodies. Same as
+    # the transform in kube-v0-values-cluster.yaml; see that file for the
+    # rationale comments (nil-guard ordering, etc).
+    transform/k8s_objects:
+      error_mode: ignore
+      log_statements:
+        - context: log
+          statements:
+            # yamllint disable rule:line-length
+            - set(severity_number, SEVERITY_NUMBER_WARN) where body["object"]["kind"] == "Event" and body["object"]["type"] == "Warning"
+            - set(severity_number, SEVERITY_NUMBER_INFO) where body["object"]["kind"] == "Event" and body["object"]["type"] == "Normal"
+            - set(severity_text, "WARN") where body["object"]["kind"] == "Event" and body["object"]["type"] == "Warning"
+            - set(severity_text, "INFO") where body["object"]["kind"] == "Event" and body["object"]["type"] == "Normal"
+            - set(severity_number, SEVERITY_NUMBER_INFO) where body["object"]["kind"] == "Pod"
+            - set(severity_text, "INFO") where body["object"]["kind"] == "Pod"
+            - set(attributes["k8s.object.kind"], body["object"]["kind"]) where body["object"]["kind"] != nil
+            - set(attributes["k8s.object.action"], body["type"]) where body["type"] != nil
+            - set(attributes["k8s.namespace"], body["object"]["metadata"]["namespace"]) where body["object"]["metadata"]["namespace"] != nil
+            - set(attributes["k8s.name"], body["object"]["metadata"]["name"]) where body["object"]["metadata"]["name"] != nil
+            - set(attributes["k8s.event.type"], body["object"]["type"]) where body["object"]["kind"] == "Event" and body["object"]["type"] != nil
+            - >-
+              set(attributes["k8s.event.reason"], body["object"]["reason"]) where body["object"]["kind"] == "Event" and body["object"]["reason"] != nil
+            - set(attributes["k8s.event.note"], body["object"]["note"]) where body["object"]["kind"] == "Event" and body["object"]["note"] != nil
+            - >-
+              set(attributes["k8s.event.count"], body["object"]["deprecatedCount"]) where body["object"]["kind"] == "Event" and body["object"]["deprecatedCount"] != nil
+            - >-
+              set(attributes["k8s.event.regarding.kind"], body["object"]["regarding"]["kind"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["kind"] != nil
+            - >-
+              set(attributes["k8s.event.regarding.name"], body["object"]["regarding"]["name"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["name"] != nil
+            - >-
+              set(attributes["k8s.event.regarding.namespace"], body["object"]["regarding"]["namespace"]) where body["object"]["kind"] == "Event" and body["object"]["regarding"]["namespace"] != nil
+            - >-
+              set(attributes["k8s.pod.phase"], body["object"]["status"]["phase"]) where body["object"]["kind"] == "Pod" and body["object"]["status"]["phase"] != nil
+            - >-
+              set(attributes["k8s.container.exit_code"], body["object"]["status"]["containerStatuses"][0]["state"]["terminated"]["exitCode"]) where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"] != nil and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"]["exitCode"] != nil
+            - >-
+              set(attributes["k8s.container.state"], "terminated") where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["terminated"] != nil
+            - >-
+              set(attributes["k8s.container.state"], "running") where body["object"]["kind"] == "Pod" and body["object"]["status"]["containerStatuses"] != nil and Len(body["object"]["status"]["containerStatuses"]) > 0 and body["object"]["status"]["containerStatuses"][0]["state"]["running"] != nil
+            - set(attributes["k8s.labels.app"], body["object"]["metadata"]["labels"]["app"]) where body["object"]["metadata"]["labels"]["app"] != nil
+            - >-
+              set(attributes["k8s.labels.environment"], body["object"]["metadata"]["labels"]["environment"]) where body["object"]["metadata"]["labels"]["environment"] != nil
+            - >-
+              set(attributes["k8s.labels.job_name"], body["object"]["metadata"]["labels"]["job-name"]) where body["object"]["metadata"]["labels"]["job-name"] != nil
+            - set(attributes["message_type"], "k8sobject") where body["object"]["kind"] != nil
+            - set(attributes["message"], "K8S") where body["object"]["kind"] != nil
+            - >-
+              set(attributes["message"], Concat([attributes["message"], body["type"]], " ")) where attributes["message"] != nil and body["type"] != nil
+            - >-
+              set(attributes["message"], Concat([attributes["message"], body["object"]["kind"]], " ")) where attributes["message"] != nil and body["object"]["kind"] != nil
+            - >-
+              set(attributes["message"], Concat([attributes["message"], body["object"]["metadata"]["namespace"], "/", body["object"]["metadata"]["name"]], " ")) where attributes["message"] != nil and body["object"]["metadata"]["namespace"] != nil and body["object"]["metadata"]["name"] != nil
+            - >-
+              set(attributes["message"], Concat([attributes["message"], " ", body["object"]["reason"]], "")) where body["object"]["kind"] == "Event" and attributes["message"] != nil and body["object"]["reason"] != nil
+            - >-
+              set(attributes["message"], Concat([attributes["message"], " Phase:", body["object"]["status"]["phase"]], "")) where body["object"]["kind"] == "Pod" and attributes["message"] != nil and body["object"]["status"]["phase"] != nil
+            - set(attributes["k8s.object.full"], body["object"]) where body["object"] != nil
+            - set(body, attributes["message"]) where attributes["message"] != nil
+            # yamllint enable rule:line-length
+  exporters:
+    # Cluster-local by necessity, not just efficiency: a pod dialing the NLB
+    # fails when it runs on the same node as the target (same-node hairpin
+    # with client-IP preservation).
+    otlphttp:
+      endpoint: http://otel-main.opentelemetry:4318
+      retry_on_failure:
+        enabled: true
+        initial_interval: 5s
+        max_interval: 30s
+        max_elapsed_time: 300s
+  service:
+    pipelines:
+      metrics:
+        receivers:
+          - k8s_cluster
+        processors:
+          - memory_limiter
+          - resource/cluster
+          - batch
+        exporters:
+          - otlphttp
+      # Collector's own pipeline metrics (receiver/exporter/queue counters).
+      metrics/self:
+        receivers:
+          - prometheus/self
+        processors:
+          - memory_limiter
+          - resource/cluster
+          - batch
+        exporters:
+          - otlphttp
+      # K8s object/event watch (events + pods) — same shape as kube-v0's
+      # otel-cluster, so object/event data exists on every cluster.
+      logs:
+        receivers:
+          - k8sobjects
+        processors:
+          - memory_limiter
+          - transform/k8s_objects
+          - resource/cluster
+          - batch
+        exporters:
+          - otlphttp
+      # Reachability probes; resource/cluster stamps k8s.cluster.name so
+      # series from this prober are distinguishable from the kube-v0 one.
+      metrics/tcpcheck:
+        receivers:
+          - tcp_check
+        processors:
+          - memory_limiter
+          - resource/cluster
+          - batch
+        exporters:
+          - otlphttp
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 200Mi
+serviceAccount:
+  create: true
+  name: otel-cluster
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources:
+        - events
+        - namespaces
+        - namespaces/status
+        - nodes
+        - nodes/spec
+        - pods
+        - pods/status
+        - replicationcontrollers
+        - replicationcontrollers/status
+        - resourcequotas
+        - services
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["apps"]
+      resources:
+        - daemonsets
+        - deployments
+        - replicasets
+        - statefulsets
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["extensions"]
+      resources:
+        - daemonsets
+        - deployments
+        - replicasets
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["batch"]
+      resources:
+        - jobs
+        - cronjobs
+      verbs: ["get", "list", "watch"]
+    - apiGroups: ["autoscaling"]
+      resources:
+        - horizontalpodautoscalers
+      verbs: ["get", "list", "watch"]
+    # Required by k8sobjects' events watch (group: events.k8s.io, distinct
+    # from the core "events" resource already covered above).
+    - apiGroups: ["events.k8s.io"]
+      resources:
+        - events
+      verbs: ["get", "list", "watch"]
+# Chart 0.156.0 auto-injects MY_POD_IP (used by the prometheus/self receiver)
+# along with K8S_NODE_NAME, K8S_NODE_IP, OTEL_K8S_* into every container,
+# so no extraEnvs are needed.

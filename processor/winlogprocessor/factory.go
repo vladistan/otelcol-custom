@@ -14,6 +14,8 @@ import (
 const (
 	typeStr   = "winlog"
 	stability = component.StabilityLevelDevelopment
+
+	defaultOriginalMessageMaxBytes = 64 * 1024
 )
 
 // NewFactory returns the factory the builder registers once the manifest lists this module.
@@ -26,14 +28,28 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{DropRules: DefaultDropRules(), OriginalMessageMaxBytes: defaultOriginalMessageMaxBytes}
 }
 
 func createLogsProcessor(
 	_ context.Context,
-	_ processor.Settings,
-	_ component.Config,
+	set processor.Settings,
+	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
-	return &noopProcessor{next: nextConsumer}, nil
+	config := cfg.(*Config)
+	rules, err := compileRules(config.DropRules)
+	if err != nil {
+		return nil, err
+	}
+	tel, err := newTelemetry(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	return &winlogProcessor{
+		next:             nextConsumer,
+		rules:            rules,
+		tel:              tel,
+		maxOriginalBytes: config.OriginalMessageMaxBytes,
+	}, nil
 }

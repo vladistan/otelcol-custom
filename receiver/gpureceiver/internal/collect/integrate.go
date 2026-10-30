@@ -3,7 +3,7 @@ package collect
 import "time"
 
 // ioIntegrator accumulates bytes from sampled KB/s rates over measured time.
-// The total is float64 and emitted truncated (D-21).
+// The total is float64 and emitted truncated.
 type ioIntegrator struct {
 	started bool
 	last    time.Time
@@ -12,7 +12,7 @@ type ioIntegrator struct {
 
 // sample folds in one successful rate sample and returns the total to emit.
 // The first sample emits 0. A gap longer than maxGap adds nothing and becomes
-// the new baseline (D-25).
+// the new baseline.
 func (i *ioIntegrator) sample(now time.Time, kilobytesPerSecond uint32, maxGap time.Duration) uint64 {
 	if !i.started {
 		i.started = true
@@ -28,7 +28,7 @@ func (i *ioIntegrator) sample(now time.Time, kilobytesPerSecond uint32, maxGap t
 }
 
 // eccIntegrator turns a raw VOLATILE ECC counter into a monotonic total that
-// starts at 0 at the first sample (D-15).
+// starts at 0 at the first sample.
 type eccIntegrator struct {
 	started  bool
 	baseline uint64

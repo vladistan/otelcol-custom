@@ -1,8 +1,5 @@
 name: Publish download site
-# Plan 02-publish-artifacts, Phase 7 Step 7.2 — accepted automation.
-#
-# Published verbatim as this repo's root (see release.yml's header for the
-# PUB_MANIFEST.md path mapping), so this becomes the public repo's own
+# Published verbatim as this repo's root, so this becomes the public repo's own
 # .github/workflows/publish.yml.
 #
 # Separately triggerable and idempotent on purpose, distinct from release.yml:

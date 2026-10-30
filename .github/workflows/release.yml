@@ -1,20 +1,20 @@
 name: Release
-# Plan 02-publish-artifacts, Phase 7 Step 7.2 — accepted automation.
+# Builds and publishes the release: tag check, binaries, GitHub Release, GHCR
+# images.
 #
 # This directory is published verbatim as the root of the public repo
-# (github.com/vladistan/otelcol-custom, see ../../PUB_MANIFEST.md), so this
-# file becomes that repo's own .github/workflows/release.yml. The `just`
-# recipes it calls already exist (justfile) and were proven manually in
-# Phase 6 Step 6.3; this workflow only removes the human from the loop.
+# (github.com/vladistan/otelcol-custom), so this file becomes that repo's own
+# .github/workflows/release.yml. It calls the `just` recipes in the justfile
+# so that a release needs no manual steps.
 #
 # ---------- Credential friction this resolves ----------
 #
-# The manual Phase 6.3 run needed two different tokens and manual env
+# A manual release run needs two different tokens and manual env
 # toggling: the ambient fine-grained PAT could authenticate to ghcr.io but
 # lacked write:packages, and separately lacked permission to create Releases
 # on this repo at all (403), so release-upload needed GH_TOKEN unset (falling
 # back to a classic keyring token) while docker-push-ghcr needed it set with
-# the extra scope. See ../docs/public-release.md, "Credential Storage".
+# the extra scope.
 #
 # Here that split does not exist: this workflow's own repo IS
 # vladistan/otelcol-custom, the same repo release-tag/release-upload target,
@@ -84,7 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: just docker-push-ghcr
       # The scrape image publishes only once the repository variable
-      # PUBLISH_SCRAPE is 'true' (plan 08 Step 6.2). Until then these steps skip.
+      # PUBLISH_SCRAPE is 'true'. Until then these steps skip.
       - name: Build the public scrape image
         if: vars.PUBLISH_SCRAPE == 'true'
         run: just docker-build-scrape-ghcr
@@ -98,8 +98,7 @@ jobs:
         run: just docker-push-scrape-ghcr
 
 # No anonymous-pull check here: GHCR packages are created PRIVATE by
-# default and the flip to public visibility is a recorded manual
-# step (../docs/public-release.md, "Manual step - visibility and
-# anonymous pull verification") done once after the first push. An
-# automated pull check here would fail on every run until that manual
-# step has happened, for a package that is already known private.
+# default; making a package public is a manual step done once after the first
+# push, followed by an anonymous pull check. An automated pull check here
+# would fail on every run until that step has happened, for a package that is
+# still private.

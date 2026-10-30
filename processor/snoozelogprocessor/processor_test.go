@@ -54,7 +54,7 @@ func run(t *testing.T, cfg *Config, ld plog.Logs) plog.LogRecord {
 	return sink.AllLogs()[0].ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 }
 
-func TestLevels_MapPerD7(t *testing.T) {
+func TestLevels_MapToSeverities(t *testing.T) {
 	cases := []struct {
 		level  string
 		number plog.SeverityNumber
@@ -70,7 +70,7 @@ func TestLevels_MapPerD7(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.level, func(t *testing.T) {
-			ld, _ := record("anemo", "snooze-processor", strBody("12:34:56 "+tc.level+" job finished"))
+			ld, _ := record("shop", "worker", strBody("12:34:56 "+tc.level+" job finished"))
 
 			got := run(t, defaultConfig(), ld)
 
@@ -82,7 +82,7 @@ func TestLevels_MapPerD7(t *testing.T) {
 }
 
 func TestMatchingLine_BodyBecomesMessage(t *testing.T) {
-	ld, _ := record("anemo", "snooze-processor", strBody("12:34:56 INFO snoozed 3 alerts"))
+	ld, _ := record("shop", "worker", strBody("12:34:56 INFO snoozed 3 alerts"))
 
 	got := run(t, defaultConfig(), ld)
 
@@ -92,7 +92,7 @@ func TestMatchingLine_BodyBecomesMessage(t *testing.T) {
 }
 
 func TestMatchingLine_TimestampUnchanged(t *testing.T) {
-	ld, lr := record("anemo", "snooze-processor", strBody("12:34:56 ERROR failed"))
+	ld, lr := record("shop", "worker", strBody("12:34:56 ERROR failed"))
 	want := pcommon.NewTimestampFromTime(time.Date(2026, 10, 27, 3, 4, 5, 0, time.UTC))
 	lr.SetTimestamp(want)
 	lr.SetObservedTimestamp(want + 1)
@@ -115,29 +115,29 @@ func assertUnchanged(t *testing.T, got plog.LogRecord, body string) {
 }
 
 func TestNonMatchingLine_PassesThroughUnchanged(t *testing.T) {
-	line := "starting snooze processor"
-	ld, _ := record("anemo", "snooze-processor", strBody(line))
+	line := "starting worker"
+	ld, _ := record("shop", "worker", strBody(line))
 
 	assertUnchanged(t, run(t, defaultConfig(), ld), line)
 }
 
 func TestMatchingLine_FromOtherContainer_PassesThroughUnchanged(t *testing.T) {
 	line := "12:34:56 INFO job finished"
-	ld, _ := record("anemo", "other-app", strBody(line))
+	ld, _ := record("shop", "other-app", strBody(line))
 
 	assertUnchanged(t, run(t, defaultConfig(), ld), line)
 }
 
 func TestMatchingLine_FromOtherNamespace_PassesThroughUnchanged(t *testing.T) {
 	line := "12:34:56 INFO job finished"
-	ld, _ := record("default", "snooze-processor", strBody(line))
+	ld, _ := record("default", "worker", strBody(line))
 
 	assertUnchanged(t, run(t, defaultConfig(), ld), line)
 }
 
 func TestContainerNameIsExact_NotSubstring(t *testing.T) {
 	line := "12:34:56 INFO job finished"
-	ld, _ := record("anemo", "snooze-processor-sidecar", strBody(line))
+	ld, _ := record("shop", "worker-sidecar", strBody(line))
 
 	assertUnchanged(t, run(t, defaultConfig(), ld), line)
 }
@@ -146,7 +146,7 @@ func TestUnknownLevel_PassesThroughUnchanged(t *testing.T) {
 	for _, level := range []string{"TRACE", "NOTICE", "info"} {
 		t.Run(level, func(t *testing.T) {
 			line := "12:34:56 " + level + " something"
-			ld, _ := record("anemo", "snooze-processor", strBody(line))
+			ld, _ := record("shop", "worker", strBody(line))
 
 			assertUnchanged(t, run(t, defaultConfig(), ld), line)
 		})
@@ -154,7 +154,7 @@ func TestUnknownLevel_PassesThroughUnchanged(t *testing.T) {
 }
 
 func TestMultiLine_OnlyFirstLineIsMatched(t *testing.T) {
-	ld, _ := record("anemo", "snooze-processor", strBody("12:34:56 ERROR boom\n12:34:57 INFO trailing"))
+	ld, _ := record("shop", "worker", strBody("12:34:56 ERROR boom\n12:34:57 INFO trailing"))
 
 	got := run(t, defaultConfig(), ld)
 
@@ -168,7 +168,7 @@ func TestMultiLine_OnlyFirstLineIsMatched(t *testing.T) {
 
 func TestMultiLine_MatchOnLaterLineIsIgnored(t *testing.T) {
 	line := "starting\n12:34:56 ERROR boom"
-	ld, _ := record("anemo", "snooze-processor", strBody(line))
+	ld, _ := record("shop", "worker", strBody(line))
 
 	assertUnchanged(t, run(t, defaultConfig(), ld), line)
 }
@@ -176,7 +176,7 @@ func TestMultiLine_MatchOnLaterLineIsIgnored(t *testing.T) {
 func TestNonStringBody_PassesThroughUnchanged(t *testing.T) {
 	body := pcommon.NewValueMap()
 	body.Map().PutStr("text", "12:34:56 INFO job finished")
-	ld, _ := record("anemo", "snooze-processor", body)
+	ld, _ := record("shop", "worker", body)
 
 	got := run(t, defaultConfig(), ld)
 
@@ -195,15 +195,15 @@ func TestConfiguredMatchList_ReplacesDefault(t *testing.T) {
 		t.Errorf("configured rule did not match: %v %q", got.SeverityNumber(), got.Body().Str())
 	}
 
-	ld, _ = record("anemo", "snooze-processor", strBody(line))
+	ld, _ = record("shop", "worker", strBody(line))
 	assertUnchanged(t, run(t, cfg, ld), line)
 }
 
-func TestDefaultConfig_MatchesAnemoSnoozeProcessor(t *testing.T) {
+func TestDefaultConfig_MatchesDefaultRule(t *testing.T) {
 	cfg := defaultConfig()
 
-	if len(cfg.Match) != 1 || cfg.Match[0] != (MatchRule{Namespace: "anemo", Container: "snooze-processor"}) {
-		t.Errorf("default match = %+v, want anemo/snooze-processor", cfg.Match)
+	if len(cfg.Match) != 1 || cfg.Match[0] != (MatchRule{Namespace: "shop", Container: "worker"}) {
+		t.Errorf("default match = %+v, want shop/worker", cfg.Match)
 	}
 }
 

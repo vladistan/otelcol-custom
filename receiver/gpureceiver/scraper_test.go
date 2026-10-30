@@ -1,4 +1,4 @@
-// Modified by Vlad Korolev, 2026-10: lifecycle tests against a recording port; metric-content tests move to the collect package.
+// Modified: lifecycle tests against a recording port; metric-content tests move to the collect package.
 // Original: https://github.com/pmady/otel-gpu-receiver@ac756935ca040923d98af5a0d0547dca02a3b23b/scraper_test.go
 
 package gpureceiver
@@ -151,7 +151,7 @@ func twoGPUs() []port.Device {
 	}
 }
 
-// AC-023a: the first scrape makes exactly one Init call, later scrapes none.
+// The first scrape makes exactly one Init call, later scrapes none.
 func TestFirstScrapeInitialisesOnce(t *testing.T) {
 	f := newFixture(&recordingPort{version: "550.54", devices: twoGPUs()})
 	require.NoError(t, f.scraper.start(context.Background(), nil))
@@ -225,7 +225,7 @@ func TestScrapePassesDeviceIdentitiesToBuilder(t *testing.T) {
 	}, f.built[0].devices)
 }
 
-// EC-001..005: every Init failure kind gives one WARN, then silent empty scrapes.
+// Every Init failure kind gives one WARN, then silent empty scrapes.
 func TestInitFailureWarnsOnceThenStaysSilent(t *testing.T) {
 	for _, kind := range []port.Kind{
 		port.LibraryNotFound, port.DriverNotLoaded, port.NoPermission, port.VersionMismatch, port.Other,

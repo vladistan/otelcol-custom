@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Compares the core, contrib, aws-sdk-go-v2 and go-expohisto versions in a
-# generated manifest go.mod with the committed baseline (stop rules 05-S1,
-# 07-S1).
+# generated manifest go.mod with the committed baseline.
 # Generates with OCB in a scratch output dir; the stale build/<name>/go.mod
 # is never read.
 #

@@ -1,0 +1,98 @@
+[
+  {
+    "body": {
+      "object": {
+        "deprecatedCount": 1,
+        "kind": "Event",
+        "metadata": {
+          "name": "otel-cluster.18e1a856e40c095e",
+          "namespace": "opentelemetry"
+        },
+        "note": "Scaled down replica set otel-cluster-8676dd6bcc from 1 to 0",
+        "reason": "ScalingReplicaSet",
+        "regarding": {
+          "kind": "Deployment",
+          "name": "otel-cluster",
+          "namespace": "opentelemetry"
+        },
+        "type": "Normal"
+      },
+      "type": "ADDED"
+    },
+    "name": "apps-eks-v0 event scaling replica set"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "labels": {
+            "app": "docs",
+            "job-name": "worker-29883180"
+          },
+          "name": "worker-29883180-rngns",
+          "namespace": "docs"
+        },
+        "status": {
+          "phase": "Pending"
+        }
+      },
+      "type": "ADDED"
+    },
+    "name": "apps-eks-v0 pod pending job"
+  },
+  {
+    "body": {
+      "object": {
+        "deprecatedCount": 1,
+        "kind": "Event",
+        "metadata": {
+          "name": "otel-cluster.18e1a85bc84e1981",
+          "namespace": "opentelemetry"
+        },
+        "note": "Scaled down replica set otel-cluster-86cf85fc96 from 1 to 0",
+        "reason": "ScalingReplicaSet",
+        "regarding": {
+          "kind": "Deployment",
+          "name": "otel-cluster",
+          "namespace": "opentelemetry"
+        },
+        "type": "Normal"
+      },
+      "type": "ADDED"
+    },
+    "name": "site-k8s event scaling replica set"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "coredns-79b94494c7-4g4tb",
+          "namespace": "kube-system"
+        },
+        "spec": {
+          "nodeName": "node-a"
+        },
+        "status": {
+          "containerStatuses": [
+            {
+              "name": "coredns",
+              "ready": false,
+              "restartCount": 5,
+              "state": {
+                "terminated": {
+                  "exitCode": 255,
+                  "reason": "Unknown"
+                }
+              }
+            }
+          ],
+          "phase": "Running"
+        }
+      },
+      "type": "MODIFIED"
+    },
+    "name": "site-k8s pod running with terminated container"
+  }
+]

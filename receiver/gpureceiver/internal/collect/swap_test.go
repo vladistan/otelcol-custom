@@ -14,8 +14,8 @@ import (
 	"github.com/vladistan/otelcol-custom/receiver/gpureceiver/internal/semconv"
 )
 
-// portCase builds an uninitialised port. Phase 6 appends the real adapter
-// case from a linux&&cgo file; it skips when Init fails.
+// portCase builds an uninitialised port. The real adapter
+// case is appended from a linux&&cgo file; it skips when Init fails.
 type portCase struct {
 	name string
 	new  func(t *testing.T) port.Port

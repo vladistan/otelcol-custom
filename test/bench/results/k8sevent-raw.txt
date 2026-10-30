@@ -1,0 +1,26 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/vladistan/otelcol-custom/test/bench
+cpu: x86-64
+BenchmarkK8sEvent/impl=ottl-32         	      99	  11725742 ns/op	     11726 ns/record	 3531250 B/op	  124468 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  11801538 ns/op	     11802 ns/record	 3530947 B/op	  124468 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  12210085 ns/op	     12210 ns/record	 3530847 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  11704325 ns/op	     11704 ns/record	 3530848 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  11832346 ns/op	     11832 ns/record	 3530798 B/op	  124468 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  11930547 ns/op	     11931 ns/record	 3530792 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  12063183 ns/op	     12063 ns/record	 3530796 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	      99	  11647536 ns/op	     11648 ns/record	 3530721 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	     100	  13732830 ns/op	     13733 ns/record	 3530647 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=ottl-32         	      87	  17778654 ns/op	     17779 ns/record	 3530496 B/op	  124467 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     178	   6752747 ns/op	      6753 ns/record	 4602995 B/op	   87384 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     177	   6592871 ns/op	      6593 ns/record	 4602943 B/op	   87385 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     189	   6231407 ns/op	      6231 ns/record	 4603102 B/op	   87386 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     190	   6307127 ns/op	      6307 ns/record	 4603070 B/op	   87386 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     187	   6410622 ns/op	      6411 ns/record	 4603074 B/op	   87385 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     189	   6356102 ns/op	      6356 ns/record	 4603054 B/op	   87386 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     181	   6330212 ns/op	      6330 ns/record	 4602953 B/op	   87385 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     190	   6243570 ns/op	      6244 ns/record	 4603060 B/op	   87385 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     190	   6219238 ns/op	      6219 ns/record	 4603103 B/op	   87385 allocs/op
+BenchmarkK8sEvent/impl=k8sevent-32     	     189	   6273411 ns/op	      6273 ns/record	 4602991 B/op	   87385 allocs/op
+PASS
+ok  	github.com/vladistan/otelcol-custom/test/bench	37.571s

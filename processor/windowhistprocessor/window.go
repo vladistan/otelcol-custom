@@ -50,7 +50,7 @@ func (p *windowProcessor) collect(send time.Duration, end time.Time) (pmetric.Me
 	}
 	keys := make([]string, 0, len(p.series))
 	for key, s := range p.series {
-		if s.route.SendInterval == send && s.samples > 0 {
+		if s.route.SendInterval == send {
 			keys = append(keys, key)
 		}
 	}
@@ -61,6 +61,13 @@ func (p *windowProcessor) collect(send time.Duration, end time.Time) (pmetric.Me
 	scopes := map[string]pmetric.ScopeMetrics{}
 	for _, key := range keys {
 		s := p.series[key]
+		if s.samples == 0 {
+			if s.markIdle() {
+				delete(p.series, key)
+			}
+			continue
+		}
+		s.idleWindows = 0
 		rm, ok := resources[s.resKey]
 		if !ok {
 			rm = out.ResourceMetrics().AppendEmpty()
@@ -74,18 +81,19 @@ func (p *windowProcessor) collect(send time.Duration, end time.Time) (pmetric.Me
 			s.scope.CopyTo(sm.Scope())
 			scopes[scopeID] = sm
 		}
-		emit(sm.Metrics().AppendEmpty(), s, w.start, end)
+		emit(sm.Metrics(), s, w.start, end)
 		s.endWindow()
 	}
 	w.start = end
-	return out, len(keys) > 0
+	return out, out.DataPointCount() > 0
 }
 
-func emit(m pmetric.Metric, s *series, start, end time.Time) {
-	m.SetName(s.name)
-	m.SetUnit(s.unit)
-	m.SetDescription(s.desc)
+// emit appends what a series sends for the closed window: the histogram or
+// last plain value, and the last counter point when keep_counter is on.
+func emit(ms pmetric.MetricSlice, s *series, start, end time.Time) {
 	if s.route.Mode == ModePlain {
+		m := ms.AppendEmpty()
+		describe(m, s.name, s.unit, s.desc)
 		if s.lastKind == pmetric.MetricTypeGauge {
 			s.last.CopyTo(m.SetEmptyGauge().DataPoints().AppendEmpty())
 			return
@@ -97,6 +105,27 @@ func emit(m pmetric.Metric, s *series, start, end time.Time) {
 		return
 	}
 
+	if s.window.Count() > 0 {
+		emitHistogram(ms.AppendEmpty(), s, start, end)
+	}
+	if s.route.KeepCounter && s.hasCounter {
+		m := ms.AppendEmpty()
+		describe(m, s.srcName, s.srcUnit, s.desc)
+		sum := m.SetEmptySum()
+		sum.SetIsMonotonic(true)
+		sum.SetAggregationTemporality(s.temporality)
+		s.lastCounter.CopyTo(sum.DataPoints().AppendEmpty())
+	}
+}
+
+func describe(m pmetric.Metric, name, unit, desc string) {
+	m.SetName(name)
+	m.SetUnit(unit)
+	m.SetDescription(desc)
+}
+
+func emitHistogram(m pmetric.Metric, s *series, start, end time.Time) {
+	describe(m, s.name, s.unit, s.desc)
 	eh := m.SetEmptyExponentialHistogram()
 	h, from := s.window, start
 	eh.SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
@@ -135,21 +164,27 @@ func fillBuckets(dst pmetric.ExponentialHistogramDataPointBuckets, src *structur
 // endWindow clears what the closed window held.
 func (s *series) endWindow() {
 	s.samples = 0
+	s.hasCounter = false
 	if s.window != nil {
 		s.window.Clear()
 	}
 }
 
-// startTickers runs one ticker per send interval until ctx ends.
-func (p *windowProcessor) startTickers(ctx context.Context) {
+// sendIntervals lists the distinct send intervals, shortest first.
+func (p *windowProcessor) sendIntervals() []time.Duration {
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	intervals := make([]time.Duration, 0, len(p.windows))
 	for send := range p.windows {
 		intervals = append(intervals, send)
 	}
-	p.mu.Unlock()
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i] < intervals[j] })
+	return intervals
+}
 
-	for _, send := range intervals {
+// startTickers runs one ticker per send interval until ctx ends.
+func (p *windowProcessor) startTickers(ctx context.Context) {
+	for _, send := range p.sendIntervals() {
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()

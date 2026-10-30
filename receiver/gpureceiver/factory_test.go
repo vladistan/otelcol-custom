@@ -1,4 +1,4 @@
-// Modified by Vlad Korolev, 2026-10: port constructor injected; stub-platform and zero-port-call tests added.
+// Modified: port constructor injected; stub-platform and zero-port-call tests added.
 // Original: https://github.com/pmady/otel-gpu-receiver@ac756935ca040923d98af5a0d0547dca02a3b23b/factory_test.go
 
 package gpureceiver
@@ -29,7 +29,7 @@ func TestNewFactory(t *testing.T) {
 	assert.NotNil(t, f.CreateDefaultConfig())
 }
 
-// AC-022: the default config has a 10s interval and every metric enabled.
+// The default config has a 10s interval and every metric enabled.
 func TestFactoryDefaultConfig(t *testing.T) {
 	cfg, ok := NewFactory().CreateDefaultConfig().(*Config)
 	require.True(t, ok)
@@ -41,7 +41,7 @@ func TestFactoryDefaultConfig(t *testing.T) {
 	}
 }
 
-// AC-023: create, Start and Shutdown make zero port calls.
+// Create, Start and Shutdown make zero port calls.
 func TestCreateStartShutdownMakePortCallsNone(t *testing.T) {
 	p := &recordingPort{}
 	f := newFactory(recordingFactory(p), newEmptyCollector)

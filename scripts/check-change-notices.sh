@@ -5,7 +5,7 @@
 # authority.
 #
 # Each README row | `upstream` | `module` | must name a file that exists in K1
-# and carries "Modified by" and "Original: <url>@<sha>/<path>" in its first six
+# and carries "Modified:" and "Original: <url>@<sha>/<path>" in its first six
 # lines. No other file may carry an Original: line. LICENSE, and NOTICE if K1
 # has one, must match K1.
 #
@@ -69,8 +69,8 @@ check_notices() {
 			continue
 		fi
 		header=$(head -n "$HEADER_LINES" "$module/$mod")
-		printf '%s\n' "$header" | grep -q 'Modified by' ||
-			fail "$mod has no 'Modified by' notice in its first $HEADER_LINES lines"
+		printf '%s\n' "$header" | grep -q 'Modified:' ||
+			fail "$mod has no 'Modified:' notice in its first $HEADER_LINES lines"
 		printf '%s\n' "$header" | grep -qF "Original: $UPSTREAM_URL@$sha/$up" ||
 			fail "$mod has no 'Original: $UPSTREAM_URL@$sha/$up' line"
 		listed="$listed$mod"$'\n'
@@ -101,7 +101,7 @@ FIXTURE_SHA=$(printf 'ab%.0s' {1..20})
 readonly FIXTURE_SHA
 
 fixture_notice() {
-	printf '// Modified by Someone, 2026-10: test.\n// Original: %s@%s/%s\n\npackage x\n' \
+	printf '// Modified: test.\n// Original: %s@%s/%s\n\npackage x\n' \
 		"$UPSTREAM_URL" "${2:-$FIXTURE_SHA}" "$1"
 }
 
@@ -143,7 +143,7 @@ self_test() {
 	expect "every moved file carries its notice" 0
 
 	printf 'package x\n' >"$fixture/m/a.go"
-	expect "moved file without a notice" 1 "a.go has no 'Modified by'"
+	expect "moved file without a notice" 1 "a.go has no 'Modified:'"
 
 	fixture_notice a.go deadbeefdeadbeefdeadbeefdeadbeefdeadbeef >"$fixture/m/a.go"
 	expect "notice with the wrong upstream sha" 1 "a.go has no 'Original:"

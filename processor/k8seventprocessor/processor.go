@@ -73,14 +73,15 @@ func (p *k8sEventProcessor) processLogRecord(lr plog.LogRecord) {
 	// 2. body.object (alternative format)
 	// 3. body itself contains kind=Event (direct event)
 
-	var object pcommon.Map
-	var found bool
+	var object, wrapper pcommon.Map
+	var found, hasWrapper bool
 
 	// Format 1: body.structured.object
 	if structuredVal, ok := bodyMap.Get("structured"); ok && structuredVal.Type() == pcommon.ValueTypeMap {
 		structured := structuredVal.Map()
 		if objectVal, ok := structured.Get("object"); ok && objectVal.Type() == pcommon.ValueTypeMap {
 			object = objectVal.Map()
+			wrapper, hasWrapper = structured, true
 			found = true
 		}
 	}
@@ -89,6 +90,7 @@ func (p *k8sEventProcessor) processLogRecord(lr plog.LogRecord) {
 	if !found {
 		if objectVal, ok := bodyMap.Get("object"); ok && objectVal.Type() == pcommon.ValueTypeMap {
 			object = objectVal.Map()
+			wrapper, hasWrapper = bodyMap, true
 			found = true
 		}
 	}
@@ -112,11 +114,21 @@ func (p *k8sEventProcessor) processLogRecord(lr plog.LogRecord) {
 	}
 
 	kind := kindVal.Str()
-	switch kind {
-	case "Event":
+	if kind != "Event" && kind != "Pod" {
+		return
+	}
+
+	var parity parityFields
+	if p.config.OTTLParity {
+		parity = collectParity(wrapper, hasWrapper, object, kind)
+	}
+	if kind == "Event" {
 		p.processEventObject(lr, object)
-	case "Pod":
+	} else {
 		p.processPodObject(lr, object)
+	}
+	if p.config.OTTLParity {
+		parity.apply(lr)
 	}
 }
 

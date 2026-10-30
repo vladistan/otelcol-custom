@@ -10,4 +10,4 @@
 //   - ipsec.connection_name, ipsec.event_type, ipsec.peer
 package ipsecprocessor // import "github.com/vladistan/otelcol-custom/processor/ipsecprocessor"
 
-// TODO: Implement in Phase 3.6
+// TODO: not implemented yet.

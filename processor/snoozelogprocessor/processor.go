@@ -65,7 +65,7 @@ func (p *snoozeProcessor) matches(res pcommon.Map) bool {
 }
 
 // parse sets severity from the first line and keeps any later lines in the body.
-// The line carries no date, so the record timestamp is left alone (D-6).
+// The line carries no date, so the record timestamp is left alone.
 func parse(lr plog.LogRecord) {
 	if lr.Body().Type() != pcommon.ValueTypeStr {
 		return

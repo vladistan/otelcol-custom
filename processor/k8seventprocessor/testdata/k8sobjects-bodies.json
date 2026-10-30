@@ -1,0 +1,201 @@
+[
+  {
+    "body": {
+      "object": {
+        "deprecatedCount": 1,
+        "deprecatedSource": {
+          "component": "kubelet"
+        },
+        "kind": "Event",
+        "metadata": {
+          "name": "worker-29883137-sccdh.18e1f9498097409b",
+          "namespace": "shop"
+        },
+        "note": "Started container worker",
+        "reason": "Started",
+        "regarding": {
+          "kind": "Pod",
+          "name": "worker-29883137-sccdh",
+          "namespace": "shop"
+        },
+        "type": "Normal"
+      },
+      "type": "ADDED"
+    },
+    "name": "event normal started"
+  },
+  {
+    "body": {
+      "object": {
+        "deprecatedCount": 7,
+        "kind": "Event",
+        "metadata": {
+          "name": "web-1.18e1",
+          "namespace": "shop"
+        },
+        "note": "Back-off restarting failed container",
+        "reason": "BackOff",
+        "regarding": {
+          "kind": "Pod",
+          "name": "web-1",
+          "namespace": "shop"
+        },
+        "type": "Warning"
+      },
+      "type": "MODIFIED"
+    },
+    "name": "event warning backoff"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Event",
+        "metadata": {
+          "name": "web-1.18e2",
+          "namespace": "shop"
+        },
+        "note": "Stopping container web",
+        "reason": "Killing",
+        "regarding": {
+          "kind": "Pod",
+          "name": "web-1",
+          "namespace": "shop"
+        },
+        "type": "Normal"
+      },
+      "type": "DELETED"
+    },
+    "name": "event deleted"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Event",
+        "metadata": {
+          "name": "bare-event",
+          "namespace": "shop"
+        },
+        "type": "Normal"
+      },
+      "type": "ADDED"
+    },
+    "name": "event empty message"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Event",
+        "metadata": {
+          "name": "odd-event",
+          "namespace": "shop"
+        },
+        "reason": "Odd",
+        "type": "Other"
+      },
+      "type": "ADDED"
+    },
+    "name": "event other type"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "labels": {
+            "app": "web",
+            "environment": "prod",
+            "job-name": "worker-29882957"
+          },
+          "name": "worker-29882957-lhq7j",
+          "namespace": "shop",
+          "uid": "00000000-0000-4000-8000-000000000001"
+        },
+        "spec": {
+          "nodeName": "node-a"
+        },
+        "status": {
+          "containerStatuses": [
+            {
+              "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/shop/web:1.0.0",
+              "name": "worker",
+              "ready": false,
+              "restartCount": 0,
+              "state": {
+                "terminated": {
+                  "exitCode": 1,
+                  "reason": "Error"
+                }
+              }
+            }
+          ],
+          "phase": "Failed"
+        }
+      },
+      "type": "MODIFIED"
+    },
+    "name": "pod failed terminated"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "web-1",
+          "namespace": "shop",
+          "uid": "uid-1"
+        },
+        "spec": {
+          "nodeName": "node-b"
+        },
+        "status": {
+          "containerStatuses": [
+            {
+              "ready": true,
+              "restartCount": 2,
+              "state": {
+                "running": {
+                  "startedAt": "2026-10-26T04:17:00Z"
+                }
+              }
+            }
+          ],
+          "phase": "Running"
+        }
+      },
+      "type": "ADDED"
+    },
+    "name": "pod running"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "web-2",
+          "namespace": "shop"
+        },
+        "status": {
+          "phase": "Pending"
+        }
+      },
+      "type": "ADDED"
+    },
+    "name": "pod pending no statuses"
+  },
+  {
+    "body": {
+      "object": {
+        "kind": "Pod",
+        "metadata": {
+          "name": "web-3",
+          "namespace": "shop"
+        },
+        "status": {
+          "phase": "Succeeded"
+        }
+      },
+      "type": "DELETED"
+    },
+    "name": "pod deleted"
+  }
+]

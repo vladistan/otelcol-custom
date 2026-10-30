@@ -13,6 +13,7 @@ import (
 
 const (
 	typeStr   = "windowhist"
+	scopeName = "github.com/vladistan/otelcol-custom/processor/windowhistprocessor"
 	stability = component.StabilityLevelDevelopment
 )
 
@@ -31,7 +32,7 @@ func createMetricsProcessor(
 	cfg component.Config,
 	nextConsumer consumer.Metrics,
 ) (processor.Metrics, error) {
-	p, err := newWindowProcessor(cfg.(*Config), nextConsumer)
+	p, err := newWindowProcessor(cfg.(*Config), nextConsumer, set.MeterProvider.Meter(scopeName))
 	if err != nil {
 		return nil, err
 	}

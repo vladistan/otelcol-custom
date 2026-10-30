@@ -16,9 +16,9 @@ Reads `/proc/pressure/{cpu,memory,io}` on a `collection_interval` (default
 | `system.pressure.<resource>.some.avg10` | cpu, memory, io | 10s rolling average |
 | `system.pressure.<resource>.some.avg60` | cpu, memory, io | 60s rolling average |
 | `system.pressure.<resource>.some.avg300` | cpu, memory, io | 300s rolling average |
-| `system.pressure.<resource>.full.avg10` | memory, io only | cpu has no "full" state |
-| `system.pressure.<resource>.full.avg60` | memory, io only | |
-| `system.pressure.<resource>.full.avg300` | memory, io only | |
+| `system.pressure.<resource>.full.avg10` | cpu, memory, io | cpu `full` needs kernel 5.13 or later |
+| `system.pressure.<resource>.full.avg60` | cpu, memory, io | |
+| `system.pressure.<resource>.full.avg300` | cpu, memory, io | |
 
 Emitted on the **edge** profile (see `test/configs/local-edge.yaml`, `psi`
 receiver in the `metrics` pipeline).
@@ -41,6 +41,81 @@ CPU count is auto-detected (`runtime.NumCPU()`) unless overridden via the
 already-normalized CPU metrics back into single-core ("top-style")
 percentages, and to make load averages comparable across hosts with
 different core counts.
+
+### Summarization — `processor/windowhistprocessor`
+
+Turns the samples scraped inside one send window into one point per series.
+Scrape and send intervals default to 10s and 60s; each group may override
+either.
+
+| Group | Mode | Metrics |
+|---|---|---|
+| `cpu` | histogram | `system.cpu.utilization`, `.percpu` |
+| `memory` | histogram | `system.memory.usage`, `.utilization` |
+| `disk_latency` | histogram | Linux `system.disk.pending_operations`; Windows `windows.physicaldisk.queue_length`, `avg_queue_length`, `operation_latency`, `idle_time` |
+| `disk_io_rate` | histogram | Linux `system.disk.io`, `.operations`; Windows `windows.physicaldisk.io`, `.transfers` |
+| `network_rate` | histogram | `system.network.io`, `.packets`, `.errors`, `.dropped` |
+| `cpu_pressure`, `memory_pages`, `network_pressure` | histogram | Windows perf counters |
+| `gpu` | histogram | `hw.gpu.utilization`, `hw.gpu.memory.utilization`, `hw.temperature`, `hw.power` |
+| `psi`, `process`, `filesystem`, `plain` | plain | PSI gauges, per-process metrics including `process.cpu.utilization.percpu`, filesystem space; counters, load and normalized load, paging, `system.disk.io_time`, `.weighted_io_time`, `.operation_time`, `.merged`, committed bytes, commit limit, connection counts, GPU counters |
+
+The `normalizedload` processor runs before `windowhist`, so its derived `.percpu` and
+`.normalized` metrics are grouped like their source metrics. A metric no group lists passes
+through at the scrape interval.
+
+A plain group sends the last value per window with its own timestamps. A plain
+group with scrape = send passes through unchanged, as does any metric no group lists.
+
+**Rate metrics.** A cumulative counter in a histogram group becomes
+`<name>.rate` with unit `<unit>/s`. Each rate is the counter difference over the
+measured time between two readings. A counter drop or start-time change skips
+that pair and re-baselines. With `keep_counter` (default on for counter groups)
+the last counter point is sent as well.
+
+**Temporality.** Histograms are delta by default. `temporality: cumulative`
+starts each series at its first-seen time. The Elasticsearch exporter drops
+cumulative histograms with a WARN; ClickHouse stores both.
+
+**Self-metrics.**
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `otelcol_processor_windowhist_series_active` | gauge | series buffered now |
+| `otelcol_processor_windowhist_samples_received` | counter | grouped data points received |
+| `otelcol_processor_windowhist_samples_discarded{reason}` | counter | `late`, `invalid`, `counter_reset` |
+
+A series idle for two windows is removed. Shutdown sends the open window with
+its real start and end. One WARN per group says when samples arrive further
+than half a scrape interval from the declared one.
+
+**Off switch.** Take `windowhist` out of the pipeline and set each receiver's
+`collection_interval` to its group's `send_interval`; output then matches the
+unsummarized config.
+
+**Cost.** Measured over one hour with the static edge build in a Linux build
+container on a 32-CPU VM. Both runs use the same scrapers and a background
+disk-write load. The baseline scrapes every 60s without `windowhist`. The
+`windowhist` run scrapes every 10s (filesystem 15m) and sends every 60s.
+
+| Measure | Without `windowhist` | With `windowhist` | Change |
+|---|---|---|---|
+| CPU time | 3.24 CPU-s (0.09% of one core) | 6.27 CPU-s (0.17%) | 1.94x |
+| RSS at the end | 69.7 MiB | 82.4 MiB | +12.7 MiB; the `windowhist` process grew 36.8 MiB over the hour |
+| Egress | 460,082 B (122 messages) | 1,037,595 B (61 messages) | 2.26x gzip, 3.28x raw proto |
+
+Egress is the file exporter in proto format with each message gzipped alone.
+CPU series make up 77% of the `windowhist` run's bytes: `system.cpu.utilization`
+30%, `.percpu` 27.5%, `system.cpu.time` 20%. On this VM each is 256 per-CPU
+series, so a host with fewer CPUs costs less. The CPU baseline varied between
+3.24 and 4.51 CPU-s across runs, so treat the CPU ratio as approximate.
+
+Put every metric in a group. A metric that no group lists passes through at the
+scrape interval, which sent 3.76 times the baseline bytes before the
+`normalizedload` outputs were added to groups. A test capture confirms that no
+metric passes through at the scrape interval now.
+
+With all groups plain at 60s/60s the output matches the baseline build: 47
+metric names, same types and counts.
 
 ## Resource-attribute enrichment (not new metrics)
 

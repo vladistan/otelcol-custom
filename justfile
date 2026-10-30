@@ -1,15 +1,15 @@
 # otelcol-custom build commands
 # Requires: Go 1.23+, OCB (OpenTelemetry Collector Builder)
 
-# Track recipe files (plan 08): T1 Windows edge, T4 scrape collector.
+# Recipe files: Windows edge and scrape collector.
 import 'just/windows.just'
 import 'just/scrape.just'
 
 # OCB and collector versions
 # Two OCB versions are pinned: default uses v0.115.0, edge/gateway/scrape use
 # v0.154.0. OCB's generated go.mod tracks the OCB release, not the component
-# versions it builds, so a mismatched OCB produces an unresolvable go.mod
-# (Phase 10 Steps 10.3/10.4). Each generate recipe pins its own OCB version
+# versions it builds, so a mismatched OCB produces an unresolvable go.mod.
+# Each generate recipe pins its own OCB version
 # via `go run ...@version` instead of sharing one installed `builder` binary.
 ocb_version := "0.115.0"
 ocb_version_v154 := "0.154.0"
@@ -23,7 +23,7 @@ build_date := `date -u +%Y-%m-%dT%H:%M:%SZ`
 # Base ldflags (version and commit, service name added per-profile)
 base_ldflags := "-s -w -X main.version=" + version + " -X main.commit=" + commit
 
-# Staging directory for public release artifacts (Phase 2, gitignored)
+# Staging directory for public release artifacts (gitignored)
 dist_public_dir := "dist/public/" + version
 
 # Alpine image used to run staged binaries in verify-public-artifacts. Must
@@ -235,8 +235,8 @@ generate-edge-windows:
     go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-windows.yaml --skip-compilation
 
 # Fail unless builder-edge-windows.yaml differs from builder-edge-static.yaml
-# only by the allowed list in the script; extend that list when a step adds
-# a component to the Windows manifest.
+# only by the allowed list in the script; extend that list when a
+# component is added to the Windows manifest.
 check-edge-windows-manifest:
     scripts/check-edge-windows-manifest.sh
 
@@ -317,9 +317,9 @@ verify-scrape:
     @echo "Available components:"
     ./build/scrape/otelcol-scrape components
 
-# Build the scrape image, local tag only (FR-028). No registry namespace and
-# no push recipe - no scrape publication is authorized by this work. Deliberately
-# absent from release-public, release-gateway and release.yml.
+# Build the scrape image, local tag only. The GHCR build, push and
+# verify recipes are in just/scrape.just; this one is absent from release-public,
+# release-gateway and release.yml.
 docker-build-scrape:
     @echo "Building local Docker image for otelcol-scrape v{{version}}..."
     docker build --platform linux/amd64 \
@@ -366,7 +366,7 @@ verify-gateway:
 ecr_registry := "123456789012.dkr.ecr.us-east-1.amazonaws.com"
 ecr_repo_gateway := ecr_registry + "/otelcol-gateway"
 
-# GHCR repository for the public gateway image (Phase 5 of the public-release plan)
+# GHCR repository for the public gateway image
 ghcr_registry := "ghcr.io/vladistan"
 ghcr_repo_gateway := ghcr_registry + "/otelcol-gateway"
 
@@ -465,7 +465,7 @@ test-custom:
     just test-rotating-sink
 
 # Run tests for every nested Go module under processor/, receiver/, stanza/
-# and test/, dynamically discovered rather than hardcoded (FR-029).
+# and test/, dynamically discovered rather than hardcoded.
 test-nested-modules:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -487,7 +487,7 @@ test-nested-modules:
     exit "$status"
 
 # Fail when a generated go.mod changes a core, contrib or aws-sdk-go-v2
-# version against test/baselines/gomod (stop rules 05-S1, 07-S1). Arguments
+# version against test/baselines/gomod. Arguments
 # pass to the script: manifest names, or --update to rewrite baselines.
 check-gomod-graph *args:
     OCB_VERSION={{ocb_version_v154}} scripts/check-gomod-graph.sh {{args}}
@@ -507,15 +507,14 @@ test-build:
     cd build && go test ./...
 
 # Run all tests (custom + build). test-nested-modules is intentionally not
-# included here: 3 of its 28 modules carry pre-existing, PUB_MANIFEST.md-
-# documented accepted-baseline defects (missing go.sum / a stale assertion),
+# included here: 3 of its 28 modules carry pre-existing,
+# known baseline defects (missing go.sum / a stale assertion),
 # so wiring it in would make this aggregate fail by default over issues
 # unrelated to whatever change triggered the run. Invoke it directly.
 test: test-custom test-build
 
 # 28 nested Go modules under processor/, receiver/, and stanza/ have their own
 # go.mod. A root-level glob cannot see them, so each one is checked directly.
-# See the "Accepted Baseline Defects" notes in the project's development docs.
 _check-all-modules name +cmd:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -598,7 +597,7 @@ sentry-release profile="edge":
 release-edge: build-edge-linux sentry-release
 
 # =============================================================================
-# Public Release Artifacts (Phase 2 of the public-release plan)
+# Public Release Artifacts
 # =============================================================================
 
 # Stage edge and gateway binaries under public artifact names, with a checksum manifest
@@ -677,7 +676,7 @@ verify-public-artifacts:
 
 # Prove the golang and alpine base-image pins agree everywhere they are
 # consumed, by resolving each digest to its real advertised version rather
-# than comparing pins as text (FR-027). Reports the drifted site and exits
+# than comparing pins as text. Reports the drifted site and exits
 # non-zero; never mutates a pin.
 check-base-images-sync:
     #!/usr/bin/env bash
@@ -779,10 +778,10 @@ check-base-images-sync:
     exit "$status"
 
 # =============================================================================
-# GitHub Release as the Assembly Point (Phase 3 of the public-release plan)
+# GitHub Release as the Assembly Point
 # =============================================================================
 
-# Public repository the GitHub Release targets, per docs/public-release.md
+# Public repository the GitHub Release targets
 public_repo := "vladistan/otelcol-custom"
 
 # Create the GitHub Release for the current VERSION on the public repo if it
@@ -835,7 +834,7 @@ verify-release-download:
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     base="https://github.com/${repo}/releases/download/${tag}"
-    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-edge-{{version}}-linux-amd64-gpu" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
+    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-edge-{{version}}-linux-amd64-gpu" "otelcol-edge-{{version}}-windows-amd64.exe" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
         echo "Downloading $name anonymously..."
         curl -fsSL -o "$tmp/$name" "$base/$name"
     done
@@ -871,7 +870,7 @@ release-rc-dry-run: stage-public-artifacts
     echo "Clean up with: gh release delete $tag --repo $repo --yes --cleanup-tag"
 
 # =============================================================================
-# Public Binary Downloads on the Website (Phase 4)
+# Public Binary Downloads on the Website
 # =============================================================================
 
 # Directory the Release's assets are downloaded into and the site is assembled in
@@ -894,8 +893,8 @@ publish-site:
 
     command -v netlify >/dev/null 2>&1 || { echo "netlify CLI not found - install with: npm install -g netlify-cli" >&2; exit 1; }
     command -v jq >/dev/null 2>&1 || { echo "jq not found - required to parse the netlify deploy output" >&2; exit 1; }
-    netlify api getCurrentUser >/dev/null 2>&1 || { echo "not logged in to netlify - run: netlify login - see docs/public-release.md" >&2; exit 1; }
-    [ -n "${NETLIFY_SITE_ID:-}" ] || { echo "NETLIFY_SITE_ID is not set - see docs/public-release.md" >&2; exit 1; }
+    netlify api getCurrentUser >/dev/null 2>&1 || { echo "not logged in to netlify - run: netlify login" >&2; exit 1; }
+    [ -n "${NETLIFY_SITE_ID:-}" ] || { echo "NETLIFY_SITE_ID is not set" >&2; exit 1; }
 
     # Whatever the Release currently holds. Zero assets is a hard failure,
     # never a warning: a download page with no downloads is never the thing
@@ -927,7 +926,7 @@ publish-site:
     scripts/assemble_site.sh verify --base-url "${url%/}" --site "$site"
 
 # =============================================================================
-# One-Command Public Release (Phase 6 of the public-release plan)
+# One-Command Public Release
 # =============================================================================
 
 # Full public release: stage binaries, upload them to the GitHub Release,

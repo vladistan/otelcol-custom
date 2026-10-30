@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver/receivertest"
 )
@@ -30,16 +29,10 @@ func TestDefaultConfigNeedsQueueAndRegion(t *testing.T) {
 	}
 }
 
-func TestReceiverStartsAndStops(t *testing.T) {
+func TestFactoryCreatesLogsReceiver(t *testing.T) {
 	set := receivertest.NewNopSettings(component.MustNewType(typeStr))
-	rcv, err := NewFactory().CreateLogs(context.Background(), set, NewFactory().CreateDefaultConfig(), consumertest.NewNop())
-	if err != nil {
+	rcv, err := NewFactory().CreateLogs(context.Background(), set, validConfig(), consumertest.NewNop())
+	if err != nil || rcv == nil {
 		t.Fatalf("create receiver: %v", err)
-	}
-	if err := rcv.Start(context.Background(), componenttest.NewNopHost()); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	if err := rcv.Shutdown(context.Background()); err != nil {
-		t.Fatalf("shutdown: %v", err)
 	}
 }

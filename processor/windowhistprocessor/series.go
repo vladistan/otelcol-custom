@@ -18,6 +18,14 @@ type groupRoute struct {
 	GroupSettings
 }
 
+// baseline is the previous counter reading a rate is measured from.
+type baseline struct {
+	valid bool
+	value float64
+	at    time.Time
+	start pcommon.Timestamp
+}
+
 // series is the buffered state of one metric stream.
 type series struct {
 	route    groupRoute
@@ -25,13 +33,17 @@ type series struct {
 	resKey   string
 	scope    pcommon.InstrumentationScope
 	scopeKey string
-	name     string
-	unit     string
-	desc     string
 	attrs    pcommon.Map
 
-	firstSeen time.Time
-	samples   int
+	// name and unit are what the histogram is emitted as; srcName and srcUnit
+	// are the incoming metric's.
+	name, unit, desc string
+	srcName, srcUnit string
+	firstSeen        time.Time
+	samples          int
+	idleWindows      int
+	prevAt           time.Time
+	hasPrev          bool
 
 	window *structure.Histogram[float64]
 	cum    *structure.Histogram[float64] // cumulative temporality only
@@ -40,6 +52,12 @@ type series struct {
 	lastKind    pmetric.MetricType
 	monotonic   bool
 	temporality pmetric.AggregationTemporality
+
+	// counter is true for a monotonic cumulative sum summarized as a rate.
+	counter     bool
+	base        baseline
+	lastCounter pmetric.NumberDataPoint // newest counter point, kept for keep_counter
+	hasCounter  bool
 }
 
 func resourceKey(r pcommon.Resource) string {
@@ -57,16 +75,19 @@ func seriesKey(resKey, scKey string, m pmetric.Metric, attrs pcommon.Map) string
 func newSeries(route groupRoute, rm pmetric.ResourceMetrics, sm pmetric.ScopeMetrics, m pmetric.Metric,
 	attrs pcommon.Map, now time.Time) *series {
 	s := &series{
-		route:     route,
-		resource:  pcommon.NewResource(),
-		scope:     pcommon.NewInstrumentationScope(),
-		name:      m.Name(),
-		unit:      m.Unit(),
-		desc:      m.Description(),
-		attrs:     pcommon.NewMap(),
-		firstSeen: now,
-		last:      pmetric.NewNumberDataPoint(),
-		lastKind:  m.Type(),
+		route:       route,
+		resource:    pcommon.NewResource(),
+		scope:       pcommon.NewInstrumentationScope(),
+		name:        m.Name(),
+		unit:        m.Unit(),
+		desc:        m.Description(),
+		srcName:     m.Name(),
+		srcUnit:     m.Unit(),
+		attrs:       pcommon.NewMap(),
+		firstSeen:   now,
+		last:        pmetric.NewNumberDataPoint(),
+		lastCounter: pmetric.NewNumberDataPoint(),
+		lastKind:    m.Type(),
 	}
 	rm.Resource().CopyTo(s.resource)
 	sm.Scope().CopyTo(s.scope)
@@ -84,6 +105,11 @@ func newSeries(route groupRoute, rm pmetric.ResourceMetrics, sm pmetric.ScopeMet
 		if route.Temporality == TemporalityCumulative {
 			s.cum = new(structure.Histogram[float64])
 			s.cum.Init(cfg)
+		}
+		if s.monotonic {
+			s.counter = true
+			s.name += ".rate"
+			s.unit += "/s"
 		}
 	}
 	return s

@@ -26,7 +26,7 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{Match: []MatchRule{{Namespace: "anemo", Container: "snooze-processor"}}}
+	return &Config{Match: []MatchRule{{Namespace: "shop", Container: "worker"}}}
 }
 
 func createLogsProcessor(

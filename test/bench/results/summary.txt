@@ -1,0 +1,38 @@
+Benchmarks for the journald, nginxlog and k8sevent processors. Raw output: bench-raw.txt.
+
+Run:    cd test/bench && go test -run=NONE -bench=. -count=10 .
+Host:   darwin/amd64, Go 1.27.1, one run, no other load control
+Unit:   ns/record (1000-record batch, fresh copy per iteration, copy outside the timer)
+Method: median of 10 runs per benchmark, computed with awk over bench-raw.txt.
+
+journaldprocessor vs the OTTL block (test/configs/local-gateway.yaml)
+
+  fixture   OTTL median   journald median   ratio   verdict
+  single    3334          1554              0.47    pass (journald faster)
+  mixed     4896          3542              0.72    pass (journald faster)
+
+  single = one unit across the batch (fast path); mixed = five units (split by resource).
+  The journald range sits fully below the OTTL range on both fixtures (single
+  1219-1587 vs 2888-3581; mixed 3216-3685 vs 4831-4980).
+
+nginxlogprocessor alone vs nginxlogprocessor followed by healthprobesampler
+
+  chain                         median   ratio   verdict
+  parser                        22588    1.00
+  parser + healthprobe          22050    0.98    pass (limit 1.10)
+
+  Batch: 30% probe lines (kube-probe on /healthz), 70% other lines; keep_ratio 0.2.
+  The two ranges overlap (parser 20536-24098, chain 21422-23191), so the run shows
+  no measurable healthprobe cost; the parser dominates at about 22 us per record.
+  The 0.98 ratio is noise, not a speed-up.
+
+k8seventprocessor (ottl_parity) vs transform/k8s_objects
+Raw output: k8sevent-raw.txt, same method and host.
+
+  impl        median   range         ratio   verdict
+  ottl        11882    11648-17779   1.00
+  k8sevent    6318     6219-6753     0.53    pass (k8sevent faster)
+
+  Batch: 1000 records cycling the nine bodies in processor/k8seventprocessor/testdata/
+  k8sobjects-bodies.json (events and pods, all watch types). The OTTL maximum is an
+  outlier run; the k8sevent range sits below the OTTL minimum.

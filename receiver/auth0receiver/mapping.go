@@ -31,7 +31,7 @@ type logEvent struct {
 	LogID       string `json:"log_id"`
 }
 
-// mapEnvelope turns one envelope into a single log record (AD-15).
+// mapEnvelope turns one envelope into a single log record.
 func mapEnvelope(env envelope) (plog.Logs, error) {
 	var detail eventDetail
 	if err := json.Unmarshal(env.Detail, &detail); err != nil {

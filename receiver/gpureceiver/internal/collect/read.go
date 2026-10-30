@@ -35,7 +35,7 @@ var clockDomains = []struct {
 }
 
 // readDevice reads in schema order. After GPU_IS_LOST the remaining reads
-// are skipped by query; points already added stay in the batch (D-13).
+// are skipped by query; points already added stay in the batch.
 func (c *Collector) readDevice(s *scrape, dev port.Device) {
 	c.readUtilization(s, dev)
 	c.readMemory(s, dev)

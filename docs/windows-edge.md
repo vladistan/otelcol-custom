@@ -57,36 +57,97 @@ The disk scraper is off. PhysicalDisk counters replace it.
 
 ## Performance-counter extensions
 
-Perf counters are named `windows.<object>.<counter>`. Retransmits are collected for `TCPv4`.
+Perf counters are named `windows.<object>.<counter>`. Disk and network series carry the receiver's `instance` attribute.
 
-| Metric | Unit | Counter |
-|---|---|---|
-| `windows.physical_disk.queue_length.current` | `{request}` | PhysicalDisk, Current Disk Queue Length |
-| `windows.physical_disk.queue_length.average` | `{request}` | PhysicalDisk, Avg. Disk Queue Length |
-| `windows.physical_disk.read.time` | `s` | PhysicalDisk, Avg. Disk sec/Read |
-| `windows.physical_disk.write.time` | `s` | PhysicalDisk, Avg. Disk sec/Write |
-| `windows.physical_disk.idle.time` | `%` | PhysicalDisk, % Idle Time |
-| `windows.physical_disk.transfers` | `{transfer}/s` | PhysicalDisk, Disk Transfers/sec |
-| `windows.physical_disk.read.rate` | `By/s` | PhysicalDisk, Disk Read Bytes/sec |
-| `windows.physical_disk.write.rate` | `By/s` | PhysicalDisk, Disk Write Bytes/sec |
-| `windows.memory.committed` | `By` | Memory, Committed Bytes |
-| `windows.memory.commit_limit` | `By` | Memory, Commit Limit |
-| `windows.memory.pages` | `{page}/s` | Memory, Pages/sec |
-| `windows.tcp.retransmits` | `{segment}/s` | TCPv4, Segments Retransmitted/sec |
-| `windows.network_interface.output_queue_length` | `{packet}` | Network Interface, Output Queue Length |
-| `windows.system.processor_queue_length` | `{thread}` | System, Processor Queue Length |
+| Metric | Unit | Attributes | Counter |
+|---|---|---|---|
+| `windows.physicaldisk.queue_length` | `{operation}` | `instance` | PhysicalDisk, Current Disk Queue Length |
+| `windows.physicaldisk.avg_queue_length` | `{operation}` | `instance` | PhysicalDisk, Avg. Disk Queue Length |
+| `windows.physicaldisk.operation_latency` | `s` | `instance`, `disk.io.direction` | PhysicalDisk, Avg. Disk sec/Read and sec/Write |
+| `windows.physicaldisk.idle_time` | `%` | `instance` | PhysicalDisk, % Idle Time |
+| `windows.physicaldisk.transfers` | `{operation}/s` | `instance` | PhysicalDisk, Disk Transfers/sec |
+| `windows.physicaldisk.io` | `By/s` | `instance`, `disk.io.direction` | PhysicalDisk, Disk Read Bytes/sec and Write Bytes/sec |
+| `windows.memory.committed` | `By` | none | Memory, Committed Bytes |
+| `windows.memory.commit_limit` | `By` | none | Memory, Commit Limit |
+| `windows.memory.pages` | `{page}/s` | none | Memory, Pages/sec |
+| `windows.tcp.retransmitted_segments` | `{segment}/s` | `network.type` (`ipv4`, `ipv6`) | TCPv4 and TCPv6, Segments Retransmitted/sec |
+| `windows.network_interface.output_queue_length` | `{packet}` | `instance` | Network Interface, Output Queue Length |
+| `windows.system.processor_queue_length` | `{thread}` | none | System, Processor Queue Length |
 
 Counters use English names through PDH, so localized Windows hosts resolve them. A missing counter logs one warning and the other metrics still export.
 
 ## Event logs
 
-Event logs are on by default: System, Application, Security and one bucket receiver for other channels. Security is unfiltered in 0.3.1. Each record keeps the event XML in `original_message`, cut at 64 KiB. Read positions persist in `file_storage`.
+Event logs are on by default: System, Application, Security and one bucket receiver for other channels. Security is unfiltered in 0.3.1. Read positions persist in `file_storage`.
 
 A channel created after the last role run is collected after the next role run.
 
+### winlog processor (0.3.2)
+
+The `winlog` processor counts every event record, drops the ones a rule matches, and shapes the rest. A record whose body is not a map with a channel passes through untouched.
+
+| Field | Value |
+|---|---|
+| `body` | Rendered message. If empty: `<provider> event <id> key=value ...` with the event data keys sorted |
+| `original_message` | Event XML, cut at `original_message_max_bytes` (default 65536, 0 = no cap) on a character boundary |
+| `original_message.truncated` | `true`, only when the XML was cut |
+| `log.source` | `winlog:<channel>` |
+| `severity_number`, `severity_text` | Level 1 FATAL, 2 ERROR, 3 WARN, 4 INFO, 5 DEBUG, 0 INFO; an Audit Failure event is WARN |
+
+The processor sets these attributes when the event has the value.
+
+| Attribute | Type | Source |
+|---|---|---|
+| `winlog.channel`, `winlog.provider_name`, `winlog.provider_guid`, `winlog.computer_name` | string | event header |
+| `winlog.event_id`, `winlog.record_id` | int | event header |
+| `winlog.task`, `winlog.opcode` | string | rendered, raw when not rendered |
+| `winlog.keywords` | string array | rendered keywords |
+| `winlog.user.identifier` | string | user SID |
+| `winlog.process.pid`, `winlog.process.thread.id` | int | `Execution` element |
+| `winlog.event_data.<Name>` | string | one per named `Data` element; unnamed elements are `param1`, `param2`, ... |
+
+Severity comes from the numeric `<Level>` and the `<Keywords>` mask in the event XML, read before the XML is cut. Without the XML it falls back to the rendered level name.
+
+### Drop rules
+
+A rule drops an event when every field it sets matches. Values inside a field are alternatives, an unset field matches anything, and the first matching rule in the list names the drop.
+
+```yaml
+winlog:
+  drop_rules:
+    - name: noisy-service-state
+      channels: [System]
+      event_ids: ["7036", "10000-10010"]
+      levels: [4]
+      providers: ["Service Control Manager"]
+```
+
+- `event_ids` take single IDs and inclusive `lo-hi` ranges.
+- `levels` are numeric, 0 to 5. An event with no known level never matches a level rule.
+- `channels` and `providers` match case-insensitively.
+- Names must be unique and each rule must set at least one field.
+
+Setting `drop_rules` replaces the default list. The default list drops Security events 4624, 4634, 4672, 4658, 5156 and 5158, and Information events from provider `otelcol-edge`.
+
+### Counters
+
+| Counter | Attributes | Counts |
+|---|---|---|
+| `otelcol_winlog_events_read` | `channel` | Event records seen, before drop rules |
+| `otelcol_winlog_events_dropped` | `channel`, `rule` | Records dropped, by the first matching rule |
+
+Both leave through the collector's internal telemetry with the resource attributes in `service.telemetry.resource`.
+
 ## Log rotation limit
 
-File logs are held open only while read. Upstream documents that Move/Create rotation on Windows may lose data (`fileconsumer/design.md`); the rename-rotation test on the Windows test host decides whether this limit applies. Copy-truncate rotation loses lines written after the last poll.
+File logs are held open only while read. Upstream documents that Move/Create rotation on Windows may lose data (`fileconsumer/design.md`); whether this limit applies to rename rotation is unverified. Copy-truncate rotation loses lines written after the last poll.
+
+## Expected messages
+
+- The process scraper needs `mute_process_name_error: true`. Processes such as PID 0, PID 4 and `Registry` have no executable path, and without the setting the scraper logs an error every interval. The sample config sets it.
+- Once per service start, an event-log channel may log `EvtFormatMessage ... failed to find MUI file`. A provider with no message resources causes it. The event still ships, and the message is harmless.
+- Bookmarks live in the `file_storage` directory as `receiver_<type>_<name>` files, for example `receiver_windowseventlog_security`, with no storage suffix.
+- Keep the host clock synced. A host with a free-running clock sends records dated in the future, and they sort after current data in ClickHouse.
 
 ## Not verified without a Windows host
 

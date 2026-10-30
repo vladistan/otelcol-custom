@@ -2,7 +2,7 @@ dist:
   name: otelcol-custom
   description: Custom OpenTelemetry Collector distribution with extended log-parsing processors
   output_path: ./build
-  # Skip compilation - we compile manually after injecting custom main.go for Sentry
+  # dist is generated only; the entrypoint with Sentry init is injected and compiled afterwards
   skip_compilation: true
 # =============================================================================
 # Replaces - Local module overrides for custom components

@@ -37,9 +37,9 @@ func createDefaultConfig() component.Config {
 
 func createLogsReceiver(
 	_ context.Context,
-	_ receiver.Settings,
-	_ component.Config,
-	_ consumer.Logs,
+	set receiver.Settings,
+	cfg component.Config,
+	next consumer.Logs,
 ) (receiver.Logs, error) {
-	return &noopReceiver{}, nil
+	return newReceiver(cfg.(*Config), set, next, nil)
 }

@@ -1,0 +1,22 @@
+{
+  "logName": "projects/proj-example/logs/cloudaudit.googleapis.com%2Factivity",
+  "protoPayload": {
+    "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+    "authenticationInfo": {
+      "principalEmail": "admin@example.com"
+    },
+    "methodName": "SetIamPolicy",
+    "requestMetadata": {
+      "callerIp": "192.0.2.20"
+    },
+    "serviceName": "iam.googleapis.com"
+  },
+  "resource": {
+    "labels": {
+      "project_id": "proj-example"
+    },
+    "type": "project"
+  },
+  "severity": "NOTICE",
+  "timestamp": "2026-10-25T10:00:04Z"
+}

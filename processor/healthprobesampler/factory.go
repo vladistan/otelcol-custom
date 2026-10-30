@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/processor"
+
+	"github.com/vladistan/otelcol-custom/processor/internal/probesample"
 )
 
 const (
@@ -26,14 +28,20 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{
+		Config:          probesample.Default(),
+		Enabled:         true,
+		StatusAttribute: "http.response.status_code",
+		PathAttribute:   "url.path",
+		AgentAttribute:  "user_agent.original",
+	}
 }
 
 func createLogsProcessor(
 	_ context.Context,
-	_ processor.Settings,
-	_ component.Config,
+	set processor.Settings,
+	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
-	return &noopProcessor{next: nextConsumer}, nil
+	return newProcessor(cfg.(*Config), set.TelemetrySettings, nextConsumer, nil)
 }

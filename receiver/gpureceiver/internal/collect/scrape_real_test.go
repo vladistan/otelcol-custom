@@ -17,7 +17,7 @@ const (
 	maxScrapeTime = 2500 * time.Millisecond
 )
 
-// The first scrape may overrun (D-12), so the bound covers scrapes 2..10.
+// The first scrape may overrun, so the bound covers scrapes 2..10.
 func TestRealScrapeTiming(t *testing.T) {
 	p, err := nvmladapter.NewPort()
 	require.NoError(t, err)

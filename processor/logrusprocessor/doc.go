@@ -8,4 +8,4 @@
 // The processor auto-detects the format and maps logrus fields to OTel semantic conventions.
 package logrusprocessor // import "github.com/vladistan/otelcol-custom/processor/logrusprocessor"
 
-// TODO: Implement in Phase 3.5
+// TODO: not implemented yet.

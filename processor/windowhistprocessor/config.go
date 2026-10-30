@@ -95,7 +95,8 @@ func (cfg *Config) Resolve(name string) (GroupSettings, error) {
 	return s, nil
 }
 
-// Validate rejects the configurations listed in SPARC 05 FR-045a.
+// Validate rejects unknown groups, invalid intervals and groups that give the
+// same scraper different scrape intervals.
 func (cfg *Config) Validate() error {
 	errs := checkIntervals("global", cfg.ScrapeInterval, cfg.SendInterval)
 

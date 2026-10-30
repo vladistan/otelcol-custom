@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs each image with --version and fails unless the output contains
-# VERSION (07 D-21, FR-055). Every image is checked, then the exit code
+# VERSION. Every image is checked, then the exit code
 # reports whether all passed.
 #
 # Usage: verify-ghcr-images.sh VERSION IMAGE...

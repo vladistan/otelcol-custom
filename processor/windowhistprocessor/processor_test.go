@@ -12,13 +12,19 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 var t0 = time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
 
 type fixture struct {
-	proc *windowProcessor
-	sink *consumertest.MetricsSink
+	proc     *windowProcessor
+	sink     *consumertest.MetricsSink
+	reader   *sdkmetric.ManualReader
+	warnings []string
 }
 
 func newFixture(t *testing.T, groups map[string]GroupConfig) *fixture {
@@ -29,14 +35,62 @@ func newFixture(t *testing.T, groups map[string]GroupConfig) *fixture {
 		t.Fatalf("config: %v", err)
 	}
 	sink := new(consumertest.MetricsSink)
-	proc, err := newWindowProcessor(cfg, sink)
+	reader := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("test")
+	proc, err := newWindowProcessor(cfg, sink, meter)
 	if err != nil {
 		t.Fatalf("newWindowProcessor: %v", err)
 	}
+	f := &fixture{proc: proc, sink: sink, reader: reader}
 	proc.now = func() time.Time { return t0 }
+	proc.warn = func(msg string) { f.warnings = append(f.warnings, msg) }
 	proc.initWindows(t0)
-	return &fixture{proc: proc, sink: sink}
+	return f
 }
+
+func (f *fixture) selfMetric(t *testing.T, name string, attrs ...attribute.KeyValue) int64 {
+	t.Helper()
+	return readSelfMetric(t, f.reader, name, attrs...)
+}
+
+// readSelfMetric reads one self-metric value; attrs selects a labelled data point.
+func readSelfMetric(t testing.TB, reader *sdkmetric.ManualReader, name string, attrs ...attribute.KeyValue) int64 {
+	t.Helper()
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("collect self-metrics: %v", err)
+	}
+	want := attribute.NewSet(attrs...)
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != name {
+				continue
+			}
+			var points []metricdata.DataPoint[int64]
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				points = data.DataPoints
+			case metricdata.Gauge[int64]:
+				points = data.DataPoints
+			}
+			for _, dp := range points {
+				if dp.Attributes.Equals(&want) {
+					return dp.Value
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func (f *fixture) discards(t *testing.T, reason string) int64 {
+	t.Helper()
+	return f.selfMetric(t, metricSamplesDiscarded, attribute.String("reason", reason))
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func testMeter() metric.Meter { return sdkmetric.NewMeterProvider().Meter("test") }
 
 type sample struct {
 	name  string
@@ -62,15 +116,20 @@ func gaugeBatch(host string, samples ...sample) pmetric.Metrics {
 }
 
 func counterBatch(name string, value int64, at time.Time) pmetric.Metrics {
+	return counterBatchStart(name, value, at, t0)
+}
+
+func counterBatchStart(name string, value int64, at, start time.Time) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	m := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 	m.SetName(name)
+	m.SetUnit("By")
 	sum := m.SetEmptySum()
 	sum.SetIsMonotonic(true)
 	sum.SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
 	dp := sum.DataPoints().AppendEmpty()
 	dp.SetIntValue(value)
-	dp.SetStartTimestamp(pcommon.NewTimestampFromTime(t0))
+	dp.SetStartTimestamp(pcommon.NewTimestampFromTime(start))
 	dp.SetTimestamp(pcommon.NewTimestampFromTime(at))
 	return md
 }
@@ -250,7 +309,7 @@ func TestInvalidSamplesDiscarded(t *testing.T) {
 	if dp.Count() != 1 || dp.Sum() != 4 {
 		t.Errorf("count/sum = %d/%v, want 1/4", dp.Count(), dp.Sum())
 	}
-	if got := f.proc.discarded(reasonInvalid); got != 3 {
+	if got := f.discards(t, reasonInvalid); got != 3 {
 		t.Errorf("invalid discards = %d, want 3", got)
 	}
 }
@@ -268,7 +327,7 @@ func TestLateSamplesDiscarded(t *testing.T) {
 	if dp.Count() != 1 || dp.Sum() != 2 {
 		t.Errorf("count/sum = %d/%v, want 1/2", dp.Count(), dp.Sum())
 	}
-	if got := f.proc.discarded(reasonLate); got != 1 {
+	if got := f.discards(t, reasonLate); got != 1 {
 		t.Errorf("late discards = %d, want 1", got)
 	}
 }
@@ -349,11 +408,14 @@ func TestMixedBatchSplitsGroupedFromPassThrough(t *testing.T) {
 	}
 }
 
-func TestMonotonicSumInHistogramGroupPassesThrough(t *testing.T) {
+func TestDeltaMonotonicSumInHistogramGroupPassesThrough(t *testing.T) {
 	f := newFixture(t, map[string]GroupConfig{"network_rate": {Metrics: []string{"net.io"}}})
-	f.consume(t, counterBatch("net.io", 5, t0.Add(10*time.Second)))
+	in := counterBatch("net.io", 5, t0.Add(10*time.Second))
+	in.ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics().At(0).Sum().
+		SetAggregationTemporality(pmetric.AggregationTemporalityDelta)
+	f.consume(t, in)
 	if n := f.sink.DataPointCount(); n != 1 {
-		t.Fatalf("counter in a histogram group should pass through until rates are built; sink has %d points", n)
+		t.Fatalf("a delta counter cannot be rated and should pass through; sink has %d points", n)
 	}
 }
 
@@ -395,7 +457,7 @@ func TestLifecycleTicksAndShutdown(t *testing.T) {
 	cfg.SendInterval = 10 * time.Millisecond
 	cfg.Groups = map[string]GroupConfig{"cpu": {Metrics: []string{"cpu.util"}}}
 	sink := new(consumertest.MetricsSink)
-	proc, err := newWindowProcessor(cfg, sink)
+	proc, err := newWindowProcessor(cfg, sink, testMeter())
 	if err != nil {
 		t.Fatal(err)
 	}

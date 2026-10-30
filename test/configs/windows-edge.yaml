@@ -1,7 +1,9 @@
-# Windows edge collector sample config for 0.3.1 (plan 08 Step 1.3, SPARC 05).
-# Valid Windows components only: no gpu, psi or journald (05 FR-014).
-# Every receiver collects at the send interval because 0.3.1 has no windowhist.
-# Placeholder gateway host; the role writes the real endpoint.
+# Windows edge collector sample config for 0.3.2.
+# Every component in this file is valid on Windows.
+# Every receiver collects at the send interval because there is no windowhist yet.
+# Placeholder gateway host and host identity; the role writes the real values.
+# The winlog processor is in the Windows manifest and wired into the logs
+# pipeline below.
 
 extensions:
   file_storage:
@@ -35,9 +37,10 @@ receivers:
           process.threads:
             enabled: true
         mute_process_exe_error: true
+        mute_process_name_error: true
         mute_process_io_error: true
         mute_process_user_error: true
-  # Fixed local drives only (D-44); the role adds removable or network drives.
+  # Fixed local drives only; the role adds removable or network drives.
   hostmetrics/filesystem:
     collection_interval: 15m
     scrapers:
@@ -48,36 +51,28 @@ receivers:
   windowsperfcounters:
     collection_interval: 60s
     metrics:
-      windows.physical_disk.queue_length.current:
+      windows.physicaldisk.queue_length:
         description: Current disk queue length
-        unit: "{request}"
+        unit: "{operation}"
         gauge:
-      windows.physical_disk.queue_length.average:
+      windows.physicaldisk.avg_queue_length:
         description: Average disk queue length
-        unit: "{request}"
+        unit: "{operation}"
         gauge:
-      windows.physical_disk.read.time:
-        description: Average seconds per disk read
+      windows.physicaldisk.operation_latency:
+        description: Average seconds per disk operation
         unit: s
         gauge:
-      windows.physical_disk.write.time:
-        description: Average seconds per disk write
-        unit: s
-        gauge:
-      windows.physical_disk.idle.time:
+      windows.physicaldisk.idle_time:
         description: Percent of time the disk was idle
         unit: "%"
         gauge:
-      windows.physical_disk.transfers:
+      windows.physicaldisk.transfers:
         description: Disk transfers per second
-        unit: "{transfer}/s"
+        unit: "{operation}/s"
         gauge:
-      windows.physical_disk.read.rate:
-        description: Disk read bytes per second
-        unit: By/s
-        gauge:
-      windows.physical_disk.write.rate:
-        description: Disk write bytes per second
+      windows.physicaldisk.io:
+        description: Disk bytes per second
         unit: By/s
         gauge:
       windows.memory.committed:
@@ -92,7 +87,7 @@ receivers:
         description: Memory pages per second
         unit: "{page}/s"
         gauge:
-      windows.tcp.retransmits:
+      windows.tcp.retransmitted_segments:
         description: TCP segments retransmitted per second
         unit: "{segment}/s"
         gauge:
@@ -109,21 +104,29 @@ receivers:
         instances: ["*"]
         counters:
           - name: Current Disk Queue Length
-            metric: windows.physical_disk.queue_length.current
+            metric: windows.physicaldisk.queue_length
           - name: Avg. Disk Queue Length
-            metric: windows.physical_disk.queue_length.average
+            metric: windows.physicaldisk.avg_queue_length
           - name: Avg. Disk sec/Read
-            metric: windows.physical_disk.read.time
+            metric: windows.physicaldisk.operation_latency
+            attributes:
+              disk.io.direction: read
           - name: Avg. Disk sec/Write
-            metric: windows.physical_disk.write.time
+            metric: windows.physicaldisk.operation_latency
+            attributes:
+              disk.io.direction: write
           - name: "% Idle Time"
-            metric: windows.physical_disk.idle.time
+            metric: windows.physicaldisk.idle_time
           - name: Disk Transfers/sec
-            metric: windows.physical_disk.transfers
+            metric: windows.physicaldisk.transfers
           - name: Disk Read Bytes/sec
-            metric: windows.physical_disk.read.rate
+            metric: windows.physicaldisk.io
+            attributes:
+              disk.io.direction: read
           - name: Disk Write Bytes/sec
-            metric: windows.physical_disk.write.rate
+            metric: windows.physicaldisk.io
+            attributes:
+              disk.io.direction: write
       - object: Memory
         counters:
           - name: Committed Bytes
@@ -135,7 +138,15 @@ receivers:
       - object: TCPv4
         counters:
           - name: Segments Retransmitted/sec
-            metric: windows.tcp.retransmits
+            metric: windows.tcp.retransmitted_segments
+            attributes:
+              network.type: ipv4
+      - object: TCPv6
+        counters:
+          - name: Segments Retransmitted/sec
+            metric: windows.tcp.retransmitted_segments
+            attributes:
+              network.type: ipv6
       - object: Network Interface
         instances: ["*"]
         counters:
@@ -145,8 +156,9 @@ receivers:
         counters:
           - name: Processor Queue Length
             metric: windows.system.processor_queue_length
-  # Event logs are on by default, Security included and unfiltered until 0.3.2
-  # (D-45). Each channel keeps its bookmark in file_storage.
+  # Event logs are on by default, Security included; the
+  # winlog processor drops its routine audit events. Each channel keeps its
+  # bookmark in file_storage.
   windowseventlog/security:
     channel: Security
     start_at: end
@@ -241,6 +253,17 @@ processors:
         action: insert
   resourceversion:
     role: edge
+  # Shapes event records and drops the default list. Remove a rule to keep its
+  # events; the list replaces the built-in defaults.
+  winlog:
+    original_message_max_bytes: 65536
+    drop_rules:
+      - name: security-audit-noise
+        channels: [Security]
+        event_ids: ["4624", "4634", "4672", "4658", "5156", "5158"]
+      - name: collector-self-info
+        levels: [4]
+        providers: [otelcol-edge]
   normalizedload:
     cpu_count: 0
   # Same low-resource rule as the Linux edge; thresholds are role variables.
@@ -266,8 +289,24 @@ service:
       level: info
       output_paths: ["rotating:///C:/ProgramData/otelcol-edge/logs/otelcol-edge.log"]
       error_output_paths: ["rotating:///C:/ProgramData/otelcol-edge/logs/otelcol-edge.log"]
+    # Counters otelcol_winlog_events_read and _dropped leave through this
+    # exporter with the resource attributes below.
+    resource:
+      host.name: HOST-PLACEHOLDER
+      host.id: 00000000-0000-0000-0000-000000000000
+      host.ip: 192.0.2.10
+      os.type: windows
+      service.name: otelcol-edge
+      deployment.environment: production
+      collector.edge.version: 0.3.2
     metrics:
-      level: none
+      level: normal
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://otel-main.example.invalid:4318
   pipelines:
     metrics:
       receivers: [hostmetrics, hostmetrics/filesystem, windowsperfcounters]
@@ -275,5 +314,5 @@ service:
       exporters: [otlphttp]
     logs:
       receivers: [windowseventlog/security, windowseventlog/system, windowseventlog/application, windowseventlog/bucket-0]
-      processors: [memory_limiter, resourcedetection, resource/host, resourceversion]
+      processors: [memory_limiter, winlog, resourcedetection, resource/host, resourceversion]
       exporters: [otlphttp]

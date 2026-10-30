@@ -1,4 +1,4 @@
-<!-- Modified by Vlad Korolev, 2026-10: rewritten for semconv metrics, lazy NVML init and the otelcol-edge build.
+<!-- Modified: rewritten for semconv metrics, lazy NVML init and the otelcol-edge build.
 Original: https://github.com/pmady/otel-gpu-receiver@ac756935ca040923d98af5a0d0547dca02a3b23b/README.md -->
 
 # GPU receiver (`gpu`)
@@ -22,7 +22,7 @@ Apache License 2.0.
 - Contrib check: no NVML or DCGM receiver exists in opentelemetry-collector-contrib at v0.140.0 (checked 2026-10-14). A DCGM receiver would also need the `nv-hostengine` daemon.
 - Base choice: pmady, pinned to the commit above. Its code was ported down from collector v0.147 to v0.140.0, and its metric layer was replaced.
 
-Every file below carries a `Modified by` and an `Original:` line in its first
+Every file below carries a `Modified:` and an `Original:` line in its first
 lines. `scripts/check-change-notices.sh` checks this table against those lines.
 
 | Upstream file | Module file |
