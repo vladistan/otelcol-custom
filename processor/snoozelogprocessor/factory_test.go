@@ -19,17 +19,36 @@ func TestFactoryType(t *testing.T) {
 	}
 }
 
-func TestDefaultConfigValidates(t *testing.T) {
-	cfg := NewFactory().CreateDefaultConfig()
-	if err := cfg.(*Config).Validate(); err != nil {
-		t.Fatalf("default config does not validate: %v", err)
+const wantNoRulesError = "match must list at least one rule"
+
+func TestDefaultConfig_HasNoRulesAndFailsValidation(t *testing.T) {
+	cfg := NewFactory().CreateDefaultConfig().(*Config)
+
+	if len(cfg.Match) != 0 {
+		t.Errorf("default match = %+v, want no rules", cfg.Match)
+	}
+	if err := cfg.Validate(); err == nil || err.Error() != wantNoRulesError {
+		t.Errorf("Validate() = %v, want %q", err, wantNoRulesError)
+	}
+}
+
+func TestCreateLogs_DefaultConfigReturnsValidationError(t *testing.T) {
+	set := processortest.NewNopSettings(component.MustNewType(typeStr))
+
+	proc, err := NewFactory().CreateLogs(context.Background(), set, NewFactory().CreateDefaultConfig(), new(consumertest.LogsSink))
+
+	if err == nil || err.Error() != wantNoRulesError {
+		t.Errorf("CreateLogs error = %v, want %q", err, wantNoRulesError)
+	}
+	if proc != nil {
+		t.Error("CreateLogs returned a processor for an invalid config")
 	}
 }
 
 func TestProcessorPassesData(t *testing.T) {
 	sink := new(consumertest.LogsSink)
 	set := processortest.NewNopSettings(component.MustNewType(typeStr))
-	proc, err := NewFactory().CreateLogs(context.Background(), set, NewFactory().CreateDefaultConfig(), sink)
+	proc, err := NewFactory().CreateLogs(context.Background(), set, shopWorkerConfig(), sink)
 	if err != nil {
 		t.Fatalf("create processor: %v", err)
 	}

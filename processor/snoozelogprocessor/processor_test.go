@@ -15,8 +15,8 @@ import (
 	"go.opentelemetry.io/collector/processor/processortest"
 )
 
-func defaultConfig() *Config {
-	return NewFactory().CreateDefaultConfig().(*Config)
+func shopWorkerConfig() *Config {
+	return &Config{Match: []MatchRule{{Namespace: "shop", Container: "worker"}}}
 }
 
 // record builds one batch the way otel-node-logs delivers a container line:
@@ -72,7 +72,7 @@ func TestLevels_MapToSeverities(t *testing.T) {
 		t.Run(tc.level, func(t *testing.T) {
 			ld, _ := record("shop", "worker", strBody("12:34:56 "+tc.level+" job finished"))
 
-			got := run(t, defaultConfig(), ld)
+			got := run(t, shopWorkerConfig(), ld)
 
 			if got.SeverityNumber() != tc.number || got.SeverityText() != tc.text {
 				t.Errorf("severity = %v/%q, want %v/%q", got.SeverityNumber(), got.SeverityText(), tc.number, tc.text)
@@ -84,7 +84,7 @@ func TestLevels_MapToSeverities(t *testing.T) {
 func TestMatchingLine_BodyBecomesMessage(t *testing.T) {
 	ld, _ := record("shop", "worker", strBody("12:34:56 INFO snoozed 3 alerts"))
 
-	got := run(t, defaultConfig(), ld)
+	got := run(t, shopWorkerConfig(), ld)
 
 	if got.Body().Str() != "snoozed 3 alerts" {
 		t.Errorf("body = %q, want %q", got.Body().Str(), "snoozed 3 alerts")
@@ -97,7 +97,7 @@ func TestMatchingLine_TimestampUnchanged(t *testing.T) {
 	lr.SetTimestamp(want)
 	lr.SetObservedTimestamp(want + 1)
 
-	got := run(t, defaultConfig(), ld)
+	got := run(t, shopWorkerConfig(), ld)
 
 	if got.Timestamp() != want || got.ObservedTimestamp() != want+1 {
 		t.Errorf("timestamps changed: %v / %v", got.Timestamp(), got.ObservedTimestamp())
@@ -118,28 +118,28 @@ func TestNonMatchingLine_PassesThroughUnchanged(t *testing.T) {
 	line := "starting worker"
 	ld, _ := record("shop", "worker", strBody(line))
 
-	assertUnchanged(t, run(t, defaultConfig(), ld), line)
+	assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 }
 
 func TestMatchingLine_FromOtherContainer_PassesThroughUnchanged(t *testing.T) {
 	line := "12:34:56 INFO job finished"
 	ld, _ := record("shop", "other-app", strBody(line))
 
-	assertUnchanged(t, run(t, defaultConfig(), ld), line)
+	assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 }
 
 func TestMatchingLine_FromOtherNamespace_PassesThroughUnchanged(t *testing.T) {
 	line := "12:34:56 INFO job finished"
 	ld, _ := record("default", "worker", strBody(line))
 
-	assertUnchanged(t, run(t, defaultConfig(), ld), line)
+	assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 }
 
 func TestContainerNameIsExact_NotSubstring(t *testing.T) {
 	line := "12:34:56 INFO job finished"
 	ld, _ := record("shop", "worker-sidecar", strBody(line))
 
-	assertUnchanged(t, run(t, defaultConfig(), ld), line)
+	assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 }
 
 func TestUnknownLevel_PassesThroughUnchanged(t *testing.T) {
@@ -148,7 +148,7 @@ func TestUnknownLevel_PassesThroughUnchanged(t *testing.T) {
 			line := "12:34:56 " + level + " something"
 			ld, _ := record("shop", "worker", strBody(line))
 
-			assertUnchanged(t, run(t, defaultConfig(), ld), line)
+			assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 		})
 	}
 }
@@ -156,7 +156,7 @@ func TestUnknownLevel_PassesThroughUnchanged(t *testing.T) {
 func TestMultiLine_OnlyFirstLineIsMatched(t *testing.T) {
 	ld, _ := record("shop", "worker", strBody("12:34:56 ERROR boom\n12:34:57 INFO trailing"))
 
-	got := run(t, defaultConfig(), ld)
+	got := run(t, shopWorkerConfig(), ld)
 
 	if got.SeverityNumber() != plog.SeverityNumberError {
 		t.Errorf("severity = %v, want ERROR from the first line", got.SeverityNumber())
@@ -170,7 +170,7 @@ func TestMultiLine_MatchOnLaterLineIsIgnored(t *testing.T) {
 	line := "starting\n12:34:56 ERROR boom"
 	ld, _ := record("shop", "worker", strBody(line))
 
-	assertUnchanged(t, run(t, defaultConfig(), ld), line)
+	assertUnchanged(t, run(t, shopWorkerConfig(), ld), line)
 }
 
 func TestNonStringBody_PassesThroughUnchanged(t *testing.T) {
@@ -178,14 +178,14 @@ func TestNonStringBody_PassesThroughUnchanged(t *testing.T) {
 	body.Map().PutStr("text", "12:34:56 INFO job finished")
 	ld, _ := record("shop", "worker", body)
 
-	got := run(t, defaultConfig(), ld)
+	got := run(t, shopWorkerConfig(), ld)
 
 	if got.Body().Type() != pcommon.ValueTypeMap || got.SeverityNumber() != plog.SeverityNumberUnspecified {
 		t.Errorf("map body record changed: type=%v severity=%v", got.Body().Type(), got.SeverityNumber())
 	}
 }
 
-func TestConfiguredMatchList_ReplacesDefault(t *testing.T) {
+func TestConfiguredMatchList_SelectsOnlyListedContainers(t *testing.T) {
 	cfg := &Config{Match: []MatchRule{{Namespace: "batch", Container: "nightly"}}}
 	line := "01:02:03 WARN slow"
 
@@ -197,14 +197,6 @@ func TestConfiguredMatchList_ReplacesDefault(t *testing.T) {
 
 	ld, _ = record("shop", "worker", strBody(line))
 	assertUnchanged(t, run(t, cfg, ld), line)
-}
-
-func TestDefaultConfig_MatchesDefaultRule(t *testing.T) {
-	cfg := defaultConfig()
-
-	if len(cfg.Match) != 1 || cfg.Match[0] != (MatchRule{Namespace: "shop", Container: "worker"}) {
-		t.Errorf("default match = %+v, want shop/worker", cfg.Match)
-	}
 }
 
 func TestConfigValidate_RejectsEmptyOrIncompleteRules(t *testing.T) {

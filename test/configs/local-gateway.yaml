@@ -100,8 +100,9 @@ processors:
     body_from_message: true
     split_resources: true
     keep_fields: true
-  # Sets severity on logs from the matched namespace and container. Defined
-  # here and not wired into a pipeline.
+  # Sets severity on logs from the matched namespace and container. match is
+  # required: a config without it fails at startup. Defined here and not wired
+  # into a pipeline.
   snoozelog:
     match:
       - namespace: shop

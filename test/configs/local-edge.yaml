@@ -8,15 +8,17 @@
 # - Reads test logs from testdata/ directory
 # - Uses debug exporter (stdout) instead of OTLP
 # - Includes all edge processors for testing
+# - Summarization is off: windowhist is not in the pipeline. To turn it on, add
+#   a windowhist processor (scrape_interval 10s, send_interval 60s, groups cpu,
+#   memory, psi and plain), put it in the metrics pipeline and set the hostmetrics
+#   and psi intervals to 10s.
 # - No external dependencies required
 
 extensions:
   health_check:
     endpoint: 127.0.0.1:13133
-
   zpages:
     endpoint: 127.0.0.1:55679
-
 receivers:
   # File-based log receiver for testing with sample data
   filelog/testdata:
@@ -31,12 +33,10 @@ receivers:
       - type: add
         field: attributes.source
         value: testdata
-
   # PSI receiver for metrics testing (reads from /proc/pressure/ or mock)
   # On macOS, this will fail gracefully - use Linux VM for full testing
   psi:
-    collection_interval: 30s
-
+    collection_interval: 60s
   # Host metrics for testing (works on macOS and Linux)
   hostmetrics:
     collection_interval: 60s
@@ -50,11 +50,10 @@ receivers:
         metrics:
           system.memory.utilization:
             enabled: true
-
   # Hourly process metrics - cpu.time and uptime for long-running processes
   # Using 30s for local testing (production uses 1h)
   hostmetrics/process_hourly:
-    collection_interval: 30s  # Short interval for testing
+    collection_interval: 30s # Short interval for testing
     scrapers:
       process:
         metrics:
@@ -75,17 +74,14 @@ receivers:
         mute_process_exe_error: true
         mute_process_io_error: true
         mute_process_user_error: true
-
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
     spike_limit_mib: 64
-
   batch:
     timeout: 5s
     send_batch_size: 100
-
   # Resource detection (hostname, OS info)
   resourcedetection:
     detectors: [system]
@@ -96,18 +92,15 @@ processors:
           enabled: true
         os.type:
           enabled: true
-
   # Add development environment marker
   resource/host:
     attributes:
       - key: deployment.environment
         value: development
         action: insert
-
   # Normalized load processor (custom)
   normalizedload:
-    cpu_count: 0  # auto-detect
-
+    cpu_count: 0 # auto-detect
   # Filter low-resource process metrics (if process scraper enabled)
   filter/process:
     error_mode: ignore
@@ -115,7 +108,6 @@ processors:
       datapoint:
         - 'metric.name == "process.memory.usage" and value_double < 52428800.0'
         - 'metric.name == "process.cpu.utilization" and value_double < 0.001'
-
   # Filter for hourly process metrics - only keep processes running > 30 minutes
   # Using 60s for local testing (production uses 1800s = 30 min)
   filter/process_hourly:
@@ -123,34 +115,30 @@ processors:
     metrics:
       datapoint:
         - 'metric.name == "process.uptime" and value_double < 60.0'
-
 exporters:
   # Debug exporter - prints to stdout
   debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 10
-
   # File exporter for persistent output review
   file/logs:
     path: /tmp/otel-edge-logs.json
     rotation:
       max_megabytes: 10
       max_backups: 3
-
   file/metrics:
     path: /tmp/otel-edge-metrics.json
     rotation:
       max_megabytes: 10
       max_backups: 3
-
 service:
   extensions: [health_check, zpages]
   telemetry:
     logs:
       level: debug
     metrics:
-      level: none  # Disable collector self-telemetry for local testing
+      level: none # Disable collector self-telemetry for local testing
   pipelines:
     logs:
       receivers: [filelog/testdata]

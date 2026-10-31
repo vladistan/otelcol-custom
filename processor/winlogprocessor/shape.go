@@ -29,6 +29,8 @@ func (p *winlogProcessor) shape(record plog.LogRecord, fields *eventFields) {
 	if number, text, ok := fields.severity(); ok {
 		record.SetSeverityNumber(number)
 		record.SetSeverityText(text)
+	} else if isRawDigits(record.SeverityText()) {
+		record.SetSeverityText("")
 	}
 	p.moveOriginal(record)
 

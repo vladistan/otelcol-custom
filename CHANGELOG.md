@@ -11,9 +11,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Sentry crash reports for the Windows service.
 
-## [0.3.3] - Unreleased
+## [0.3.3] - 2026-10-30
 
 Per-window exponential histograms on every edge platform, `k8sevent` parity for `otel-cluster`, and the narrowed `otelcol-scrape` image with the Auth0 receiver.
+
+### Added
+
+- **`windowhist` processor** in every edge build (Linux, GPU and Windows). It turns the samples of one send window into one point per series, with exponential histograms for CPU, memory, disk, network and GPU series and `.rate` series for counters. It is off by default; the sample configs show how to turn it on. See `docs/otel-metrics.md`.
+- **`otelcol-scrape` image** with a narrowed component set and the `auth0` receiver, which reads Auth0 events from an SQS queue. The image is published as `ghcr.io/vladistan/otelcol-scrape`.
+- **`ottl_parity` option in `k8seventprocessor`**, which reproduces the OTTL event shaping that the cluster collector applies, so `otel-cluster` can run the gateway image.
+- **Field conditions in Windows drop rules.** A rule can match event fields with `equals` and `ends_with`, in addition to channel, event ID, level and provider.
+- **Hourly drop summary** for the `winlog` processor (`drop_summary`, with `tally_by` per rule). It reports counts of dropped events per rule, event ID and field value, keeps the top 20 values per field and counts the rest as `other`. Off by default.
+
+### Changed
+
+- **Windows default drop list.** The default now drops Security events 4634, 4672 and 5379, and Information and Verbose events 2049 and 2050 from `Microsoft-Windows-SystemDataArchiver/Diagnostic`. Security events 4624, 4658, 5156 and 5158 are no longer dropped by default.
+- **Metric types change when summarization is on.** Series in a histogram group are sent as exponential histograms, and counters in those groups add `.rate` series, within a patch release. With `windowhist` out of the pipeline the output is unchanged.
+- **Cost of summarization**, measured over one hour with the static edge build: CPU time 1.94x, resident memory +12.7 MiB, egress 2.26x (gzip).
+- **`snoozelogprocessor`: `match` is now required.** A config without it fails at startup; there is no built-in default rule.
+- **`winlog` severity.** Verbose events (level 5) map to DEBUG, and a severity text that was only a digit is replaced.
+- **Narrowed `otelcol-scrape` manifest.** `builder-scrape.yaml` now lists only the components the scrape collector uses.
 
 ## [0.3.2] - 2026-10-30
 

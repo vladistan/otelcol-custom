@@ -25,8 +25,9 @@ func NewFactory() processor.Factory {
 	)
 }
 
+// createDefaultConfig returns no rules: match is required and Validate rejects an empty list.
 func createDefaultConfig() component.Config {
-	return &Config{Match: []MatchRule{{Namespace: "shop", Container: "worker"}}}
+	return &Config{}
 }
 
 func createLogsProcessor(
@@ -35,5 +36,9 @@ func createLogsProcessor(
 	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
-	return &snoozeProcessor{rules: cfg.(*Config).Match, next: nextConsumer}, nil
+	conf := cfg.(*Config)
+	if err := conf.Validate(); err != nil {
+		return nil, err
+	}
+	return &snoozeProcessor{rules: conf.Match, next: nextConsumer}, nil
 }

@@ -106,7 +106,7 @@ The processor sets these attributes when the event has the value.
 | `winlog.process.pid`, `winlog.process.thread.id` | int | `Execution` element |
 | `winlog.event_data.<Name>` | string | one per named `Data` element; unnamed elements are `param1`, `param2`, ... |
 
-Severity comes from the numeric `<Level>` and the `<Keywords>` mask in the event XML, read before the XML is cut. Without the XML it falls back to the rendered level name.
+Severity comes from the numeric `<Level>` and the `<Keywords>` mask in the event XML, read before the XML is cut. Without the XML it falls back to the body `level`, either the rendered name (`Verbose`) or a raw digit (`"5"`). Both give DEBUG. A digit-only severity text left by the receiver, such as `"5"`, is replaced by the mapped text, or cleared when the level is unknown.
 
 ### Drop rules
 
@@ -126,8 +126,59 @@ winlog:
 - `levels` are numeric, 0 to 5. An event with no known level never matches a level rule.
 - `channels` and `providers` match case-insensitively.
 - Names must be unique and each rule must set at least one field.
+- `fields` tests event data values. Each entry names one `winlog.event_data.<Name>` field and sets either `equals` (any listed value matches) or `ends_with` (a suffix), not both. Names are case-sensitive, values compare as text, and an event without the field never matches. Every entry in the list must match. An unknown key or a malformed entry fails at config load.
 
-Setting `drop_rules` replaces the default list. The default list drops Security events 4624, 4634, 4672, 4658, 5156 and 5158, and Information events from provider `otelcol-edge`.
+This pair drops service logons and machine-account network logons while real logons pass. It is not in the default list.
+
+```yaml
+winlog:
+  drop_rules:
+    - name: service-logons
+      channels: [Security]
+      event_ids: ["4624"]
+      fields:
+        - name: LogonType
+          equals: ["5"]
+    - name: machine-network-logons
+      channels: [Security]
+      event_ids: ["4624"]
+      fields:
+        - name: LogonType
+          equals: ["3"]
+        - name: TargetUserName
+          ends_with: "$"
+```
+
+Setting `drop_rules` replaces the default list. The default list drops Security events 4634, 4672 and 5379, Information and Verbose events 2049 and 2050 from the `Microsoft-Windows-SystemDataArchiver/Diagnostic` channel, and Information events from provider `otelcol-edge`. Security 4624 stays collected because a rule cannot tell service logons from interactive ones.
+
+### Drop summary
+
+The summary is off by default. With `drop_summary.enabled: true`, the processor emits one log record an hour that counts the dropped events. The partial hour is emitted at shutdown. The record carries counts only, never the text of a dropped event.
+
+```yaml
+winlog:
+  drop_summary:
+    enabled: true
+  drop_rules:
+    - name: service-logons
+      channels: [Security]
+      event_ids: ["4624"]
+      tally_by: [AuthenticationPackageName]
+      fields:
+        - name: LogonType
+          equals: ["5"]
+```
+
+`tally_by` lists event data names. For each, the summary counts the values of the events that rule dropped, such as `AuthenticationPackageName=Kerberos: 432`. It keeps the 20 most frequent values per rule and field in a window and counts the rest under `other`. After 1000 distinct values in one window, new values count under `other` too. An event without the field counts under `(missing)`.
+
+| Record attribute | Type | Holds |
+|---|---|---|
+| `log.source` | string | `winlog:drop_summary` |
+| `winlog.drop_summary.window_start`, `winlog.drop_summary.window_end` | string | RFC 3339 UTC times of the first drop and of the emit |
+| `winlog.drop_summary.total` | int | Events dropped in the window |
+| `winlog.drop_summary.rules` | map | Per rule name: `total`, `event_ids` (event ID to count) and `fields` (field name to value to count) |
+
+The record has severity INFO and the body `winlog drop summary: <n> events dropped`. It enters the pipeline after the `winlog` processor, so later processors apply to it.
 
 ### Counters
 

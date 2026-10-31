@@ -44,6 +44,20 @@ func (f *eventFields) severity() (plog.SeverityNumber, string, bool) {
 	return levelSeverity(level)
 }
 
+// isRawDigits reports whether s is a bare number such as "5", the form a raw
+// level takes when the receiver copies it into the severity text.
+func isRawDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func (f *eventFields) hasAuditFailure() bool {
 	if orig, ok := f.rec.Attributes().Get(logRecordOriginalKey); ok && orig.Type() == pcommon.ValueTypeStr {
 		if mask, ok := xmlKeywords(orig.Str()); ok {

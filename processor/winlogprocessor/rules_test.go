@@ -15,6 +15,10 @@ type testEvent struct {
 	provider string
 	xmlLevel string
 	rendered string
+	message  string
+	// data is event_data in the map format; dataList is the array format.
+	data     map[string]any
+	dataList []any
 }
 
 func (e testEvent) toLogRecord() plog.LogRecord {
@@ -25,6 +29,19 @@ func (e testEvent) toLogRecord() plog.LogRecord {
 	body.PutEmptyMap("provider").PutStr("name", e.provider)
 	if e.rendered != "" {
 		body.PutStr("level", e.rendered)
+	}
+	if e.message != "" {
+		body.PutStr("message", e.message)
+	}
+	if e.data != nil {
+		if err := body.PutEmptyMap("event_data").FromRaw(e.data); err != nil {
+			panic(err)
+		}
+	}
+	if e.dataList != nil {
+		if err := body.PutEmptyMap("event_data").PutEmptySlice("data").FromRaw(e.dataList); err != nil {
+			panic(err)
+		}
 	}
 	if e.xmlLevel != "" {
 		record.Attributes().PutStr("log.record.original",
@@ -155,18 +172,74 @@ func TestProvidersAndChannelsMatchCaseInsensitively(t *testing.T) {
 	}
 }
 
+const archiverChannel = "Microsoft-Windows-SystemDataArchiver/Diagnostic"
+
+func TestDefaultListDropsArchiverInformationAndVerbose(t *testing.T) {
+	for _, level := range []string{"4", "5"} {
+		for _, id := range []int64{2049, 2050} {
+			event := testEvent{channel: archiverChannel, id: id, xmlLevel: level}
+			if name, got := droppedBy(t, DefaultDropRules(), event); !got || name != "system-data-archiver-noise" {
+				t.Errorf("id %d level %s dropped by (%q, %v), want system-data-archiver-noise", id, level, name, got)
+			}
+		}
+	}
+}
+
+func TestDefaultListKeepsArchiverWarning(t *testing.T) {
+	event := testEvent{channel: archiverChannel, id: 2049, xmlLevel: "3"}
+	if name, got := droppedBy(t, DefaultDropRules(), event); got {
+		t.Errorf("archiver Warning was dropped by %q", name)
+	}
+}
+
+func TestDefaultListKeepsOtherArchiverEvents(t *testing.T) {
+	event := testEvent{channel: archiverChannel, id: 2051, xmlLevel: "4"}
+	if name, got := droppedBy(t, DefaultDropRules(), event); got {
+		t.Errorf("archiver event 2051 was dropped by %q", name)
+	}
+}
+
+func TestLevelFiveMatchesFromXML(t *testing.T) {
+	rules := []DropRule{{Name: "r", Levels: []int{5}}}
+	if _, got := droppedBy(t, rules, testEvent{channel: "c", id: 1, xmlLevel: "5"}); !got {
+		t.Error("XML level 5 was not matched by a level 5 rule")
+	}
+}
+
+func TestLevelFiveMatchesRenderedVerbose(t *testing.T) {
+	rules := []DropRule{{Name: "r", Levels: []int{5}}}
+	if _, got := droppedBy(t, rules, testEvent{channel: "c", id: 1, rendered: "Verbose"}); !got {
+		t.Error("rendered Verbose was not matched by a level 5 rule")
+	}
+}
+
+func TestLevelFiveMatchesRawDigitWithoutXML(t *testing.T) {
+	rules := []DropRule{{Name: "r", Levels: []int{5}}}
+	if _, got := droppedBy(t, rules, testEvent{channel: "c", id: 1, rendered: "5"}); !got {
+		t.Error("raw level \"5\" was not matched by a level 5 rule")
+	}
+}
+
+func TestRawDigitLevelOutsideRangeIsUnknown(t *testing.T) {
+	rules := []DropRule{{Name: "r", Levels: []int{4, 5}}}
+	if _, got := droppedBy(t, rules, testEvent{channel: "c", id: 1, rendered: "9"}); got {
+		t.Error("raw level \"9\" was matched by a level rule")
+	}
+}
+
 func TestDefaultListDropsNoiseAndKeepsFailedLogon(t *testing.T) {
 	cases := []struct {
 		name     string
 		event    testEvent
 		wantRule string
 	}{
-		{"4624 logon", testEvent{channel: "Security", id: 4624}, "security-audit-noise"},
 		{"4634 logoff", testEvent{channel: "Security", id: 4634}, "security-audit-noise"},
 		{"4672 privileges", testEvent{channel: "Security", id: 4672}, "security-audit-noise"},
-		{"4658 handle closed", testEvent{channel: "Security", id: 4658}, "security-audit-noise"},
-		{"5156 WFP permit", testEvent{channel: "Security", id: 5156}, "security-audit-noise"},
-		{"5158 WFP bind", testEvent{channel: "Security", id: 5158}, "security-audit-noise"},
+		{"5379 credential read", testEvent{channel: "Security", id: 5379}, "security-audit-noise"},
+		{"4624 logon kept", testEvent{channel: "Security", id: 4624}, ""},
+		{"4658 handle closed kept", testEvent{channel: "Security", id: 4658}, ""},
+		{"5156 WFP permit kept", testEvent{channel: "Security", id: 5156}, ""},
+		{"5158 WFP bind kept", testEvent{channel: "Security", id: 5158}, ""},
 		{"4625 failed logon", testEvent{channel: "Security", id: 4625}, ""},
 		{"5157 WFP block", testEvent{channel: "Security", id: 5157}, ""},
 		{"4624 outside Security", testEvent{channel: "Application", id: 4624}, ""},

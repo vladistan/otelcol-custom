@@ -59,7 +59,7 @@ func TestDefaultConfigCarriesDefaultDropRules(t *testing.T) {
 	for _, r := range cfg.DropRules {
 		names = append(names, r.Name)
 	}
-	if got, want := strings.Join(names, ","), "security-audit-noise,collector-self-info"; got != want {
+	if got, want := strings.Join(names, ","), "security-audit-noise,system-data-archiver-noise,collector-self-info"; got != want {
 		t.Fatalf("default rule names = %q, want %q", got, want)
 	}
 }

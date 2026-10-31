@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a scratch otelcol-scrape from test/scrape/builder-scrape.yaml and
+# Builds a scratch otelcol-scrape from builder-scrape.yaml and
 # validates test/configs/scrape.yaml with placeholder env values.
 # Compiles a collector, so it takes a few minutes.
 #
@@ -18,7 +18,7 @@ trap 'rm -rf "$work"' EXIT
 cd "$ROOT"
 mkdir -p build
 sed -E 's#^([[:space:]]*output_path:).*#\1 ./build/scratch-scrape#; /skip_compilation/d' \
-	test/scrape/builder-scrape.yaml >"$work/builder.yaml"
+	builder-scrape.yaml >"$work/builder.yaml"
 go run "go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}" --config "$work/builder.yaml"
 
 export OTEL_MAIN_OTLP_ENDPOINT=http://otel-main.example:4318 AWS_REGION=us-east-1

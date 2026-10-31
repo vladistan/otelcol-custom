@@ -69,7 +69,7 @@ Credentials come from the AWS default chain. Setting `role_arn` (and optionally 
 
 ## Reference config
 
-The reference config and a narrowed builder manifest were checked with a scratch build: `otelcol-scrape validate` exits 0 on the config with placeholder env values. `test/scrape/validate-scrape.sh` repeats that check against `test/scrape/builder-scrape.yaml` and `test/configs/scrape.yaml`.
+The reference config and a narrowed builder manifest were checked with a scratch build: `otelcol-scrape validate` exits 0 on the config with placeholder env values. `test/scrape/validate-scrape.sh` repeats that check against `builder-scrape.yaml` and `test/configs/scrape.yaml`.
 
 ### Reference config key sources
 

@@ -1,0 +1,38 @@
+# Helm values fragment for the otel-cluster install on the gateway image.
+# Merge it into each cluster's values-cluster.yaml; keys not shown stay as they are.
+# Replaces transform/k8s_objects with k8sevent (ottl_parity), whose output equals the OTTL block.
+image:
+  repository: ghcr.io/vladistan/otelcol-gateway
+  # Use only a tag that otel-main already ran. The release notes name it.
+  tag: 'v<VERSION>'
+command:
+  name: otelcol-gateway
+config:
+  processors:
+    k8sevent:
+      ottl_parity: true
+      # Both off: body and severity then come only from the OTTL-equivalent rules.
+      rewrite_messages: false
+      adjust_severity: false
+    # The cluster name comes from here only. One value per install:
+    #   kube-v0 | apps-eks-v0 | <name of the third cluster>
+    resource/cluster:
+      attributes:
+        - key: k8s.cluster.name
+          value: kube-v0
+          action: upsert
+  service:
+    pipelines:
+      logs:
+        receivers:
+          - k8sobjects
+        # resource/cluster follows resourcedetection/gcp so the configured name wins.
+        processors:
+          - k8sevent
+          - resourcedetection/gcp
+          - resource/cluster
+          - resource/hostname
+          - batch
+          - memory_limiter
+        exporters:
+          - otlphttp

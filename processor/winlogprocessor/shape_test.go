@@ -30,6 +30,8 @@ type receiverEvent struct {
 	processID, threadID int64
 	eventData           map[string]any
 	xml                 string
+	// severityText is a text the receiver already set on the record.
+	severityText string
 }
 
 func (e receiverEvent) toLogRecord() plog.LogRecord {
@@ -59,6 +61,7 @@ func (e receiverEvent) toLogRecord() plog.LogRecord {
 	if e.xml != "" {
 		record.Attributes().PutStr("log.record.original", e.xml)
 	}
+	record.SetSeverityText(e.severityText)
 	return record
 }
 
@@ -139,6 +142,41 @@ func TestSeverityFallsBackToRenderedLevelWithoutXML(t *testing.T) {
 	record := shapeEvent(t, 0, receiverEvent{channel: "System", level: "Warning"})
 	if record.SeverityNumber() != plog.SeverityNumberWarn || record.SeverityText() != "WARN" {
 		t.Errorf("severity = (%d, %q), want WARN", record.SeverityNumber(), record.SeverityText())
+	}
+}
+
+func TestSeverityMapsRenderedVerbose(t *testing.T) {
+	record := shapeEvent(t, 0, receiverEvent{channel: "System", level: "Verbose"})
+	if record.SeverityNumber() != plog.SeverityNumberDebug || record.SeverityText() != "DEBUG" {
+		t.Errorf("severity = (%d, %q), want DEBUG", record.SeverityNumber(), record.SeverityText())
+	}
+}
+
+func TestSeverityMapsRawFiveWithoutXML(t *testing.T) {
+	record := shapeEvent(t, 0, receiverEvent{channel: "System", level: "5"})
+	if record.SeverityNumber() != plog.SeverityNumberDebug || record.SeverityText() != "DEBUG" {
+		t.Errorf("severity = (%d, %q), want DEBUG", record.SeverityNumber(), record.SeverityText())
+	}
+}
+
+func TestRawFiveFromTheReceiverDoesNotStayInSeverityText(t *testing.T) {
+	record := shapeEvent(t, 0, receiverEvent{channel: "System", level: "5", severityText: "5"})
+	if got := record.SeverityText(); got != "DEBUG" {
+		t.Errorf("severity text = %q, want DEBUG", got)
+	}
+}
+
+func TestRawDigitSeverityTextIsClearedWhenLevelIsUnknown(t *testing.T) {
+	record := shapeEvent(t, 0, receiverEvent{channel: "System", level: "9", severityText: "9"})
+	if got := record.SeverityText(); got != "" {
+		t.Errorf("severity text = %q, want it cleared", got)
+	}
+}
+
+func TestNamedSeverityTextIsKeptWhenLevelIsUnknown(t *testing.T) {
+	record := shapeEvent(t, 0, receiverEvent{channel: "System", severityText: "Custom"})
+	if got := record.SeverityText(); got != "Custom" {
+		t.Errorf("severity text = %q, want Custom kept", got)
 	}
 }
 

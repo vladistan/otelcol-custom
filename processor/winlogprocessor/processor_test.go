@@ -116,7 +116,7 @@ func ruleAttr(v string) attribute.KeyValue    { return attribute.String("rule", 
 func TestDroppedCounterRisesByNAndReadByAtLeastN(t *testing.T) {
 	h := newHarness(t, DefaultDropRules())
 	const n = 7
-	events := append(repeat(testEvent{channel: "Security", id: 4624}, n),
+	events := append(repeat(testEvent{channel: "Security", id: 4634}, n),
 		testEvent{channel: "Security", id: 4625}, testEvent{channel: "System", id: 7036})
 	if err := h.proc.ConsumeLogs(context.Background(), batch(events...)); err != nil {
 		t.Fatalf("consume: %v", err)
@@ -138,7 +138,7 @@ func TestDroppedCounterRisesByNAndReadByAtLeastN(t *testing.T) {
 func TestCountersAccumulateAcrossBatches(t *testing.T) {
 	h := newHarness(t, DefaultDropRules())
 	for i := 0; i < 3; i++ {
-		if err := h.proc.ConsumeLogs(context.Background(), batch(testEvent{channel: "Security", id: 4624})); err != nil {
+		if err := h.proc.ConsumeLogs(context.Background(), batch(testEvent{channel: "Security", id: 4634})); err != nil {
 			t.Fatalf("consume: %v", err)
 		}
 	}
@@ -165,7 +165,7 @@ func TestDroppedCounterNamesFirstMatchingRule(t *testing.T) {
 
 func TestFullyDroppedBatchIsNotForwarded(t *testing.T) {
 	h := newHarness(t, DefaultDropRules())
-	if err := h.proc.ConsumeLogs(context.Background(), batch(repeat(testEvent{channel: "Security", id: 4624}, 3)...)); err != nil {
+	if err := h.proc.ConsumeLogs(context.Background(), batch(repeat(testEvent{channel: "Security", id: 4634}, 3)...)); err != nil {
 		t.Fatalf("consume: %v", err)
 	}
 	if got := len(h.sink.AllLogs()); got != 0 {
@@ -175,7 +175,7 @@ func TestFullyDroppedBatchIsNotForwarded(t *testing.T) {
 
 func TestNoRulesPassesEverythingAndStillCountsReads(t *testing.T) {
 	h := newHarness(t, nil)
-	if err := h.proc.ConsumeLogs(context.Background(), batch(repeat(testEvent{channel: "Security", id: 4624}, 4)...)); err != nil {
+	if err := h.proc.ConsumeLogs(context.Background(), batch(repeat(testEvent{channel: "Security", id: 4634}, 4)...)); err != nil {
 		t.Fatalf("consume: %v", err)
 	}
 	if got := h.sink.LogRecordCount(); got != 4 {
@@ -219,7 +219,7 @@ func TestRecordWithMapBodyButNoChannelPassesUncounted(t *testing.T) {
 func TestEmptyResourcesAreRemovedAfterDrops(t *testing.T) {
 	h := newHarness(t, DefaultDropRules())
 	logs := plog.NewLogs()
-	for _, e := range []testEvent{{channel: "Security", id: 4624}, {channel: "System", id: 7036}} {
+	for _, e := range []testEvent{{channel: "Security", id: 4634}, {channel: "System", id: 7036}} {
 		e.toLogRecord().CopyTo(logs.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty())
 	}
 	if err := h.proc.ConsumeLogs(context.Background(), logs); err != nil {

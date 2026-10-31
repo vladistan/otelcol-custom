@@ -1,6 +1,9 @@
 # Windows edge collector sample config for 0.3.2.
 # Every component in this file is valid on Windows.
-# Every receiver collects at the send interval because there is no windowhist yet.
+# Summarization is off: windowhist is defined but not in the metrics pipeline, and every
+# metric receiver collects at the 60s send interval. To turn it on, add windowhist to the
+# metrics pipeline after normalizedload and set the hostmetrics and windowsperfcounters
+# intervals to 10s, the scrape_interval of windowhist.
 # Placeholder gateway host and host identity; the role writes the real values.
 # The winlog processor is in the Windows manifest and wired into the logs
 # pipeline below.
@@ -254,13 +257,20 @@ processors:
   resourceversion:
     role: edge
   # Shapes event records and drops the default list. Remove a rule to keep its
-  # events; the list replaces the built-in defaults.
+  # events; the list replaces the built-in defaults. A rule can also test event
+  # data with `fields` (equals or ends_with), and `tally_by` plus
+  # `drop_summary: {enabled: true}` emits an hourly count of dropped events;
+  # see docs/windows-edge.md.
   winlog:
     original_message_max_bytes: 65536
     drop_rules:
       - name: security-audit-noise
         channels: [Security]
-        event_ids: ["4624", "4634", "4672", "4658", "5156", "5158"]
+        event_ids: ["4634", "4672", "5379"]
+      - name: system-data-archiver-noise
+        channels: [Microsoft-Windows-SystemDataArchiver/Diagnostic]
+        event_ids: ["2049", "2050"]
+        levels: [4, 5]
       - name: collector-self-info
         levels: [4]
         providers: [otelcol-edge]
@@ -273,6 +283,21 @@ processors:
       datapoint:
         - 'metric.name == "process.memory.usage" and value_double < 52428800.0'
         - 'metric.name == "process.cpu.utilization" and value_double < 0.001'
+  windowhist:
+    scrape_interval: 10s
+    send_interval: 60s
+    groups:
+      cpu: {}
+      memory: {}
+      disk_latency: {}
+      disk_io_rate: {}
+      network_rate: {}
+      cpu_pressure: {}
+      memory_pages: {}
+      network_pressure: {}
+      process: {}
+      plain: {}
+      filesystem: {scrape_interval: 15m, send_interval: 15m}
 exporters:
   otlphttp:
     endpoint: http://otel-main.example.invalid:4318

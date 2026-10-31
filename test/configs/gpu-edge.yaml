@@ -1,45 +1,42 @@
 # Edge collector with the gpu receiver, for the non-GPU host smoke test.
 # Run: otelcol-edge --config test/configs/gpu-edge.yaml
 # Requires OTLP_ENDPOINT (e.g. gateway:4317) in the environment.
+# Summarization is off: windowhist is not in the pipelines and every receiver
+# collects at the 60s send interval. To turn it on, define a windowhist
+# processor with scrape_interval 10s, send_interval 60s and the cpu, memory,
+# psi, gpu and plain groups, add it to both pipelines, and set the receiver
+# intervals to 10s.
 
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
-
 receivers:
   hostmetrics:
-    collection_interval: 10s
+    collection_interval: 60s
     scrapers:
       cpu:
       load:
       memory:
-
   psi:
-    collection_interval: 10s
-
+    collection_interval: 60s
   gpu:
-    collection_interval: 10s
-
+    collection_interval: 60s
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
     spike_limit_mib: 64
-
   batch:
     timeout: 5s
-
   resourcedetection:
     detectors: [system]
     system:
       hostname_sources: [os]
-
 exporters:
   otlp:
     endpoint: ${env:OTLP_ENDPOINT}
     tls:
       insecure: true
-
 service:
   extensions: [health_check]
   telemetry:

@@ -46,10 +46,16 @@ func createLogsProcessor(
 	if err != nil {
 		return nil, err
 	}
-	return &winlogProcessor{
+	p := &winlogProcessor{
 		next:             nextConsumer,
 		rules:            rules,
 		tel:              tel,
 		maxOriginalBytes: config.OriginalMessageMaxBytes,
-	}, nil
+		logger:           set.Logger,
+	}
+	if config.DropSummary.Enabled {
+		p.summary = newDropSummary()
+		p.rules.needsID = true
+	}
+	return p, nil
 }

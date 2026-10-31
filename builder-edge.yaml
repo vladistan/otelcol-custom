@@ -17,7 +17,7 @@ replaces:
   # Custom stanza operators (for log processing pipelines)
   - github.com/vladistan/otelcol-custom/stanza/operator/transformer/arraytostring => ../../stanza/operator/transformer/arraytostring
   - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../../stanza/operator/transformer/ansistrip
-  # - github.com/vladistan/otelcol-custom/processor/windowhistprocessor => ../../processor/windowhistprocessor
+  - github.com/vladistan/otelcol-custom/processor/windowhistprocessor => ../../processor/windowhistprocessor
 # =============================================================================
 # Extensions - Minimal set for edge deployments
 # =============================================================================
@@ -72,7 +72,8 @@ processors:
   - gomod: github.com/vladistan/otelcol-custom/processor/resourceversionprocessor v0.0.0
   # Log recombine (multiline log combination without noisy errors)
   - gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
-    # - gomod: github.com/vladistan/otelcol-custom/processor/windowhistprocessor v0.0.0
+  # Window histograms (summarizes sampled metrics into histograms per send window)
+  - gomod: github.com/vladistan/otelcol-custom/processor/windowhistprocessor v0.0.0
 # =============================================================================
 # Exporters - Forward to gateway only
 # =============================================================================

@@ -5,6 +5,7 @@ package winlogprocessor
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,14 +18,22 @@ const (
 	maxLevel             = 5
 )
 
-// DefaultDropRules is the list of routine Security audit events,
-// plus the rule that drops the collector's own Information events.
+// DefaultDropRules is the list of routine Security audit events, the
+// SystemDataArchiver Information and Verbose events, and the collector's own
+// Information events. 4624 stays collected: a rule cannot tell service logons
+// from interactive ones.
 func DefaultDropRules() []DropRule {
 	return []DropRule{
 		{
 			Name:     "security-audit-noise",
 			Channels: []string{"Security"},
-			EventIDs: []string{"4624", "4634", "4672", "4658", "5156", "5158"},
+			EventIDs: []string{"4634", "4672", "5379"},
+		},
+		{
+			Name:     "system-data-archiver-noise",
+			Channels: []string{"Microsoft-Windows-SystemDataArchiver/Diagnostic"},
+			EventIDs: []string{"2049", "2050"},
+			Levels:   []int{4, 5},
 		},
 		{
 			Name:      "collector-self-info",
@@ -42,6 +51,15 @@ type rule struct {
 	ids       []idRange
 	levels    uint8 // bit n set = level n; 0 = any
 	providers []string
+	fields    []fieldCondition
+	tallyBy   []string
+}
+
+type fieldCondition struct {
+	name     string
+	equals   []string
+	endsWith string
+	isSuffix bool
 }
 
 type ruleSet struct {
@@ -73,7 +91,8 @@ func compileRules(rules []DropRule) (ruleSet, error) {
 			return ruleSet{}, fmt.Errorf("drop_rules[%d]: duplicate rule name %q", i, dr.Name)
 		}
 		seen[dr.Name] = struct{}{}
-		if len(dr.Channels) == 0 && len(dr.EventIDs) == 0 && len(dr.Levels) == 0 && len(dr.Providers) == 0 {
+		if len(dr.Channels) == 0 && len(dr.EventIDs) == 0 && len(dr.Levels) == 0 &&
+			len(dr.Providers) == 0 && len(dr.Fields) == 0 {
 			return ruleSet{}, fmt.Errorf("drop_rules[%d] %q: rule sets no field", i, dr.Name)
 		}
 		r, err := compileRule(dr)
@@ -114,7 +133,53 @@ func compileRule(dr DropRule) (rule, error) {
 		}
 		r.ids = append(r.ids, rng)
 	}
+	for _, fc := range dr.Fields {
+		cond, err := compileField(fc)
+		if err != nil {
+			return rule{}, err
+		}
+		r.fields = append(r.fields, cond)
+	}
+	tally, err := compileTallyBy(dr.TallyBy)
+	if err != nil {
+		return rule{}, err
+	}
+	r.tallyBy = tally
 	return r, nil
+}
+
+func compileField(fc FieldCondition) (fieldCondition, error) {
+	if fc.Name == "" {
+		return fieldCondition{}, fmt.Errorf("field name is empty")
+	}
+	switch {
+	case len(fc.Equals) > 0 && fc.EndsWith != "":
+		return fieldCondition{}, fmt.Errorf("field %q sets both equals and ends_with", fc.Name)
+	case len(fc.Equals) == 0 && fc.EndsWith == "":
+		return fieldCondition{}, fmt.Errorf("field %q sets neither equals nor ends_with", fc.Name)
+	}
+	for _, v := range fc.Equals {
+		if v == "" {
+			return fieldCondition{}, fmt.Errorf("field %q equals has an empty value", fc.Name)
+		}
+	}
+	return fieldCondition{
+		name: fc.Name, equals: slices.Clone(fc.Equals), endsWith: fc.EndsWith, isSuffix: fc.EndsWith != "",
+	}, nil
+}
+
+func compileTallyBy(names []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name == "" {
+			return nil, fmt.Errorf("tally_by field name is empty")
+		}
+		if _, dup := seen[name]; dup {
+			return nil, fmt.Errorf("tally_by lists %s twice", name)
+		}
+		seen[name] = struct{}{}
+	}
+	return slices.Clone(names), nil
 }
 
 func parseIDRange(s string) (idRange, error) {
@@ -193,7 +258,50 @@ func (r *rule) matches(f *eventFields) bool {
 			return false
 		}
 	}
+	for i := range r.fields {
+		if !r.fields[i].matches(f) {
+			return false
+		}
+	}
 	return true
+}
+
+func (c *fieldCondition) matches(f *eventFields) bool {
+	value, ok := f.eventDataValue(c.name)
+	if !ok {
+		return false
+	}
+	if c.isSuffix {
+		return strings.HasSuffix(value, c.endsWith)
+	}
+	return slices.Contains(c.equals, value)
+}
+
+// eventDataValue reads one event data field in either receiver format.
+func (f *eventFields) eventDataValue(name string) (string, bool) {
+	if f.rec.Body().Type() != pcommon.ValueTypeMap {
+		return "", false
+	}
+	eventData, ok := nestedMap(f.rec.Body().Map(), "event_data")
+	if !ok {
+		return "", false
+	}
+	raw, hasData := eventData.Get("data")
+	if !hasData || raw.Type() != pcommon.ValueTypeSlice {
+		if v, ok := eventData.Get(name); ok {
+			return v.AsString(), true
+		}
+		return "", false
+	}
+	for i := 0; i < raw.Slice().Len(); i++ {
+		if raw.Slice().At(i).Type() != pcommon.ValueTypeMap {
+			continue
+		}
+		if v, ok := raw.Slice().At(i).Map().Get(name); ok {
+			return v.AsString(), true
+		}
+	}
+	return "", false
 }
 
 func containsFold(list []string, v string) bool {
@@ -255,7 +363,14 @@ func xmlLevel(xml string) (int, bool) {
 	return n, true
 }
 
+// renderedLevel maps a level name, or a raw digit such as "5", to a level.
 func renderedLevel(name string) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(name)); err == nil {
+		if n < 0 || n > maxLevel {
+			return -1
+		}
+		return n
+	}
 	switch {
 	case strings.EqualFold(name, "Critical"):
 		return 1
