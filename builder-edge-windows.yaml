@@ -28,46 +28,46 @@ replaces:
 # =============================================================================
 extensions:
   # Health check endpoint for monitoring
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.164.1
   # Debug endpoints (/debug/tracez, /debug/pipelinez)
-  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.154.0
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.164.0
   # Persistent queue storage and event-log bookmarks (survive restarts)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.164.1
 # =============================================================================
 # Receivers - Edge-specific sources only
 # =============================================================================
 receivers:
   # --- Logs ---
   # File-based logs (application logs)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.164.1
   # Windows Event Log channels
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowseventlogreceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowseventlogreceiver v0.164.1
   # --- Metrics ---
   # Host metrics (CPU, memory, network, filesystem, paging, process)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
   # Windows performance counters
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v0.164.1
 # =============================================================================
 # Processors - Minimal processing for edge
 # =============================================================================
 processors:
   # --- Core ---
   # Batch telemetry for network efficiency
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.154.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.164.0
   # Prevent OOM conditions
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.154.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.164.0
   # --- Resource ---
   # Auto-detect host info (hostname, OS, etc.)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.164.1
   # Add/modify resource attributes (for resource/host config)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.164.1
   # --- Transform ---
   # OTTL-based metric/log transformations
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
   # OTTL-based filtering (drop low-resource process metrics)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.164.1
   # Modify log/metric attributes (upsert, delete, extract, convert, hash)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
   # --- Custom (local) ---
   # Normalized load average (load / CPU count)
   - gomod: github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor v0.0.0
@@ -83,10 +83,10 @@ processors:
 # =============================================================================
 exporters:
   # OTLP gRPC (edge → gateway via gRPC)
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.154.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.164.0
   # OTLP HTTP (edge → gateway via HTTP/protobuf)
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.154.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.164.0
   # File exporter for local metrics validation
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.154.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
   # Debug output for troubleshooting
-  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.154.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.164.0

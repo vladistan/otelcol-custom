@@ -7,12 +7,12 @@ import 'just/scrape.just'
 
 # OCB and collector versions
 # Two OCB versions are pinned: default uses v0.115.0, edge/gateway/scrape use
-# v0.154.0. OCB's generated go.mod tracks the OCB release, not the component
+# v0.164.0. OCB's generated go.mod tracks the OCB release, not the component
 # versions it builds, so a mismatched OCB produces an unresolvable go.mod.
 # Each generate recipe pins its own OCB version
 # via `go run ...@version` instead of sharing one installed `builder` binary.
 ocb_version := "0.115.0"
-ocb_version_v154 := "0.154.0"
+ocb_version_v164 := "0.164.0"
 otel_version := "0.115.0"
 
 # Read version from VERSION file (single source of truth)
@@ -140,10 +140,10 @@ verify:
 # Edge Collector (otelcol-edge) - lean collector for VMs and bare metal
 # =============================================================================
 
-# Generate edge collector code using OCB (pinned to the v0.154.0-component OCB version)
+# Generate edge collector code using OCB (pinned to the v0.164-component OCB version)
 generate-edge:
     mkdir -p build
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge.yaml
 
 # Build the edge collector
 build-edge: generate-edge
@@ -174,7 +174,7 @@ build-edge-linux: build-edge-image
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=1
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge.yaml
     (cd receiver/gpureceiver && go vet ./... && go test ./...)
     cp cmd/otelcol-custom/main.go build/edge/main.go
     cd build/edge
@@ -200,7 +200,7 @@ build-edge-static-linux: build-edge-image
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-static.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge-static.yaml
     cp cmd/otelcol-custom/main.go build/edge-static/main.go
     cd build/edge-static
     go get github.com/getsentry/sentry-go@v0.29.1
@@ -232,7 +232,7 @@ check-edge-static binary="build/edge-static/otelcol-edge":
 # build recipes arrive with the build-edge-windows work).
 generate-edge-windows:
     mkdir -p build
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-windows.yaml --skip-compilation
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge-windows.yaml --skip-compilation
 
 # Fail unless builder-edge-windows.yaml differs from builder-edge-static.yaml
 # only by the allowed list in the script; extend that list when a
@@ -286,9 +286,9 @@ all-edge: test-custom build-edge verify-edge
 # Scrape Collector (otelcol-scrape) - cloud source scraping (future)
 # =============================================================================
 
-# Generate scrape collector code using OCB (pinned to the v0.154.0-component OCB version)
+# Generate scrape collector code using OCB (pinned to the v0.164-component OCB version)
 generate-scrape:
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-scrape.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-scrape.yaml
 
 # Build the scrape collector
 build-scrape: generate-scrape
@@ -331,9 +331,9 @@ docker-build-scrape:
 # Gateway Collector (otelcol-gateway) - central aggregation (future)
 # =============================================================================
 
-# Generate gateway collector code using OCB (pinned to the v0.154.0-component OCB version)
+# Generate gateway collector code using OCB (pinned to the v0.164-component OCB version)
 generate-gateway:
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-gateway.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-gateway.yaml
 
 # Build the gateway collector
 build-gateway: generate-gateway
@@ -490,7 +490,7 @@ test-nested-modules:
 # version against test/baselines/gomod. Arguments
 # pass to the script: manifest names, or --update to rewrite baselines.
 check-gomod-graph *args:
-    OCB_VERSION={{ocb_version_v154}} scripts/check-gomod-graph.sh {{args}}
+    OCB_VERSION={{ocb_version_v164}} scripts/check-gomod-graph.sh {{args}}
 
 # Tests for check-gomod-graph against scratch go.mod files; no network.
 test-check-gomod-graph:

@@ -2,7 +2,7 @@
 # Every component in this file is valid on Windows.
 # Summarization is off: windowhist is defined but not in the metrics pipeline, and every
 # metric receiver collects at the 60s send interval. To turn it on, add windowhist to the
-# metrics pipeline after normalizedload and set the hostmetrics and windowsperfcounters
+# metrics pipeline after normalizedload and set the host_metrics and windowsperfcounters
 # intervals to 10s, the scrape_interval of windowhist.
 # Placeholder gateway host and host identity; the role writes the real values.
 # The winlog processor is in the Windows manifest and wired into the logs
@@ -17,7 +17,7 @@ extensions:
   zpages:
     endpoint: 127.0.0.1:55679
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -44,7 +44,7 @@ receivers:
         mute_process_io_error: true
         mute_process_user_error: true
   # Fixed local drives only; the role adds removable or network drives.
-  hostmetrics/filesystem:
+  host_metrics/filesystem:
     collection_interval: 15m
     scrapers:
       filesystem:
@@ -162,21 +162,21 @@ receivers:
   # Event logs are on by default, Security included; the
   # winlog processor drops its routine audit events. Each channel keeps its
   # bookmark in file_storage.
-  windowseventlog/security:
+  windows_event_log/security:
     channel: Security
     start_at: end
     storage: file_storage
     include_log_record_original: true
     raw: false
     ignore_channel_errors: true
-  windowseventlog/system:
+  windows_event_log/system:
     channel: System
     start_at: end
     storage: file_storage
     include_log_record_original: true
     raw: false
     ignore_channel_errors: true
-  windowseventlog/application:
+  windows_event_log/application:
     channel: Application
     start_at: end
     storage: file_storage
@@ -184,7 +184,7 @@ receivers:
     raw: false
     ignore_channel_errors: true
   # The role puts every other channel into crc32 buckets like this one.
-  windowseventlog/bucket-0:
+  windows_event_log/bucket-0:
     query: |
       <QueryList>
         <Query Id="0">
@@ -199,7 +199,7 @@ receivers:
     # File logs, disabled. Uncomment an entry and add it to the logs pipeline.
     # The role appends C:\ProgramData\otelcol-edge\logs\** to every exclude.
     #
-    # filelog/iis-w3c:
+    # file_log/iis-w3c:
     #   include: ['C:\inetpub\logs\LogFiles\W3SVC*\*.log']
     #   exclude: ['C:\ProgramData\otelcol-edge\logs\**']
     #   start_at: end
@@ -213,7 +213,7 @@ receivers:
     #       from: body
     #       to: attributes.original_message
     #
-    # filelog/app:
+    # file_log/app:
     #   include: ['C:\ProgramData\MyApp\logs\*.log']
     #   exclude: ['C:\ProgramData\otelcol-edge\logs\**']
     #   start_at: end
@@ -233,7 +233,7 @@ processors:
     check_interval: 1s
     limit_mib: 256
     spike_limit_mib: 64
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: [os]
@@ -299,9 +299,14 @@ processors:
       plain: {}
       filesystem: {scrape_interval: 15m, send_interval: 15m}
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: http://otel-main.example.invalid:4318
     compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 0s
     sending_queue:
       enabled: true
       storage: file_storage
@@ -334,10 +339,10 @@ service:
                 endpoint: http://otel-main.example.invalid:4318
   pipelines:
     metrics:
-      receivers: [hostmetrics, hostmetrics/filesystem, windowsperfcounters]
-      processors: [memory_limiter, filter/process, normalizedload, resourcedetection, resource/host, resourceversion]
-      exporters: [otlphttp]
+      receivers: [host_metrics, host_metrics/filesystem, windowsperfcounters]
+      processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, resourceversion]
+      exporters: [otlp_http]
     logs:
-      receivers: [windowseventlog/security, windowseventlog/system, windowseventlog/application, windowseventlog/bucket-0]
-      processors: [memory_limiter, winlog, resourcedetection, resource/host, resourceversion]
-      exporters: [otlphttp]
+      receivers: [windows_event_log/security, windows_event_log/system, windows_event_log/application, windows_event_log/bucket-0]
+      processors: [memory_limiter, winlog, resource_detection, resource/host, resourceversion]
+      exporters: [otlp_http]

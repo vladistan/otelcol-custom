@@ -10,7 +10,7 @@
 # - Includes all edge processors for testing
 # - Summarization is off: windowhist is not in the pipeline. To turn it on, add
 #   a windowhist processor (scrape_interval 10s, send_interval 60s, groups cpu,
-#   memory, psi and plain), put it in the metrics pipeline and set the hostmetrics
+#   memory, psi and plain), put it in the metrics pipeline and set the host_metrics
 #   and psi intervals to 10s.
 # - No external dependencies required
 
@@ -21,7 +21,7 @@ extensions:
     endpoint: 127.0.0.1:55679
 receivers:
   # File-based log receiver for testing with sample data
-  filelog/testdata:
+  file_log/testdata:
     include:
       - testdata/logrus-logs/*.txt
       - testdata/cisco-logs/*.txt
@@ -38,7 +38,7 @@ receivers:
   psi:
     collection_interval: 60s
   # Host metrics for testing (works on macOS and Linux)
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -52,7 +52,7 @@ receivers:
             enabled: true
   # Hourly process metrics - cpu.time and uptime for long-running processes
   # Using 30s for local testing (production uses 1h)
-  hostmetrics/process_hourly:
+  host_metrics/process_hourly:
     collection_interval: 30s # Short interval for testing
     scrapers:
       process:
@@ -83,7 +83,7 @@ processors:
     timeout: 5s
     send_batch_size: 100
   # Resource detection (hostname, OS info)
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: [os]
@@ -141,15 +141,15 @@ service:
       level: none # Disable collector self-telemetry for local testing
   pipelines:
     logs:
-      receivers: [filelog/testdata]
-      processors: [memory_limiter, resourcedetection, resource/host, batch]
+      receivers: [file_log/testdata]
+      processors: [memory_limiter, resource_detection, resource/host, batch]
       exporters: [debug, file/logs]
     metrics:
-      receivers: [hostmetrics, psi]
-      processors: [memory_limiter, filter/process, normalizedload, resourcedetection, resource/host, batch]
+      receivers: [host_metrics, psi]
+      processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, batch]
       exporters: [debug, file/metrics]
     # Hourly process metrics - cpu.time and uptime for long-running processes
     metrics/process_hourly:
-      receivers: [hostmetrics/process_hourly]
-      processors: [memory_limiter, filter/process_hourly, resourcedetection, resource/host, batch]
+      receivers: [host_metrics/process_hourly]
+      processors: [memory_limiter, filter/process_hourly, resource_detection, resource/host, batch]
       exporters: [debug, file/metrics]

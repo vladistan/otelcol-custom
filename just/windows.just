@@ -18,7 +18,7 @@ build-edge-windows: build-edge-image
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-windows.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge-windows.yaml
     for f in cmd/otelcol-custom/*.go; do
         case "$f" in
             *_test.go) ;;
@@ -71,13 +71,31 @@ test-rotating-sink: generate-edge-windows
                printf "rotatingsink.go statement coverage: %.1f%%\n", pct
                exit (pct < 80) }' rotatingsink.cover
 
+# Run the Sentry service-wrapper tests inside the generated module, fail under
+# 80% statement coverage of svcwrapper.go, and compile main_windows.go for
+# windows/amd64.
+test-svcwrapper: generate-edge-windows
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cp cmd/otelcol-custom/svcwrapper*.go {{edge_windows_dir}}/
+    cd {{edge_windows_dir}}
+    go get github.com/getsentry/sentry-go@v0.29.1
+    go mod tidy
+    go test -covermode=set -coverprofile=svcwrapper.cover -run 'RunReporting|ReportExitCode|SentryFlushTimeout' ./...
+    awk '$1 ~ /svcwrapper\.go:/ { total += $2; if ($3 > 0) cov += $2 }
+         END { pct = total ? 100 * cov / total : 0
+               printf "svcwrapper.go statement coverage: %.1f%%\n", pct
+               exit (pct < 80) }' svcwrapper.cover
+    cp ../../cmd/otelcol-custom/main_windows.go .
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o /dev/null .
+
 # Build the Windows manifest for the host OS and run `validate` on a config.
 validate-edge-windows-config config:
     #!/usr/bin/env bash
     set -euo pipefail
     [ -f "{{config}}" ] || { echo "Missing config: {{config}}" >&2; exit 1; }
     mkdir -p {{edge_windows_dir}}
-    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v154}} --config builder-edge-windows.yaml
+    go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge-windows.yaml
     for f in cmd/otelcol-custom/*.go; do
         case "$f" in
             *_test.go) ;;

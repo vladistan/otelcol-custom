@@ -87,12 +87,12 @@ receivers:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics, gpu]
-      processors: [resourcedetection, batch]
-      exporters: [otlp]
+      receivers: [host_metrics, gpu]
+      processors: [resource_detection, batch]
+      exporters: [otlp_grpc]
 ```
 
-Put `gpu` in a pipeline that runs `resourcedetection`, which adds the host
+Put `gpu` in a pipeline that runs `resource_detection`, which adds the host
 identity to the resource. The receiver itself sets no resource attributes.
 
 ## Operator notes

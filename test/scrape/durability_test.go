@@ -202,15 +202,15 @@ func durabilityConfig(t *testing.T, batchTimeout string) []byte {
 		"receivers":  map[string]any{"awss3/cloudtrail": receiver},
 		"processors": processors,
 		"exporters": map[string]any{
-			"otlphttp": pick("exporters", "otlphttp"),
-			"debug":    map[string]any{"verbosity": "detailed"},
+			"otlp_http": pick("exporters", "otlp_http"),
+			"debug":     map[string]any{"verbosity": "detailed"},
 		},
 		"service": map[string]any{
 			"extensions": []string{"zpages", "file_storage", "aws_logs_encoding/cloudtrail"},
 			"pipelines": map[string]any{"logs/aws": map[string]any{
 				"receivers":  []string{"awss3/cloudtrail"},
 				"processors": order,
-				"exporters":  []string{"otlphttp", "debug"},
+				"exporters":  []string{"otlp_http", "debug"},
 			}},
 		},
 	}

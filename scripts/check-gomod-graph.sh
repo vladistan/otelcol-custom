@@ -9,7 +9,7 @@
 #             (default: all but edge-windows)
 #   --update  rewrite the baseline from the generated go.mod
 #   --gomod   read FILE instead of generating (one manifest only)
-# Env: OCB_VERSION, e.g. 0.154.0, required unless --gomod is given.
+# Env: OCB_VERSION, e.g. 0.164.0, required unless --gomod is given.
 #      GOMOD_BASELINES overrides the baseline directory, GOMOD_LOCAL_ROOT
 #      the tree "local" scans (tests).
 # "local" compares every go.mod under processor/, receiver/, stanza/ and

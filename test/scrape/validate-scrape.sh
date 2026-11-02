@@ -4,14 +4,14 @@
 # Compiles a collector, so it takes a few minutes.
 #
 # Usage: test/scrape/validate-scrape.sh
-# Env: OCB_VERSION overrides the builder version (default 0.154.0).
+# Env: OCB_VERSION overrides the builder version (default 0.164.0).
 # Exit: 0 the config validates, 1 validation or build failed.
 set -euo pipefail
 unset CDPATH
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly ROOT
-readonly OCB_VERSION="${OCB_VERSION:-0.154.0}"
+readonly OCB_VERSION="${OCB_VERSION:-0.164.0}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

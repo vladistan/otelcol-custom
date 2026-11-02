@@ -10,7 +10,7 @@ import (
 // Config defines configuration for the syslog processor.
 type Config struct {
 	// SourceAttribute specifies the attribute containing the raw syslog message.
-	// Defaults to "message" (the attribute set by udplog/tcplog receivers after priority parsing).
+	// Defaults to "message" (the attribute set by udp_log/tcp_log receivers after priority parsing).
 	SourceAttribute string `mapstructure:"source_attribute"`
 
 	// SetHostname controls whether to set host.name resource attribute from syslog hostname.

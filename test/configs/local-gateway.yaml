@@ -26,7 +26,7 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
   # UDP log receiver for syslog/network device logs
-  udplog/syslog:
+  udp_log/syslog:
     listen_address: 0.0.0.0:1514
     operators:
       - type: regex_parser
@@ -35,7 +35,7 @@ receivers:
         parse_to: attributes
         on_error: send
   # TCP log receiver for syslog/network device logs
-  tcplog/syslog:
+  tcp_log/syslog:
     listen_address: 0.0.0.0:1515
     operators:
       - type: regex_parser
@@ -44,7 +44,7 @@ receivers:
         parse_to: attributes
         on_error: send
   # File-based log receiver for testing with sample data
-  filelog/testdata:
+  file_log/testdata:
     include:
       - testdata/**/*.txt
       - testdata/**/*.log
@@ -136,7 +136,7 @@ processors:
         from_attribute: data_stream.dataset
         action: upsert
   # Resource detection for local testing
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: [os]
@@ -193,13 +193,13 @@ service:
       exporters: [debug, file/logs]
     # Logs from syslog (network devices)
     logs/syslog:
-      receivers: [udplog/syslog, tcplog/syslog]
-      processors: [memory_limiter, transform/syslog, ciscolog, resourcedetection, resource/dev, batch]
+      receivers: [udp_log/syslog, tcp_log/syslog]
+      processors: [memory_limiter, transform/syslog, ciscolog, resource_detection, resource/dev, batch]
       exporters: [debug, file/logs]
     # Logs from testdata files
     logs/testdata:
-      receivers: [filelog/testdata]
-      processors: [memory_limiter, resourcedetection, resource/dev, batch]
+      receivers: [file_log/testdata]
+      processors: [memory_limiter, resource_detection, resource/dev, batch]
       exporters: [debug, file/logs]
     # Metrics pipeline
     metrics:

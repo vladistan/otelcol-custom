@@ -55,7 +55,7 @@ Confirmed. `processRecords` walks the `Records` array and appends one log record
 
 The encoding sets no `service.name`, `cloud.region` or `cloud.account.id` from `resource.labels` for ordinary entries. The reference config derives `cloud.account.id` from `gcp.project`, and reads region and service from the label keys in the fixtures. `cloud.region` appears in the README only for one format (`README.md:467`, `location`).
 
-### resourcedetection gcp detector
+### resource_detection gcp detector
 
 Present. It sets `cloud.provider`, `cloud.account.id` (project id) and `cloud.platform`. On GKE it also sets `k8s.cluster.name` and the zone or region (`internal/gcp/gcp.go:80-89`). On other platforms it sets `cloud.region` from the platform-specific region callable (`gcp.go:104-138`).
 
@@ -144,7 +144,7 @@ Size the volume and memory for your event rate.
 
 `test/scrape/restart-durability.sh` builds the scratch collector for linux/amd64 and runs `TestRestartDurability` and the kill-at-intake tests below (build tag `durability`). It needs Docker and pulls `motoserver/moto` and `alpine`.
 
-The test stands in moto for S3 and SQS, because LocalStack now refuses to start without a paid auth token. It seeds 3 CloudTrail objects with 3 records each and one SQS notification per object. The collector config is built from the reference config: same `file_storage`, `memory_limiter`, `transform/aws`, `batch` and `otlphttp` blocks, with the receiver pointed at moto. A named volume holds `file_storage`. The OTLP sink runs on the host and answers 503 until released.
+The test stands in moto for S3 and SQS, because LocalStack now refuses to start without a paid auth token. It seeds 3 CloudTrail objects with 3 records each and one SQS notification per object. The collector config is built from the reference config: same `file_storage`, `memory_limiter`, `transform/aws`, `batch` and `otlp_http` blocks, with the receiver pointed at moto. A named volume holds `file_storage`. The OTLP sink runs on the host and answers 503 until released.
 
 The test runs this procedure:
 

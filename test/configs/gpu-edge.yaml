@@ -11,7 +11,7 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -28,12 +28,12 @@ processors:
     spike_limit_mib: 64
   batch:
     timeout: 5s
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: [os]
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: ${env:OTLP_ENDPOINT}
     tls:
       insecure: true
@@ -44,10 +44,10 @@ service:
       level: none
   pipelines:
     metrics:
-      receivers: [hostmetrics, psi]
-      processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlp]
+      receivers: [host_metrics, psi]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_grpc]
     metrics/gpu:
       receivers: [gpu]
-      processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlp]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_grpc]

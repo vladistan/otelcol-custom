@@ -146,7 +146,7 @@ main() {
 	# The health endpoint moves to a free port: 13133 may be taken on the host.
 	sed -e 's/0\.0\.0\.0:13133/127.0.0.1:0/' \
 		"$ROOT/test/configs/gpu-edge.yaml" >"$OUT/edge-gpu.yaml"
-	sed -e '/^  gpu:/,/^$/d' -e '/metrics\/gpu:/,/exporters: \[otlp\]/d' \
+	sed -e '/^  gpu:/,/^$/d' -e '/metrics\/gpu:/,/exporters: \[otlp_grpc\]/d' \
 		"$OUT/edge-gpu.yaml" >"$OUT/edge-no-gpu.yaml"
 
 	echo "== edge without gpu, $minutes min =="

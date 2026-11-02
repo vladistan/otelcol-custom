@@ -232,7 +232,7 @@ func filterNoiseErrors(msg string) bool {
 		"no such file or directory",              // Filesystem paths that don't exist or are inaccessible
 		"failed to read usage",                   // Hostmetrics filesystem scraper permission errors
 		"flushing combined logs",                 // Recombine operator flush on non-matching entries
-		"error reading process name for pid",     // Short-lived processes in hostmetrics
+		"error reading process name for pid",     // Short-lived processes in host_metrics
 		"signal: terminated",                     // Collector restart/shutdown
 		"journalctl command exited",              // Journald receiver restart
 		"failed to process entry",                // Stanza operator entry processing (handled by on_error: send)

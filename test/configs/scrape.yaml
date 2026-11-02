@@ -104,7 +104,7 @@ processors:
     limit_percentage: 75
     spike_limit_percentage: 20
   batch: {}
-  resourcedetection:
+  resource_detection:
     detectors: [env]
   transform/aws:
     error_mode: ignore
@@ -119,7 +119,9 @@ processors:
           - set(attributes["event.category"], "audit") where attributes["log.source"] == "aws.cloudtrail"
           - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.s3access"
           - set(attributes["event.category"], "application") where attributes["log.source"] == "aws.cloudwatch"
-          - set(body, Concat([attributes["rpc.service"], attributes["rpc.method"]], " ")) where attributes["log.source"] == "aws.cloudtrail"
+          # rpc.method is "eventSource/eventName" since the encoder emits v1 RPC conventions.
+          - set(body, attributes["rpc.method"]) where attributes["log.source"] == "aws.cloudtrail"
+          - replace_pattern(body, "/", " ") where attributes["log.source"] == "aws.cloudtrail"
           - set(severity_number, SEVERITY_NUMBER_INFO) where severity_number == SEVERITY_NUMBER_UNSPECIFIED
           - |-
             set(severity_number, SEVERITY_NUMBER_WARN)
@@ -163,7 +165,7 @@ processors:
           - set(attributes["log.source"], "azure.activity")
           - set(attributes["event.category"], "audit")
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
     retry_on_failure:
       enabled: true
@@ -187,19 +189,19 @@ service:
   pipelines:
     logs/aws:
       receivers: [awss3/cloudtrail, awss3/s3access, awscloudwatch/logs, auth0]
-      # No batch: the persistent queue in otlphttp must be the first buffer, because
+      # No batch: the persistent queue in otlp_http must be the first buffer, because
       # awss3 and auth0 delete queue messages once the next consumer accepts them.
-      processors: [memory_limiter, transform/aws, resourcedetection]
-      exporters: [otlphttp]
+      processors: [memory_limiter, transform/aws, resource_detection]
+      exporters: [otlp_http]
     logs/gcp:
       receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
-      processors: [memory_limiter, transform/gcp, resourcedetection, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, transform/gcp, resource_detection, batch]
+      exporters: [otlp_http]
     logs/azure:
       receivers: [azure_event_hub]
-      processors: [memory_limiter, transform/azure, resourcedetection, batch]
-      exporters: [otlphttp]
+      processors: [memory_limiter, transform/azure, resource_detection, batch]
+      exporters: [otlp_http]
     metrics/aws:
       receivers: [awscloudwatch/metrics]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]

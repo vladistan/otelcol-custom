@@ -25,7 +25,7 @@ receiver in the `metrics` pipeline).
 
 ### Normalized/denormalized load — `processor/normalizedloadprocessor`
 
-Post-processes standard `hostmetrics` output, adding derived metrics
+Post-processes standard `host_metrics` output, adding derived metrics
 alongside the originals (it does not remove the source metric):
 
 | Source metric | Derived metric | Transform |
@@ -129,10 +129,10 @@ resource attributes rather than emitting metrics of their own:
   lookups keyed off a configurable `source_attribute`, backed by a local
   `database_path`.
 
-## Standard `hostmetrics` metrics
+## Standard `host_metrics` metrics
 
 Both profiles' local test configs (`test/configs/local-edge.yaml`,
-`test/configs/local-gateway.yaml`) scrape standard `hostmetrics` (`cpu`,
+`test/configs/local-gateway.yaml`) scrape standard `host_metrics` (`cpu`,
 `load`, `memory`, and periodic `process` scrapers); these follow upstream
 OpenTelemetry Collector Contrib semantics and are not custom to this
 distribution.

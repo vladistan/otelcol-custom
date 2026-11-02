@@ -7,9 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.4] - Unreleased
+## [0.3.4] - 2026-11-02
 
-Sentry crash reports for the Windows service.
+Sentry crash reports for the Windows service, collector base 0.164.1, and a retry-forever edge queue.
+
+### Added
+
+- **Sentry reports for the Windows service.** When the collector service exits with a non-zero code, it sends one event with the exit code and flushes before the process ends. The flush wait is 5 s by default and can be set with `OTELCOL_CUSTOM_SENTRY_FLUSH_TIMEOUT`.
+
+### Fixed
+
+- **`otelcol-scrape` image labels.** The image now carries the source-repository, version and revision labels, so the release workflow can publish it to GHCR.
+
+### Changed
+
+- **Collector base is now 0.164.1** (was 0.154.0). The CloudTrail record body in the scrape sample now comes from `rpc.method`.
+- **The Windows edge exporter retries forever and caps its disk queue at 1 GiB.** Before, the default 300 s retry limit dropped data during a long gateway outage. A full queue rejects new data and keeps the oldest.
+- **Samples and docs use the current component names.** For example `host_metrics`, `otlp_http`, `resource_detection`, `file_log` and `windows_event_log` replace the deprecated spellings that log a warning at startup.
 
 ## [0.3.3] - 2026-10-30
 

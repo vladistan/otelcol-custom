@@ -19,37 +19,39 @@ The service is named `otelcol-edge` and runs as `LocalSystem`. A compromised col
 | Queue and bookmarks | `%ProgramData%\otelcol-edge\storage\` |
 | Self-logs | `%ProgramData%\otelcol-edge\logs\otelcol-edge.log` |
 
+The exporter retries forever, so a gateway outage of any length loses nothing while the queue has room. The queue holds at most 1 GiB per host. When it is full, new data is rejected and the oldest data stays. Keep disk headroom beyond 1 GiB, because the queue files need extra space while they compact.
+
 An upgrade replaces only the binary. Self-logs rotate at 10 MiB and keep 5 backups (60 MiB cap). The collector never reads its own log directory.
 
 The health endpoint is `127.0.0.1:13133` and zpages is `127.0.0.1:55679`. Neither accepts remote connections.
 
 ## Metrics
 
-Hostmetrics names and units are the ones the receiver emits at v0.154.0, the same as on Linux.
+Hostmetrics names and units are the ones the receiver emits at v0.164.1, the same as on Linux.
 
 | Metric | Unit | Source |
 |---|---|---|
-| `system.cpu.time` | `s` | hostmetrics `cpu` |
-| `system.cpu.utilization` | `1` | hostmetrics `cpu` |
-| `system.memory.usage` | `By` | hostmetrics `memory` |
-| `system.memory.utilization` | `1` | hostmetrics `memory` |
-| `system.paging.usage` | `By` | hostmetrics `paging` |
-| `system.paging.operations` | `{operations}` | hostmetrics `paging` |
-| `system.paging.faults` | `{faults}` | hostmetrics `paging` |
-| `system.cpu.load_average.1m`, `.5m`, `.15m` | `{thread}` | hostmetrics `load` |
-| `system.filesystem.usage` | `By` | hostmetrics `filesystem` (15m) |
-| `system.network.io` | `By` | hostmetrics `network` |
-| `system.network.packets` | `{packets}` | hostmetrics `network` |
-| `system.network.errors` | `{errors}` | hostmetrics `network` |
-| `system.network.dropped` | `{packets}` | hostmetrics `network` |
-| `system.network.connections` | `{connections}` | hostmetrics `network` |
-| `process.cpu.time` | `s` | hostmetrics `process` |
-| `process.cpu.utilization` | `1` | hostmetrics `process` |
-| `process.memory.usage` (working set) | `By` | hostmetrics `process` |
-| `process.memory.virtual` (private bytes) | `By` | hostmetrics `process` |
-| `process.disk.io` | `By` | hostmetrics `process` |
-| `process.threads` | `{threads}` | hostmetrics `process` |
-| `process.handles` | `{count}` | hostmetrics `process` |
+| `system.cpu.time` | `s` | host_metrics `cpu` |
+| `system.cpu.utilization` | `1` | host_metrics `cpu` |
+| `system.memory.usage` | `By` | host_metrics `memory` |
+| `system.memory.utilization` | `1` | host_metrics `memory` |
+| `system.paging.usage` | `By` | host_metrics `paging` |
+| `system.paging.operations` | `{operations}` | host_metrics `paging` |
+| `system.paging.faults` | `{faults}` | host_metrics `paging` |
+| `system.cpu.load_average.1m`, `.5m`, `.15m` | `{thread}` | host_metrics `load` |
+| `system.filesystem.usage` | `By` | host_metrics `filesystem` (15m) |
+| `system.network.io` | `By` | host_metrics `network` |
+| `system.network.packets` | `{packets}` | host_metrics `network` |
+| `system.network.errors` | `{errors}` | host_metrics `network` |
+| `system.network.dropped` | `{packets}` | host_metrics `network` |
+| `system.network.connections` | `{connections}` | host_metrics `network` |
+| `process.cpu.time` | `s` | host_metrics `process` |
+| `process.cpu.utilization` | `1` | host_metrics `process` |
+| `process.memory.usage` (working set) | `By` | host_metrics `process` |
+| `process.memory.virtual` (private bytes) | `By` | host_metrics `process` |
+| `process.disk.io` | `By` | host_metrics `process` |
+| `process.threads` | `{threads}` | host_metrics `process` |
+| `process.handles` | `{count}` | host_metrics `process` |
 
 Per-process series carry `process.executable.name`, `process.executable.path`, `process.pid` and `process.owner`. Series below 50 MiB of memory or 0.001 CPU utilization are dropped, as on Linux.
 

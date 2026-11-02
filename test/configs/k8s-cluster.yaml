@@ -25,14 +25,14 @@ config:
     pipelines:
       logs:
         receivers:
-          - k8sobjects
-        # resource/cluster follows resourcedetection/gcp so the configured name wins.
+          - k8s_objects
+        # resource/cluster follows resource_detection/gcp so the configured name wins.
         processors:
           - k8sevent
-          - resourcedetection/gcp
+          - resource_detection/gcp
           - resource/cluster
           - resource/hostname
           - batch
           - memory_limiter
         exporters:
-          - otlphttp
+          - otlp_http

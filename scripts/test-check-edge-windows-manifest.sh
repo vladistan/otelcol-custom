@@ -48,7 +48,7 @@ expect_output "success output says PASS" "^PASS"
 
 cp "$WINDOWS" "$SCRATCH/extra.yaml"
 sed -i.bak '/^exporters:/a\
-  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.154.0' "$SCRATCH/extra.yaml"
+  - gomod: go.opentelemetry.io/collector/exporter/nopexporter v0.164.0' "$SCRATCH/extra.yaml"
 expect_exit_code "an unlisted added component fails" 1 "$CHECK" "$SCRATCH/extra.yaml" "$STATIC"
 expect_output "the added component is named" "nopexporter"
 

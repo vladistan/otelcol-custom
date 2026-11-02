@@ -22,7 +22,7 @@ go install go.opentelemetry.io/collector/cmd/builder@v0.115.0
 builder --config builder-config.yaml
 ```
 
-The edge, edge-windows, gateway and scrape profiles build with OCB v0.154.0;
+The edge, edge-windows, gateway and scrape profiles build with OCB v0.164.0;
 the `justfile` recipes (`just build-edge`, `just generate-edge-windows`, ...)
 pin the right version for each.
 
@@ -82,9 +82,9 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 ## Components
 
 ### Standard (from otelcol-contrib)
-- **Receivers**: otlp, hostmetrics, journald
+- **Receivers**: otlp, host_metrics, journald
 - **Processors**: batch, memory_limiter
-- **Exporters**: otlp, debug
+- **Exporters**: otlp_grpc, debug
 
 ### Custom (in-tree)
 

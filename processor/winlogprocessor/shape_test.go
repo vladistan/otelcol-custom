@@ -12,7 +12,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-// receiverEvent mirrors what the windowseventlog receiver emits with the
+// receiverEvent mirrors what the windows_event_log receiver emits with the
 // settings the sample config uses (raw: false, include_log_record_original: true).
 type receiverEvent struct {
 	channel             string

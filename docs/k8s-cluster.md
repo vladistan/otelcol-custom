@@ -15,7 +15,7 @@
 | logs processors | `transform/k8s_objects` first | `k8sevent` first |
 | cluster name | not set here | `resource/cluster` sets `k8s.cluster.name` |
 
-Everything else in the values stays: receivers, `resource/k8s`, `k8sattributes`, `memory_limiter`, `batch`, exporters and extensions.
+Everything else in the values stays: receivers, `resource/k8s`, `k8s_attributes`, `memory_limiter`, `batch`, exporters and extensions.
 
 ## k8sevent output
 
@@ -29,7 +29,7 @@ Everything else in the values stays: receivers, `resource/k8s`, `k8sattributes`,
 
 | Cluster | `k8s.cluster.name` | Notes |
 |---|---|---|
-| kube-v0 (GCP) | `kube-v0` | Keeps the `googlecloud*` receivers and `resourcedetection/gcp`. |
+| kube-v0 (GCP) | `kube-v0` | Keeps the `googlecloud*` receivers and `resource_detection/gcp`. |
 | apps-eks-v0 (AWS) | `apps-eks-v0` | Parity not yet checked against its values. |
 | site-k8s | `site-k8s` | Parity not yet checked against its values. |
 
@@ -37,7 +37,7 @@ For apps-eks-v0 and site-k8s the fragment applies after their own `transform/k8s
 
 ## Components
 
-Every receiver, processor, exporter and extension in the stock `otel-cluster` config is in `builder-gateway.yaml` at v0.154.0. The extension prints as `google_cloud_logentry_encoding`; a config accepts both names.
+Every receiver, processor, exporter and extension in the stock `otel-cluster` config is in `builder-gateway.yaml` at v0.164.1. The extension prints as `google_cloud_logentry_encoding`; a config accepts both names.
 
 ## Sentry attribution
 
