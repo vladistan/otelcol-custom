@@ -22,9 +22,12 @@ sed -E 's#^([[:space:]]*output_path:).*#\1 ./build/scratch-scrape#; /skip_compil
 go run "go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}" --config "$work/builder.yaml"
 
 export OTEL_MAIN_OTLP_ENDPOINT=http://otel-main.example:4318 AWS_REGION=us-east-1
+export CLOUDTRAIL_BUCKET=trail-bucket
 export CLOUDTRAIL_SQS_URL=https://sqs.us-east-1.amazonaws.com/111122223333/cloudtrail
 export S3ACCESS_BUCKET=access-bucket S3ACCESS_PREFIX=logs/
 export S3ACCESS_SQS_URL=https://sqs.us-east-1.amazonaws.com/111122223333/s3access
+export ALB_BUCKET=alb-bucket ALB_PREFIX=elb/
+export ALB_SQS_URL=https://sqs.us-east-1.amazonaws.com/111122223333/alb
 export AUTH0_SQS_URL=https://sqs.eu-central-1.amazonaws.com/111122223333/auth0
 export AUTH0_SQS_REGION=eu-central-1 AUTH0_ROLE_ARN= AUTH0_EXTERNAL_ID=
 export GCP_PROJECT=proj-example

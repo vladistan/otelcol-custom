@@ -77,13 +77,13 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 
 | Component | Key | Source |
 |---|---|---|
-| `awss3` | `s3downloader.region` | `awss3receiver/config.go:19` |
-| `awss3` | `s3downloader.s3_bucket` | `awss3receiver/config.go:20`, required even with `sqs` (`config.go:94`) |
-| `awss3` | `s3downloader.s3_prefix` | `awss3receiver/config.go:21` |
-| `awss3` | `sqs.queue_url` | `awss3receiver/config.go:36` |
-| `awss3` | `sqs.region` | `awss3receiver/config.go:38` |
-| `awss3` | `encodings[].extension` | `awss3receiver/config.go:59` |
-| `awss3` | `encodings[].suffix` | `awss3receiver/config.go:60`, matched by `HasSuffix` after `.gz` is stripped (`receiver.go:128-139,311-318`) |
+| `aws_s3` | `s3downloader.region` | `awss3receiver/config.go:19` |
+| `aws_s3` | `s3downloader.s3_bucket` | `awss3receiver/config.go:20`, required even with `sqs` (`config.go:94`) |
+| `aws_s3` | `s3downloader.s3_prefix` | `awss3receiver/config.go:21` |
+| `aws_s3` | `sqs.queue_url` | `awss3receiver/config.go:36` |
+| `aws_s3` | `sqs.region` | `awss3receiver/config.go:38` |
+| `aws_s3` | `encodings[].extension` | `awss3receiver/config.go:59` |
+| `aws_s3` | `encodings[].suffix` | `awss3receiver/config.go:60`, matched by `HasSuffix` after `.gz` is stripped (`receiver.go:128-139,311-318`) |
 | `awscloudwatch` | `region` | `awscloudwatchreceiver/config.go:30` |
 | `awscloudwatch` | `storage` | `awscloudwatchreceiver/config.go:35` |
 | `awscloudwatch` | `logs.poll_interval` | `awscloudwatchreceiver/config.go:87` |
@@ -106,12 +106,14 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 | `auth0` | `region` | `auth0receiver/config.go:22` |
 | `auth0` | `role_arn` | `auth0receiver/config.go:24` |
 | `auth0` | `external_id` | `auth0receiver/config.go:25` |
-| `aws_logs_encoding` | `format` | `awslogsencodingextension/config.go:34`, values `cloudtrail` and `s3access` |
+| `aws_logs_encoding` | `format` | `awslogsencodingextension/config.go:34`, values `cloudtrail`, `s3access` and `elbaccess` |
+
+The receiver type is `aws_s3`. The old name `awss3` still loads and logs a deprecation warning at startup.
 
 ### Where the sources differ
 
 - The extension types are `aws_logs_encoding` and `google_cloud_logentry_encoding`, not `awslogs_encoding` and `googlecloudlogentry_encoding` (`metadata.yaml:2`). Pub/Sub `encoding` takes the extension ID.
-- The CloudTrail decoder leaves the record body empty. The `transform/aws` block sets it to `<service> <method>`. Errors appear as `aws.error.code`, not `errorCode`.
+- The CloudTrail decoder leaves the record body empty. The `transform/aws` block sets it from `rpc.method`, which holds `eventSource/eventName`, and replaces `/` with a space (for example `ec2.amazonaws.com StartInstances`). The value depends on the `extension.encoding.awslogsencoding.EmitV1RPCConventions` feature gate, which is on by default; with it off, `rpc.method` is the bare `eventName`. A deployed config that builds the body from other attributes needs the same two statements. Errors appear as `aws.error.code`, not `errorCode`.
 - The `googlecloudlogentry` decoder already sets `http.response.status_code`, `url.path` and `user_agent.original` from `httpRequest` (`log_entry.go:229,252,254`). The transform adds only the resource mapping: `gcp.label.service_name`, `gcp.label.location` and `gcp.label.project_id` become `service.name`, `cloud.region` and `cloud.account.id`.
 - The `googlecloudlogentry` decoder rejects pretty-printed JSON. Pub/Sub delivers one compact entry per message, so only the test fixtures are compacted.
 - `jsonPayload` stays a map body. `event.category` values (`audit`, `access`, `application`) are a choice the sources do not fix.
@@ -120,20 +122,43 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 
 A receiver and its pipeline go into the deployed config only when its Secret exists. A pipeline with no receivers fails config load. A Deployment uses the Recreate strategy with one replica and a ReadWriteOnce volume for `file_storage`, so no second pod runs against the same sources.
 
+A StatefulSet with one replica and a `volumeClaimTemplate` mounted at `/var/lib/otel/storage` fits the same need. The image runs as uid and gid 10001, so set `fsGroup: 10001` on the pod. Run one replica per set of sources. Health checks use `GET /` on port 13133.
+
 Secrets and files the pod needs:
 
 - `AZ_EH_CONN` for Event Hub.
-- `GOOGLE_APPLICATION_CREDENTIALS` file for Pub/Sub.
+- `GOOGLE_APPLICATION_CREDENTIALS` file for Pub/Sub. Keyless access uses an `external_account` JSON file. Its AWS credential source (`environment_id: aws1`) reads only the AWS environment keys or the instance metadata service. Under IRSA, set `credential_source.file` to the projected service-account token and use an OIDC-type workload identity provider.
 - AWS credentials through the SDK default chain; `AUTH0_ROLE_ARN` and `AUTH0_EXTERNAL_ID` when Auth0 is cross-account.
+- `CLOUDTRAIL_BUCKET` for CloudTrail (required): the bucket that holds the organization trail.
 - Queue URLs, bucket and subscription names as plain env values (list at the top of the config).
 
 Size the volume and memory for your event rate.
+
+### CloudTrail digest objects
+
+Digest files under `CloudTrail-Digest/` pass the `s3_prefix` and `.json` suffix checks and parse as one log record each, with `aws.cloudtrail.digest.*` attributes. The receiver has no exclude option. To drop them, add a filter processor on `aws.cloudtrail.digest.s3_object`, or narrow the S3 notification rules to the `CloudTrail/` prefix so they never reach the queue. The notification change was not verified against a live bucket.
+
+### Pub/Sub stream resets
+
+The audit receiver can log `response stream breaking ... InvalidArgument` and reconnect; pending acknowledgements on that stream are lost and their messages are redelivered. The cause and a fix are unknown. Settings to try are `trigger_ack_batch_duration`, `max_outstanding_messages` and `client_id`.
+
+### ALB access logs
+
+The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 through SQS notifications. It needs three env values: `ALB_BUCKET`, `ALB_PREFIX` and `ALB_SQS_URL`.
+
+- Objects are `.log.gz` files under `AWSLogs/<account>/elasticloadbalancing/<region>/`. The receiver strips `.gz` before it matches the encoding suffix, so the suffix is `.log`.
+- `ALB_PREFIX` is the prefix configured on the load balancer, for example `elb/`. It must be a prefix of every object key, with the trailing slash.
+- The S3 event notification needs the same prefix and the suffix `.log.gz`, sent to the SQS queue. Give the queue a redrive policy: a message the receiver cannot process returns on every poll until it moves.
+- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. The `transform/aws` block labels the records `log.source=aws.alb`.
+- The collector role needs `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` and `sqs:GetQueueAttributes`.
+
+`alb_test.go` runs a synthetic line through the real decoder and `transform/aws`. The gunzip and SQS path is not in that test; it was checked once by running a gzipped object through a local S3 and SQS stand-in and the released image.
 
 ### API permissions
 
 | Receiver | Permissions needed |
 |---|---|
-| `awss3` | `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
+| `aws_s3` | `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
 | `awscloudwatch` logs | `logs:DescribeLogGroups`, `logs:FilterLogEvents` |
 | `awscloudwatch` metrics | `cloudwatch:GetMetricData` (`metrics.queries` only; no discovery, so no `cloudwatch:ListMetrics`) |
 | `googlecloudpubsub` | Pub/Sub subscriber role on each subscription |
@@ -159,7 +184,7 @@ Credential scan: the collector ran with fake `AWS_ACCESS_KEY_ID`, `AWS_SECRET_AC
 
 ### Kill at intake
 
-The `awss3` receiver deletes an SQS message once the next consumer accepts the objects (`s3sqsreader.go:278`). A `batch` processor accepts them before the exporter queue holds them, so a kill inside its timeout loses records that SQS no longer has. The persistent queue is therefore the first buffer. `logs/aws` has no `batch` processor, and each S3 object goes out as its own OTLP request.
+The `aws_s3` receiver deletes an SQS message once the next consumer accepts the objects (`s3sqsreader.go:278`). A `batch` processor accepts them before the exporter queue holds them, so a kill inside its timeout loses records that SQS no longer has. The persistent queue is therefore the first buffer. `logs/aws` has no `batch` processor, and each S3 object goes out as its own OTLP request.
 
 - `TestKillAtIntakeLosesNothing` kills the collector as soon as every SQS message is deleted. All 9 records arrive.
 - `TestKillAtIntakeWithBatchLosesRecords` is the control. It adds a `batch` processor with a 10 s timeout ahead of the queue and kills at the same point. 0 of 9 records arrive, so the kill test does detect the loss.

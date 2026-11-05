@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-11-05
+
+ALB access logs in the scrape sample, and a scrape sample that no longer carries a site-specific bucket name. The collector code is unchanged from 0.3.4.
+
+### Added
+
+- **ALB access logs in the scrape sample.** The `aws_s3/alb` receiver reads gzipped `.log.gz` objects from S3 through SQS notifications and decodes them with the `elbaccess` format. Records carry `log.source` `aws.alb`, the client address, the status code and the target processing time. The bucket, prefix and queue URL come from `ALB_BUCKET`, `ALB_PREFIX` and `ALB_SQS_URL`.
+
+### Changed
+
+- The scrape sample reads the CloudTrail bucket from `CLOUDTRAIL_BUCKET`.
+- The CloudTrail and S3-access receivers in the sample use the `aws_s3` name, so the sample logs no deprecation warning.
+- The scrape collector doc covers the current CloudTrail body, a StatefulSet deployment, keyless GCP access under IRSA, CloudTrail digest objects and Pub/Sub stream resets.
+
 ## [0.3.4] - 2026-11-02
 
 Sentry crash reports for the Windows service, collector base 0.164.1, and a retry-forever edge queue.

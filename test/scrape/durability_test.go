@@ -32,6 +32,7 @@ const (
 	volumeName    = "scrape-storage"
 	motoHostPort  = "5055"
 	queuePath     = "/123456789012/cloudtrail"
+	trailBucket   = "durability-trails"
 	objectCount   = 3
 	recordsPerObj = 3
 	eventIDKey    = "aws.cloudtrail.event_id"
@@ -47,7 +48,7 @@ import boto3, json
 kw = dict(endpoint_url='http://localhost:5000', region_name='us-east-1', aws_access_key_id='x', aws_secret_access_key='y')
 s3 = boto3.client('s3', **kw)
 sqs = boto3.client('sqs', **kw)
-s3.create_bucket(Bucket='example-cloudtrail-bucket')
+s3.create_bucket(Bucket='TRAIL_BUCKET')
 url = sqs.create_queue(QueueName='cloudtrail')['QueueUrl']
 for i in range(3):
     recs = [{'awsRegion': 'us-east-1', 'eventID': 'dur-%d-%d' % (i, j), 'eventName': 'GetObject',
@@ -55,10 +56,10 @@ for i in range(3):
              'eventVersion': '1.08', 'recipientAccountId': '111122223333',
              'userIdentity': {'accountId': '111122223333', 'type': 'IAMUser', 'userName': 'alice'}} for j in range(3)]
     key = 'AWSLogs/111122223333/CloudTrail/us-east-1/2026/10/25/obj%d.json' % i
-    s3.put_object(Bucket='example-cloudtrail-bucket', Key=key, Body=json.dumps({'Records': recs}))
+    s3.put_object(Bucket='TRAIL_BUCKET', Key=key, Body=json.dumps({'Records': recs}))
     sqs.send_message(QueueUrl=url, MessageBody=json.dumps({'Records': [
         {'eventSource': 'aws:s3', 'eventName': 'ObjectCreated:Put',
-         's3': {'bucket': {'name': 'example-cloudtrail-bucket'}, 'object': {'key': key}}}]}))
+         's3': {'bucket': {'name': 'TRAIL_BUCKET'}, 'object': {'key': key}}}]}))
 `
 
 func run(t *testing.T, name string, args ...string) string {
@@ -175,7 +176,7 @@ func durabilityConfig(t *testing.T, batchTimeout string) []byte {
 	ref := loadReference(t)
 	pick := func(kind, name string) any { return section(t, ref, kind, name) }
 
-	receiver := section(t, ref, "receivers", "awss3/cloudtrail")
+	receiver := section(t, ref, "receivers", "aws_s3/cloudtrail")
 	for _, key := range []string{"s3downloader", "sqs"} {
 		receiver[key].(map[string]any)["endpoint"] = "http://" + motoName + ":5000"
 	}
@@ -199,7 +200,7 @@ func durabilityConfig(t *testing.T, batchTimeout string) []byte {
 			"zpages":                       map[string]any{"endpoint": "0.0.0.0:55679"},
 			"aws_logs_encoding/cloudtrail": pick("extensions", "aws_logs_encoding/cloudtrail"),
 		},
-		"receivers":  map[string]any{"awss3/cloudtrail": receiver},
+		"receivers":  map[string]any{"aws_s3/cloudtrail": receiver},
 		"processors": processors,
 		"exporters": map[string]any{
 			"otlp_http": pick("exporters", "otlp_http"),
@@ -208,7 +209,7 @@ func durabilityConfig(t *testing.T, batchTimeout string) []byte {
 		"service": map[string]any{
 			"extensions": []string{"zpages", "file_storage", "aws_logs_encoding/cloudtrail"},
 			"pipelines": map[string]any{"logs/aws": map[string]any{
-				"receivers":  []string{"awss3/cloudtrail"},
+				"receivers":  []string{"aws_s3/cloudtrail"},
 				"processors": order,
 				"exporters":  []string{"otlp_http", "debug"},
 			}},
@@ -252,7 +253,7 @@ func startStack(t *testing.T, batchTimeout string) *stack {
 	run(t, "docker", "run", "-d", "--name", motoName, "--network", networkName,
 		"-p", "127.0.0.1:"+motoHostPort+":5000", "motoserver/moto:latest")
 	waitFor(t, "moto", 60*time.Second, func() bool {
-		return exec.Command("docker", "exec", motoName, "python3", "-c", seedScript).Run() == nil
+		return exec.Command("docker", "exec", motoName, "python3", "-c", strings.ReplaceAll(seedScript, "TRAIL_BUCKET", trailBucket)).Run() == nil
 	})
 
 	sink := newSink()
@@ -277,6 +278,7 @@ func startStack(t *testing.T, batchTimeout string) *stack {
 		"-e", "AWS_ACCESS_KEY_ID="+fakeAccessID, "-e", "AWS_SECRET_ACCESS_KEY="+fakeSigning,
 		"-e", "AWS_SESSION_TOKEN="+fakeSession, "-e", "AWS_REGION=us-east-1",
 		"-e", "CLOUDTRAIL_SQS_URL=http://"+motoName+":5000"+queuePath,
+		"-e", "CLOUDTRAIL_BUCKET="+trailBucket,
 		"-e", fmt.Sprintf("OTEL_MAIN_OTLP_ENDPOINT=http://host.docker.internal:%d", port),
 		"alpine:3.22", "/otelcol", "--config", "/etc/otel/config.yaml")
 	run(t, "docker", "start", collectorName)
