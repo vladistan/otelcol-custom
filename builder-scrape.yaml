@@ -1,6 +1,7 @@
 # Narrowed otelcol-scrape manifest for cloud source scraping. The only local
-# module is auth0receiver. No metrics receiver is listed: CloudWatch metrics
-# come from the metrics block of awscloudwatchreceiver.
+# module is auth0receiver. CloudWatch metrics come from the metrics block of
+# awscloudwatchreceiver; Cloud Monitoring metrics come from
+# googlecloudmonitoringreceiver.
 dist:
   name: otelcol-scrape
   description: Cloud source scraping collector (AWS, GCP, Azure)
@@ -22,6 +23,8 @@ receivers:
   # logs and metrics (metrics.queries)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.164.1
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.164.1
+  # metrics: Cloud Run metrics, one project per receiver instance
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v0.164.1
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.164.1
   - gomod: github.com/vladistan/otelcol-custom/receiver/auth0receiver v0.0.0
 processors:

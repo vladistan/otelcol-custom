@@ -9,6 +9,7 @@ Sources read from the Go module cache at tag v0.154.0 of opentelemetry-collector
 | `awslogsencodingextension` | present; CloudTrail and S3 access-log formats exist | `internal/unmarshaler/cloudtraillog`, `internal/unmarshaler/s3-access-log` |
 | `googlecloudlogentryencodingextension` | present | `log_entry.go` |
 | `googlecloudpubsubreceiver` | present; keys `project`, `subscription`, `encoding`, `ignore_encoding_error` | `config.go:20-38` |
+| `googlecloudmonitoringreceiver` | present at v0.164.1, stability alpha; one `project_id` per instance | `config.go:23` |
 | `awscloudwatchreceiver` logs | present; `logs.groups.autodiscover` (`prefix` or `pattern`, not both) or `logs.groups.named`, not both modes | `config.go:84-120` |
 | `awscloudwatchmetricsreceiver` | **missing at v0.154.0**, last tag v0.133.0 | see below |
 | `resourcedetectionprocessor` `gcp` detector | present, name `gcp` | `factory.go:81`, `internal/gcp/gcp.go:27` |
@@ -99,6 +100,9 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 | `googlecloudpubsub` | `subscription` | `googlecloudpubsubreceiver/config.go:31`, must match `projects/<project>/subscriptions/<name>` (`config.go:72`) |
 | `googlecloudpubsub` | `encoding` | `googlecloudpubsubreceiver/config.go:33` |
 | `googlecloudpubsub` | `ignore_encoding_error` | `googlecloudpubsubreceiver/config.go:38` |
+| `googlecloudmonitoring` | `project_id` | `googlecloudmonitoringreceiver/config.go:23` |
+| `googlecloudmonitoring` | `collection_interval` | `scraperhelper.ControllerConfig`; default 5m, at least 60s (`googlecloudmonitoringreceiver/config.go:15-16,42`) |
+| `googlecloudmonitoring` | `metrics_list[].metric_name` | `googlecloudmonitoringreceiver/config.go:31,35`, list required (`config.go:46`) |
 | `azure_event_hub` | `connection` | `azureeventhubreceiver/config.go:28`, needs `SharedAccessKeyName` |
 | `azure_event_hub` | `storage` | `azureeventhubreceiver/config.go:32` |
 | `azure_event_hub` | `format` | `azureeventhubreceiver/config.go:34` |
@@ -130,6 +134,7 @@ Secrets and files the pod needs:
 - `GOOGLE_APPLICATION_CREDENTIALS` file for Pub/Sub. Keyless access uses an `external_account` JSON file. Its AWS credential source (`environment_id: aws1`) reads only the AWS environment keys or the instance metadata service. Under IRSA, set `credential_source.file` to the projected service-account token and use an OIDC-type workload identity provider.
 - AWS credentials through the SDK default chain; `AUTH0_ROLE_ARN` and `AUTH0_EXTERNAL_ID` when Auth0 is cross-account.
 - `CLOUDTRAIL_BUCKET` for CloudTrail (required): the bucket that holds the organization trail.
+- `GCP_MON_PROJECT_A` and `GCP_MON_PROJECT_B` for Cloud Run metrics: one project id per receiver instance.
 - Queue URLs, bucket and subscription names as plain env values (list at the top of the config).
 
 Size the volume and memory for your event rate.
@@ -154,6 +159,17 @@ The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 th
 
 `alb_test.go` runs a synthetic line through the real decoder and `transform/aws`. The gunzip and SQS path is not in that test; it was checked once by running a gzipped object through a local S3 and SQS stand-in and the released image.
 
+### Cloud Run metrics
+
+The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metrics/gcp` pipeline. It is alpha.
+
+- `project_id` takes one project, so the sample has one named instance per project: `googlecloudmonitoring/cloudrun-a` and `googlecloudmonitoring/cloudrun-b`. Their projects come from `GCP_MON_PROJECT_A` and `GCP_MON_PROJECT_B`.
+- The sample polls `run.googleapis.com/request_count`, `request_latencies`, `container/cpu/utilizations`, `container/memory/utilizations` and `container/instance_count`.
+- `collection_interval` defaults to 5m and must be at least 60s. Every scrape calls the Cloud Monitoring API, which has quotas and charges.
+- Credentials come from the Google default credentials, as for Pub/Sub, with the `monitoring.read` scope. The Cloud Monitoring API must be enabled on each polled project.
+- A project the identity cannot read fails receiver start, and the collector does not start. A pipeline with no credentials must be removed from the deployed config, like any other source.
+- Metric names are the Cloud Monitoring metric types. A delta metric stays delta in the OTLP output, so check that the receiving backend accepts delta temporality. This was not verified.
+
 ### API permissions
 
 | Receiver | Permissions needed |
@@ -162,6 +178,7 @@ The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 th
 | `awscloudwatch` logs | `logs:DescribeLogGroups`, `logs:FilterLogEvents` |
 | `awscloudwatch` metrics | `cloudwatch:GetMetricData` (`metrics.queries` only; no discovery, so no `cloudwatch:ListMetrics`) |
 | `googlecloudpubsub` | Pub/Sub subscriber role on each subscription |
+| `googlecloudmonitoring` | `roles/monitoring.viewer` on each polled project (`monitoring.timeSeries.list` and `monitoring.metricDescriptors.list`); role contents are from Google's IAM documentation |
 | `azure_event_hub` | Listen on the Event Hub through the connection string |
 | `auth0` | `sqs:ReceiveMessage` and `sqs:DeleteMessage` on its queue; `sts:AssumeRole` on `role_arn` when set |
 

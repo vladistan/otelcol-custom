@@ -50,6 +50,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformpro
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/azureeventhubreceiver v0.164.1
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.164.1
 go.opentelemetry.io/collector/client v1.70.0
 go.opentelemetry.io/collector/component v1.70.0

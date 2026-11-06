@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-11-06
+
+Google Cloud Monitoring in the scrape image. The edge and gateway builds are unchanged from 0.3.5.
+
+### Added
+
+- **`googlecloudmonitoringreceiver` in the scrape image.** It pulls Google Cloud Monitoring metrics, such as the Cloud Run request, latency, CPU, memory and instance-count series. The sample polls two projects, one receiver instance per project, with the project ids read from `GCP_MON_PROJECT_A` and `GCP_MON_PROJECT_B`. Access uses the same default credentials as the Pub/Sub receivers. The identity needs `roles/monitoring.viewer` on each polled project. The receiver is alpha, and delta metrics reach the backend as delta values. See `docs/scrape-collector.md`.
+
 ## [0.3.5] - 2026-11-05
 
 ALB access logs in the scrape sample, and a scrape sample that no longer carries a site-specific bucket name. The collector code is unchanged from 0.3.4.

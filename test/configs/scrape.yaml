@@ -7,7 +7,8 @@
 # S3ACCESS_BUCKET, S3ACCESS_PREFIX, S3ACCESS_SQS_URL, ALB_BUCKET, ALB_PREFIX,
 # ALB_SQS_URL, AUTH0_SQS_URL,
 # AUTH0_SQS_REGION, AUTH0_ROLE_ARN, AUTH0_EXTERNAL_ID, GCP_PROJECT,
-# GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, AZ_EH_CONN.
+# GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, GCP_MON_PROJECT_A,
+# GCP_MON_PROJECT_B, AZ_EH_CONN.
 # AWS and GCP credentials come from the SDK default chains and
 # GOOGLE_APPLICATION_CREDENTIALS, not from this file.
 extensions:
@@ -110,6 +111,25 @@ receivers:
     subscription: ${env:GCP_AUDIT_SUBSCRIPTION}
     encoding: google_cloud_logentry_encoding
     ignore_encoding_error: true
+  # Cloud Run metrics: one instance per project, because project_id takes one project.
+  googlecloudmonitoring/cloudrun-a:
+    project_id: ${env:GCP_MON_PROJECT_A}
+    collection_interval: 5m
+    metrics_list:
+      - metric_name: run.googleapis.com/request_count
+      - metric_name: run.googleapis.com/request_latencies
+      - metric_name: run.googleapis.com/container/cpu/utilizations
+      - metric_name: run.googleapis.com/container/memory/utilizations
+      - metric_name: run.googleapis.com/container/instance_count
+  googlecloudmonitoring/cloudrun-b:
+    project_id: ${env:GCP_MON_PROJECT_B}
+    collection_interval: 5m
+    metrics_list:
+      - metric_name: run.googleapis.com/request_count
+      - metric_name: run.googleapis.com/request_latencies
+      - metric_name: run.googleapis.com/container/cpu/utilizations
+      - metric_name: run.googleapis.com/container/memory/utilizations
+      - metric_name: run.googleapis.com/container/instance_count
   azure_event_hub:
     connection: ${env:AZ_EH_CONN}
     format: azure
@@ -222,5 +242,9 @@ service:
       exporters: [otlp_http]
     metrics/aws:
       receivers: [awscloudwatch/metrics]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http]
+    metrics/gcp:
+      receivers: [googlecloudmonitoring/cloudrun-a, googlecloudmonitoring/cloudrun-b]
       processors: [memory_limiter, batch]
       exporters: [otlp_http]

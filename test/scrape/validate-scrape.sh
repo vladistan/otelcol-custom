@@ -31,6 +31,7 @@ export ALB_SQS_URL=https://sqs.us-east-1.amazonaws.com/111122223333/alb
 export AUTH0_SQS_URL=https://sqs.eu-central-1.amazonaws.com/111122223333/auth0
 export AUTH0_SQS_REGION=eu-central-1 AUTH0_ROLE_ARN= AUTH0_EXTERNAL_ID=
 export GCP_PROJECT=proj-example
+export GCP_MON_PROJECT_A=proj-example-a GCP_MON_PROJECT_B=proj-example-b
 export GCP_CLOUDRUN_SUBSCRIPTION=projects/proj-example/subscriptions/cloudrun
 export GCP_AUDIT_SUBSCRIPTION=projects/proj-example/subscriptions/audit
 export AZ_EH_CONN='Endpoint=sb://example.servicebus.windows.net/;SharedAccessKeyName=placeholder-name;SharedAccessKey=placeholder-value;EntityPath=placeholder-hub'
