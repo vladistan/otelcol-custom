@@ -27,7 +27,7 @@ func TestALBAccessLogFields(t *testing.T) {
 	}
 	attrs := recs[0].log.Attributes()
 	wantStr(t, attrs, "client.address", "192.0.2.10")
-	wantStr(t, attrs, "log.source", "aws.alb")
+	wantStr(t, attrs, "log.source", "aws.elb")
 	wantStr(t, attrs, "event.category", "access")
 	if v, ok := attrs.Get("aws.elb.status.code"); !ok || v.Int() != 200 {
 		t.Fatalf("aws.elb.status.code = %v (present=%v), want 200", v.AsRaw(), ok)

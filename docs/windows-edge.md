@@ -191,6 +191,42 @@ The record has severity INFO and the body `winlog drop summary: <n> events dropp
 
 Both leave through the collector's internal telemetry with the resource attributes in `service.telemetry.resource`.
 
+## Runbook
+
+### Where to look
+
+- Self-logs: `%ProgramData%\otelcol-edge\logs\otelcol-edge.log`. They rotate at 10 MiB and keep 5 backups.
+- Service state: `Get-Service otelcol-edge`. A stop or crash also appears as Service Control Manager event 7036 or 7034 in the System log.
+- Health: `http://127.0.0.1:13133/` on the host. Zpages is on `127.0.0.1:55679`.
+- Queue and read positions: `%ProgramData%\otelcol-edge\storage\`.
+
+### Alert queries
+
+`docs/alert-queries.sql` holds one ClickHouse query per alert. Each returns rows only while its condition holds, so the alert fires on a non-empty result. Run them every 5 minutes.
+
+| Alert | Query | Fires when |
+|---|---|---|
+| Service stopped | 1 | A Service Control Manager event reports a service stopped (7036) or crashed (7034, 7031) in the last 15 minutes |
+| Metric gap | 2 | A Windows host sent no metric for more than 120 s, two send windows. A stopped `otelcol-edge` service and a gateway outage both match |
+| Dropped-event spike | 3 | The `otelcol_winlog_events_dropped` growth in 15 minutes is over 100 and over 3 times the average of the 6 hours before |
+| Collected-event spike | 3b | Winlog rows in 15 minutes are over 500 and over 3 times the average of the 6 hours before |
+
+Query 3 needs the collector's own counters in ClickHouse, sent through the `service.telemetry` metrics reader in the sample config. A deployment that does not export them returns no rows, so use query 3b there. Query 1 matches every stopped service. Add `AND service IN (...)` to watch named ones.
+
+### Roll back
+
+Set `otel_edge_win_version` to the previous tag and run the role. The role puts the previous binary back and leaves the config and storage in place. It renders only the features of the target version. Tags exist for v0.3.1 to v0.3.7.
+
+### Re-read one event-log channel
+
+`reset_channel: <receiver>` deletes that receiver's storage file. The channel then starts from its `start_at` value on the next service start. With `end`, events written while the service was stopped are not collected.
+
+### Turn summarization and drop summaries off
+
+- `otel_edge_win_summarize_enabled: false` takes `windowhist` out of the metrics pipeline. Each receiver then collects at the send interval, 60s.
+- `drop_summary.enabled: false`, the default, stops the hourly drop-count record.
+- `otel_edge_win_default_drop_list_enabled: false` keeps the events the default drop list removes.
+
 ## Log rotation limit
 
 File logs are held open only while read. Upstream documents that Move/Create rotation on Windows may lose data (`fileconsumer/design.md`); whether this limit applies to rename rotation is unverified. Copy-truncate rotation loses lines written after the last poll.

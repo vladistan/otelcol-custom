@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -287,33 +288,47 @@ func startStack(t *testing.T, batchTimeout string) *stack {
 
 var queueCount = regexp.MustCompile(`<Name>(ApproximateNumberOfMessages(?:NotVisible)?)</Name>\s*<Value>(\d+)</Value>`)
 
-// queueDrained reports whether every SQS message was received and deleted.
-func queueDrained() bool {
+// queueDepth returns the visible and in-flight message counts of the queue at path.
+func queueDepth(path string) (visible, inFlight int, ok bool) {
 	// Moto picks the service from the credential scope of the request, so the header names sqs.
-	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:"+motoHostPort+queuePath,
+	req, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:"+motoHostPort+path,
 		strings.NewReader("Action=GetQueueAttributes&AttributeName.1=All&Version=2012-11-05"))
 	if err != nil {
-		return false
+		return 0, 0, false
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential=x/20260101/us-east-1/sqs/aws4_request, SignedHeaders=host, Signature=x")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return false
+		return 0, 0, false
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	found := queueCount.FindAllStringSubmatch(string(body), -1)
 	if len(found) != 2 {
-		return false
+		return 0, 0, false
 	}
 	for _, m := range found {
-		if m[2] != "0" {
-			return false
+		n, err := strconv.Atoi(m[2])
+		if err != nil {
+			return 0, 0, false
+		}
+		if m[1] == "ApproximateNumberOfMessages" {
+			visible = n
+		} else {
+			inFlight = n
 		}
 	}
-	return true
+	return visible, inFlight, true
 }
+
+// queueDrainedAt reports whether every SQS message in the queue at path was received and deleted.
+func queueDrainedAt(path string) bool {
+	visible, inFlight, ok := queueDepth(path)
+	return ok && visible == 0 && inFlight == 0
+}
+
+func queueDrained() bool { return queueDrainedAt(queuePath) }
 
 func TestRestartDurability(t *testing.T) {
 	s := startStack(t, "")

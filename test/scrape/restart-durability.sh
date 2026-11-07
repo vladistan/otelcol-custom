@@ -6,6 +6,8 @@
 # zpages are scanned for the fake credential values. A second test kills the
 # collector right after the receiver deletes its SQS messages and expects no loss;
 # a control with a slow batch processor ahead of the queue must lose records.
+# Two more tests send a gzipped ALB access log through moto and the aws_s3/alb
+# receiver and check the decoded records, the SQS delete and a skipped .txt key.
 #
 # Usage: test/scrape/restart-durability.sh
 # Needs: Docker (linux/amd64), network access to pull motoserver/moto and alpine.
@@ -19,4 +21,4 @@ readonly ROOT
 "$ROOT/test/scrape/validate-scrape.sh"
 (cd "$ROOT/build/scratch-scrape" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o otelcol-scrape-linux .)
 SCRAPE_LINUX_BIN="$ROOT/build/scratch-scrape/otelcol-scrape-linux" \
-	go -C "$ROOT/test/scrape" test -tags durability -run 'Test(RestartDurability|KillAtIntake)' -count=1 -v ./...
+	go -C "$ROOT/test/scrape" test -tags durability -run 'Test(RestartDurability|KillAtIntake|ALBGunzip|ALBKeyWithoutLogSuffix)' -count=1 -v ./...

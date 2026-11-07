@@ -88,14 +88,14 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 
 ### Custom (in-tree)
 
-**Processors** (`processor/`, 32 total — 30 are independently-versioned nested Go
+**Processors** (`processor/`, 33 total — 31 are independently-versioned nested Go
 modules with their own `go.mod`; `ipsecprocessor` and `logrusprocessor` are part of
 the root module):
 assetdbprocessor, charonlogprocessor, ciscologprocessor, containerdlogprocessor,
-cronlogprocessor, filterlogprocessor, healthprobesampler, ipextractorprocessor,
-ipsecprocessor, journaldprocessor, k8seventprocessor, kafkalogprocessor,
-kernellogprocessor, klogprocessor, logrecombineprocessor, logruslogprocessor,
-logrusprocessor, macextractorprocessor, nginxlogprocessor,
+cronlogprocessor, filterlogprocessor, healthprobesampler, identityfillprocessor,
+ipextractorprocessor, ipsecprocessor, journaldprocessor, k8seventprocessor,
+kafkalogprocessor, kernellogprocessor, klogprocessor, logrecombineprocessor,
+logruslogprocessor, logrusprocessor, macextractorprocessor, nginxlogprocessor,
 normalizedloadprocessor, pgbouncerlogprocessor, postgreslogprocessor,
 redislogprocessor, resourceversionprocessor, sentrylogprocessor,
 snoozelogprocessor, snubalogprocessor, syslogprocessor, tektonlogprocessor,

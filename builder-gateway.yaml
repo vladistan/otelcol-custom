@@ -41,6 +41,7 @@ replaces:
   - github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler
   - github.com/vladistan/otelcol-custom/processor/snoozelogprocessor => ../../processor/snoozelogprocessor
   - github.com/vladistan/otelcol-custom/processor/journaldprocessor => ../../processor/journaldprocessor
+  - github.com/vladistan/otelcol-custom/processor/identityfillprocessor => ../../processor/identityfillprocessor
   - github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
 # =============================================================================
 # Extensions
@@ -177,6 +178,7 @@ processors:
   - gomod: github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
   - gomod: github.com/vladistan/otelcol-custom/processor/snoozelogprocessor v0.0.0
   - gomod: github.com/vladistan/otelcol-custom/processor/journaldprocessor v0.0.0
+  - gomod: github.com/vladistan/otelcol-custom/processor/identityfillprocessor v0.0.0
 # =============================================================================
 # Connectors
 # =============================================================================

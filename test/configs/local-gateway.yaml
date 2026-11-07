@@ -107,6 +107,10 @@ processors:
     match:
       - namespace: shop
         container: worker
+  # Fills empty host.name and service.name on cluster and GCP audit logs, and
+  # builds the audit body. The defaults apply. Defined here and not wired into
+  # a pipeline.
+  identityfill: {}
   # Health probe sampling: keeps 20% of health-check requests. Defined here
   # and not wired into a pipeline.
   healthprobe:

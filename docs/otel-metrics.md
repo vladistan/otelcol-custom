@@ -117,6 +117,12 @@ metric passes through at the scrape interval now.
 With all groups plain at 60s/60s the output matches the baseline build: 47
 metric names, same types and counts.
 
+### Identity fill — `processor/identityfillprocessor`
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `otelcol_identityfill_records_filled{rule}` | counter | log records given a value by a rule: `host_name`, `service_name`, `audit_body` |
+
 ## Resource-attribute enrichment (not new metrics)
 
 Two processors tag existing telemetry (metrics, logs, and traces) with

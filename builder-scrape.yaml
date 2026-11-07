@@ -10,6 +10,7 @@ dist:
   skip_compilation: true
 replaces:
   - github.com/vladistan/otelcol-custom/receiver/auth0receiver => ../../receiver/auth0receiver
+  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
 extensions:
   - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.164.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.164.1

@@ -25,6 +25,40 @@ Everything else in the values stays: receivers, `resource/k8s`, `k8s_attributes`
 
 `test/bench/k8sevent_parity_test.go` runs the OTTL block from the kube-v0 values and the processor on the same records and compares every field the block sets.
 
+## Filling host.name and service.name
+
+Cluster logs reach ClickHouse with an empty `HostName` and `ServiceName` unless the resource carries `host.name` and `service.name`. The `identityfill` processor fills them. It sits after `resource/hostname` and before `batch`. With no settings it applies the three rules below, and it never overwrites a value that is already set. An empty string counts as unset.
+
+| Rule | Applies to | Result |
+|---|---|---|
+| `host_name` | any record whose resource has no `host.name` | the first non-empty of `k8s.node.name`, `k8s.cluster.name`, `gcp.label.cluster_name` |
+| `service_name` | a record with `k8s.event.reason` | `k8s-events` |
+| | a record with `k8s.pod.phase` | `k8s-pod-status` |
+| | a GCP audit record | `gcp-audit` |
+| `audit_body` | a GCP audit record with an empty body | `<gcp.audit.method.name> <gcp.audit.resource.name>`, or whichever of the two exists |
+
+A record is a GCP audit record when `cloud.resource_id` starts with `cloudaudit` or `gcp.audit.method.name` is set.
+
+Each source is read from the log record first and from the resource second. On pod snapshots `k8s.node.name` is a record attribute and `k8s.cluster.name` is a resource attribute. Records on one resource can resolve to different nodes or kinds, and `host.name` and `service.name` are resource attributes, so the processor splits such a resource into one resource per distinct pair. Every copy keeps the original resource attributes, scope and schema URL.
+
+Settings, all optional:
+
+```yaml
+identityfill:
+  host_name:
+    disabled: false
+    sources: [k8s.node.name, k8s.cluster.name, gcp.label.cluster_name]
+  service_name:
+    disabled: false
+    k8s_event: k8s-events
+    k8s_pod_status: k8s-pod-status
+    gcp_audit: gcp-audit
+  audit_body:
+    disabled: false
+```
+
+`sources` and the three names must not be empty while their rule is on. The counter metric is listed in `docs/otel-metrics.md`.
+
 ## Per-cluster values
 
 | Cluster | `k8s.cluster.name` | Notes |

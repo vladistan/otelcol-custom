@@ -88,6 +88,7 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 | `awscloudwatch` | `region` | `awscloudwatchreceiver/config.go:30` |
 | `awscloudwatch` | `storage` | `awscloudwatchreceiver/config.go:35` |
 | `awscloudwatch` | `logs.poll_interval` | `awscloudwatchreceiver/config.go:87` |
+| `awscloudwatch` | `logs.settle_lag` | `receiver/awscloudwatchreceiver/config.go` (local copy) |
 | `awscloudwatch` | `logs.groups.autodiscover.prefix` | `awscloudwatchreceiver/config.go:100` |
 | `awscloudwatch` | `logs.groups.autodiscover.limit` | `awscloudwatchreceiver/config.go:102` |
 | `awscloudwatch` | `metrics.collection_interval` | `awscloudwatchreceiver/config.go:42,162` |
@@ -154,10 +155,16 @@ The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 th
 - Objects are `.log.gz` files under `AWSLogs/<account>/elasticloadbalancing/<region>/`. The receiver strips `.gz` before it matches the encoding suffix, so the suffix is `.log`.
 - `ALB_PREFIX` is the prefix configured on the load balancer, for example `elb/`. It must be a prefix of every object key, with the trailing slash.
 - The S3 event notification needs the same prefix and the suffix `.log.gz`, sent to the SQS queue. Give the queue a redrive policy: a message the receiver cannot process returns on every poll until it moves.
-- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. The `transform/aws` block labels the records `log.source=aws.alb`.
+- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. The `transform/aws` block labels the records `log.source=aws.elb`. A deployed config must carry the same statement, or `log.source` stays empty.
 - The collector role needs `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` and `sqs:GetQueueAttributes`.
 
-`alb_test.go` runs a synthetic line through the real decoder and `transform/aws`. The gunzip and SQS path is not in that test; it was checked once by running a gzipped object through a local S3 and SQS stand-in and the released image.
+`alb_test.go` runs a synthetic line through the real decoder and `transform/aws`. `alb_e2e_test.go` covers the gunzip and SQS path: it puts a gzipped log under an `.../elasticloadbalancing/.../*.log.gz` key in moto, sends the S3 notification to SQS, runs the built collector with the `aws_s3/alb` block, and checks the records at an OTLP sink and that the SQS message is deleted. A `.txt` object is dropped with an `Unsupported file format` warning, and its notification is deleted too. `test/scrape/restart-durability.sh` runs both tests; see the next section for the requirements.
+
+### CloudWatch log settle lag
+
+Stock `awscloudwatchreceiver` v0.164.1 reads each window up to now, and an empty window moves the start to now. An event that CloudWatch ingests a few seconds after its timestamp is then skipped for good. On Lambda groups, a replay of eight days of data at a one-minute poll missed 4.1% and 5.7% of events in two groups; a 10 s lag and longer missed none.
+
+The scrape image carries a local copy of the receiver, `receiver/awscloudwatchreceiver`, joined by a `replace` in `builder-scrape.yaml`. It adds `logs.settle_lag`, a duration that defaults to 0. With a value, every window ends at now minus the lag, for the request `EndTime` and for the empty-window advance. The checkpoint format is unchanged. If the lag is longer than the time since the start position, the poll for that group waits. The sample sets `30s`. A negative value is refused at startup. Everything else in the receiver is the upstream v0.164.1 code.
 
 ### Cloud Run metrics
 
@@ -208,3 +215,19 @@ The `aws_s3` receiver deletes an SQS message once the next consumer accepts the 
 - `sending_queue.batch` exists at v0.154.0 (`exporterhelper/internal/queuebatch/config.go:46`). It is not enabled and was not tested.
 
 `logs/gcp`, `logs/azure` and `metrics/aws` still have `batch`. Whether their sources acknowledge messages before the queue holds the data was not checked.
+
+## Runbook
+
+### Where to look
+
+- Logs: the container's stdout and stderr, for example `kubectl logs <pod>`. The collector writes no log file.
+- Health: `GET /` on port 13133 inside the pod.
+- Queue and read positions: the `file_storage` volume at `/var/lib/otel/storage`. Keep it across restarts, or the receivers re-read their sources.
+
+### Roll back
+
+Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.7. Keep the volume, so the queue and the read positions carry over.
+
+### Alerts
+
+`docs/alert-queries.sql` covers the Windows edge collector only. A silent scrape collector shows as a pod that is not ready or restarting, so alert on that in the cluster monitoring.

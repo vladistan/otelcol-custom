@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`test/scrape/smoke.sh`** runs the published `otelcol-scrape` image with one source and fake credentials, and checks the version, the health endpoint, that the collector survives a failing receiver, and a clean shutdown.
+- **End-to-end test for the ALB access log path.** `test/scrape/alb_e2e_test.go` runs a gzipped `.log.gz` object through a local S3 and SQS stand-in and the built scrape collector, then checks the decoded fields at an OTLP sink and that the SQS message is deleted. A second case shows an object whose key does not end in `.log` or `.log.gz` is dropped with a warning and not parsed. `test/scrape/restart-durability.sh` runs it.
+- **Runbook and alert queries.** `docs/windows-edge.md` and `docs/scrape-collector.md` gain a runbook: where the logs are, how to roll back, how to re-read one event-log channel and how to turn summarization off. `docs/alert-queries.sql` holds ClickHouse queries for a stopped Windows service, a metric gap over two send windows, and a spike in dropped or collected events.
+
+### Changed
+
+- The CHANGELOG lists the binary sizes of every release from 0.3.1 to 0.3.6.
+
+## [0.3.7] - 2026-11-07
+
+The `identityfill` processor in the gateway image and `logs.settle_lag` in the scrape image. The edge build is unchanged from 0.3.6.
+
+### Added
+
+- **`logs.settle_lag` for `awscloudwatchreceiver` in the scrape image.** Stock v0.164.1 skips events that CloudWatch ingests late, because an empty window moves the start to now. The image now builds a local copy of the receiver with a `settle_lag` duration, default 0, which ends every window at now minus the lag. With 0 the behaviour is the 0.3.6 behaviour, and the checkpoint format does not change. The sample sets `30s`. See `docs/scrape-collector.md`.
+- **`identityfill` gateway processor.** It fills an empty `host.name` and `service.name` on Kubernetes event, pod status and GCP audit logs, and sets an empty GCP audit body from the method and resource names. It never overwrites a value, needs no settings, and is wired into the `otel-cluster` sample.
+
+### Changed
+
+- The scrape sample sets ALB access log `log.source` to `aws.elb`, matching the `aws.elb.*` attributes. Update dashboards and queries that filter on `aws.alb`.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-gateway-0.3.7-linux-amd64` | 201.6 | 211402912 |
+
 ## [0.3.6] - 2026-11-06
 
 Google Cloud Monitoring in the scrape image. The edge and gateway builds are unchanged from 0.3.5.
@@ -14,6 +43,15 @@ Google Cloud Monitoring in the scrape image. The edge and gateway builds are unc
 ### Added
 
 - **`googlecloudmonitoringreceiver` in the scrape image.** It pulls Google Cloud Monitoring metrics, such as the Cloud Run request, latency, CPU, memory and instance-count series. The sample polls two projects, one receiver instance per project, with the project ids read from `GCP_MON_PROJECT_A` and `GCP_MON_PROJECT_B`. Access uses the same default credentials as the Pub/Sub receivers. The identity needs `roles/monitoring.viewer` on each polled project. The receiver is alpha, and delta metrics reach the backend as delta values. See `docs/scrape-collector.md`.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.6-linux-amd64` | 126.9 | 133054626 |
+| `otelcol-edge-0.3.6-linux-amd64-gpu` | 128.2 | 134396776 |
+| `otelcol-edge-0.3.6-windows-amd64.exe` | 130.3 | 136630272 |
+| `otelcol-gateway-0.3.6-linux-amd64` | 207.4 | 217518242 |
 
 ## [0.3.5] - 2026-11-05
 
@@ -28,6 +66,15 @@ ALB access logs in the scrape sample, and a scrape sample that no longer carries
 - The scrape sample reads the CloudTrail bucket from `CLOUDTRAIL_BUCKET`.
 - The CloudTrail and S3-access receivers in the sample use the `aws_s3` name, so the sample logs no deprecation warning.
 - The scrape collector doc covers the current CloudTrail body, a StatefulSet deployment, keyless GCP access under IRSA, CloudTrail digest objects and Pub/Sub stream resets.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.5-linux-amd64` | 126.9 | 133054626 |
+| `otelcol-edge-0.3.5-linux-amd64-gpu` | 128.2 | 134396776 |
+| `otelcol-edge-0.3.5-windows-amd64.exe` | 130.3 | 136630272 |
+| `otelcol-gateway-0.3.5-linux-amd64` | 207.4 | 217518242 |
 
 ## [0.3.4] - 2026-11-02
 
@@ -46,6 +93,15 @@ Sentry crash reports for the Windows service, collector base 0.164.1, and a retr
 - **Collector base is now 0.164.1** (was 0.154.0). The CloudTrail record body in the scrape sample now comes from `rpc.method`.
 - **The Windows edge exporter retries forever and caps its disk queue at 1 GiB.** Before, the default 300 s retry limit dropped data during a long gateway outage. A full queue rejects new data and keeps the oldest.
 - **Samples and docs use the current component names.** For example `host_metrics`, `otlp_http`, `resource_detection`, `file_log` and `windows_event_log` replace the deprecated spellings that log a warning at startup.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.4-linux-amd64` | 126.9 | 133054626 |
+| `otelcol-edge-0.3.4-linux-amd64-gpu` | 128.2 | 134396776 |
+| `otelcol-edge-0.3.4-windows-amd64.exe` | 130.3 | 136630272 |
+| `otelcol-gateway-0.3.4-linux-amd64` | 207.4 | 217518242 |
 
 ## [0.3.3] - 2026-10-30
 
@@ -68,6 +124,15 @@ Per-window exponential histograms on every edge platform, `k8sevent` parity for 
 - **`winlog` severity.** Verbose events (level 5) map to DEBUG, and a severity text that was only a digit is replaced.
 - **Narrowed `otelcol-scrape` manifest.** `builder-scrape.yaml` now lists only the components the scrape collector uses.
 
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.3-linux-amd64` | 121.1 | 127021218 |
+| `otelcol-edge-0.3.3-linux-amd64-gpu` | 122.4 | 128366312 |
+| `otelcol-edge-0.3.3-windows-amd64.exe` | 124.3 | 130305536 |
+| `otelcol-gateway-0.3.3-linux-amd64` | 222.4 | 233238690 |
+
 ## [0.3.2] - 2026-10-30
 
 Searchable Windows event logs; `journald`, `snoozelog` and health-probe processors in the gateway image.
@@ -81,6 +146,15 @@ Searchable Windows event logs; `journald`, `snoozelog` and health-probe processo
 ### Changed
 
 - **Security event log** is no longer unfiltered. In 0.3.1 the Security channel passed every event; 0.3.2 applies the default drop rules.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.2-linux-amd64` | 121.0 | 126886050 |
+| `otelcol-edge-0.3.2-linux-amd64-gpu` | 122.3 | 128229544 |
+| `otelcol-edge-0.3.2-windows-amd64.exe` | 124.1 | 130134016 |
+| `otelcol-gateway-0.3.2-linux-amd64` | 222.4 | 233238690 |
 
 ## [0.3.1] - 2026-10-27
 
@@ -104,8 +178,8 @@ Windows edge artifact; `otel-main` runs a gateway image built from this tree.
 | 0.3.1 static edge | 126886050 (+5.49%) |
 | 0.2.0 gpu edge | 121624488 |
 | 0.3.1 gpu edge | 128229544 (+5.43%) |
-| 0.3.1 Windows edge | 130072064 |
-| 0.3.1 gateway | 226672800 |
+| 0.3.1 Windows edge | 130071552 |
+| 0.3.1 gateway | 231993506 |
 
 The Linux edge growth comes from the 14-minor base bump.
 
