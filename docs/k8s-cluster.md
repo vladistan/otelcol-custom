@@ -73,6 +73,8 @@ For apps-eks-v0 and site-k8s the fragment applies after their own `transform/k8s
 
 Every receiver, processor, exporter and extension in the stock `otel-cluster` config is in `builder-gateway.yaml` at v0.164.1. The extension prints as `google_cloud_logentry_encoding`; a config accepts both names.
 
+The `tcp_check` receiver is in the gateway image from 0.3.8. It opens a TCP connection to each target on every collection interval and reports whether it connected, so a metrics pipeline can alert on a path that is down while the cluster looks healthy. It is alpha for metrics. `test/configs/gateway-tcpcheck.yaml` shows the settings and `just verify-gateway` loads it.
+
 ## Sentry attribution
 
 On the gateway image, `otel-cluster` reports to Sentry as `otelcol-gateway@<VERSION>`, not as the stock contrib distribution.

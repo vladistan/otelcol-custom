@@ -215,7 +215,7 @@ Query 3 needs the collector's own counters in ClickHouse, sent through the `serv
 
 ### Roll back
 
-Set `otel_edge_win_version` to the previous tag and run the role. The role puts the previous binary back and leaves the config and storage in place. It renders only the features of the target version. Tags exist for v0.3.1 to v0.3.7.
+Set `otel_edge_win_version` to the previous tag and run the role. The role puts the previous binary back and leaves the config and storage in place. It renders only the features of the target version. Tags exist for v0.3.1 to v0.3.8.
 
 ### Re-read one event-log channel
 

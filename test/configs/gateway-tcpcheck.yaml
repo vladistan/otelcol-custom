@@ -1,0 +1,20 @@
+# Config check for the tcp_check receiver in the gateway image.
+# Run: ./build/gateway/otelcol-gateway validate --config test/configs/gateway-tcpcheck.yaml
+# It only has to load: the targets are documentation addresses and are never dialed.
+receivers:
+  tcp_check:
+    collection_interval: 60s
+    targets:
+      - endpoint: 192.0.2.11:8006
+        dialer:
+          timeout: 5s
+      - endpoint: 192.0.2.34:8007
+        dialer:
+          timeout: 5s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics/tcpcheck:
+      receivers: [tcp_check]
+      exporters: [debug]

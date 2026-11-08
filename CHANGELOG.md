@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The CHANGELOG lists the binary sizes of every release from 0.3.1 to 0.3.6.
 
+## [0.3.8] - 2026-11-08
+
+The `tcp_check` receiver in the gateway image. The edge and scrape builds are unchanged from 0.3.7.
+
+### Added
+
+- **`tcp_check` receiver in the gateway image.** The 0.3.7 gateway refused a config that used `tcp_check` with "unknown receiver". `tcpcheckreceiver` v0.164.1, alpha for metrics, now ships with the gateway, so a cluster collector can run a metrics pipeline that checks TCP targets. `just verify-gateway` loads `test/configs/gateway-tcpcheck.yaml`. See `docs/k8s-cluster.md`.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-gateway-0.3.8-linux-amd64` | 201.7 | 211456160 |
+
 ## [0.3.7] - 2026-11-07
 
 The `identityfill` processor in the gateway image and `logs.settle_lag` in the scrape image. The edge build is unchanged from 0.3.6.

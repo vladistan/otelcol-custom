@@ -75,6 +75,8 @@ receivers:
   # --- Metrics ---
   # Host metrics (CPU, memory, disk, network, load, paging)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
+  # TCP connect checks against fixed host:port targets (alpha)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
   # Prometheus scraping (for node_exporter PSI interim solution)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.164.1
   # --- Kubernetes ---
