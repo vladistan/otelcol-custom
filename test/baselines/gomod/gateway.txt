@@ -29,6 +29,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/connector/routingconne
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
+github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.164.1
@@ -53,11 +54,13 @@ github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v1.3.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/xprofile v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/xottl v0.164.1
+github.com/open-telemetry/opentelemetry-collector-contrib/pkg/resourcetotelemetry v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/status v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azure v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/azurelogs v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheus v0.164.1
+github.com/open-telemetry/opentelemetry-collector-contrib/pkg/translator/prometheusremotewrite v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/winperfcounters v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.164.1

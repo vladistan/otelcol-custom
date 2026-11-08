@@ -362,6 +362,7 @@ verify-gateway:
     @echo "Available components:"
     ./build/gateway/otelcol-gateway components
     ./build/gateway/otelcol-gateway validate --config test/configs/gateway-tcpcheck.yaml
+    ./build/gateway/otelcol-gateway validate --config test/configs/gateway-remotewrite.yaml
 
 # ECR repository for gateway
 ecr_registry := "123456789012.dkr.ecr.us-east-1.amazonaws.com"

@@ -75,6 +75,8 @@ Every receiver, processor, exporter and extension in the stock `otel-cluster` co
 
 The `tcp_check` receiver is in the gateway image from 0.3.8. It opens a TCP connection to each target on every collection interval and reports whether it connected, so a metrics pipeline can alert on a path that is down while the cluster looks healthy. It is alpha for metrics. `test/configs/gateway-tcpcheck.yaml` shows the settings and `just verify-gateway` loads it.
 
+The `prometheus_remote_write` exporter is in the gateway image from 0.3.9. It sends metrics to any Prometheus remote write endpoint, such as Mimir, Cortex or Prometheus with the receiver enabled. It is beta for metrics. `test/configs/gateway-remotewrite.yaml` shows the settings and `just verify-gateway` loads it.
+
 ## Sentry attribution
 
 On the gateway image, `otel-cluster` reports to Sentry as `otelcol-gateway@<VERSION>`, not as the stock contrib distribution.

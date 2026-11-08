@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The CHANGELOG lists the binary sizes of every release from 0.3.1 to 0.3.6.
 
+## [0.3.9] - 2026-11-08
+
+The `prometheus_remote_write` exporter in the gateway image. The edge and scrape builds are unchanged from 0.3.8.
+
+### Added
+
+- **`prometheus_remote_write` exporter in the gateway image.** The 0.3.8 gateway refused a config that used it with "unknown type". `prometheusremotewriteexporter` v0.164.1, beta for metrics, now ships with the gateway, so a collector can push metrics to a Prometheus remote write endpoint. `just verify-gateway` loads `test/configs/gateway-remotewrite.yaml`. See `docs/k8s-cluster.md`.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-gateway-0.3.9-linux-amd64` | 202.2 | 211996832 |
+
 ## [0.3.8] - 2026-11-08
 
 The `tcp_check` receiver in the gateway image. The edge and scrape builds are unchanged from 0.3.7.

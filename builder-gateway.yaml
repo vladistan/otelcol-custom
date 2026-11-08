@@ -201,6 +201,8 @@ exporters:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/elasticsearchexporter v0.164.1
   # Direct export to ClickHouse
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.164.1
+  # Push metrics to a Prometheus remote write endpoint
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusremotewriteexporter v0.164.1
   # Write to local files (debugging/buffering)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
   # --- Debug ---

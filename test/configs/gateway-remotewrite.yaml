@@ -1,0 +1,19 @@
+# Config check for the prometheus_remote_write exporter in the gateway image.
+# Run: ./build/gateway/otelcol-gateway validate --config test/configs/gateway-remotewrite.yaml
+# It only has to load: the endpoint is a documentation address and is never called.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4317
+exporters:
+  prometheus_remote_write:
+    endpoint: https://192.0.2.50:9009/api/v1/push
+    timeout: 30s
+    resource_to_telemetry_conversion:
+      enabled: true
+service:
+  pipelines:
+    metrics/remotewrite:
+      receivers: [otlp]
+      exporters: [prometheus_remote_write]
