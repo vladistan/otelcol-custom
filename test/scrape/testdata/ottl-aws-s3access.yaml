@@ -1,0 +1,29 @@
+error_mode: ignore
+log_statements:
+  - context: log
+    statements:
+      - set(attributes["log.source"], "aws.cloudtrail") where instrumentation_scope.attributes["encoding.format"] == "aws.cloudtrail"
+      - set(attributes["log.source"], "aws.s3access") where instrumentation_scope.attributes["encoding.format"] == "aws.s3access"
+      - set(attributes["log.source"], "aws.elb") where instrumentation_scope.attributes["encoding.format"] == "aws.elbaccess"
+      - |-
+        set(attributes["log.source"], "aws.cloudwatch")
+        where attributes["log.source"] == nil and resource.attributes["cloudwatch.log.group.name"] != nil
+      - set(attributes["event.category"], "audit") where attributes["log.source"] == "aws.cloudtrail"
+      - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.s3access"
+      - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.elb"
+      - set(attributes["event.category"], "application") where attributes["log.source"] == "aws.cloudwatch"
+      # rpc.method is "eventSource/eventName" since the encoder emits v1 RPC conventions.
+      - set(body, attributes["rpc.method"]) where attributes["log.source"] == "aws.cloudtrail"
+      - replace_pattern(body, "/", " ") where attributes["log.source"] == "aws.cloudtrail"
+      - set(severity_number, SEVERITY_NUMBER_INFO) where severity_number == SEVERITY_NUMBER_UNSPECIFIED
+      - |-
+        set(severity_number, SEVERITY_NUMBER_WARN)
+        where attributes["log.source"] == "aws.cloudtrail" and attributes["aws.error.code"] != nil
+      - set(severity_text, "INFO") where severity_number == SEVERITY_NUMBER_INFO
+      - set(severity_text, "WARN") where severity_number == SEVERITY_NUMBER_WARN
+  - context: resource
+    statements:
+      - set(attributes["cloud.provider"], "aws") where attributes["cloud.provider"] == nil and attributes["aws.region"] != nil
+      - |-
+        set(attributes["cloud.region"], attributes["aws.region"])
+        where attributes["cloud.region"] == nil and attributes["aws.region"] != nil

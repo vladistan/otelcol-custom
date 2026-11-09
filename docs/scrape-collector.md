@@ -118,10 +118,46 @@ The receiver type is `aws_s3`. The old name `awss3` still loads and logs a depre
 ### Where the sources differ
 
 - The extension types are `aws_logs_encoding` and `google_cloud_logentry_encoding`, not `awslogs_encoding` and `googlecloudlogentry_encoding` (`metadata.yaml:2`). Pub/Sub `encoding` takes the extension ID.
-- The CloudTrail decoder leaves the record body empty. The `transform/aws` block sets it from `rpc.method`, which holds `eventSource/eventName`, and replaces `/` with a space (for example `ec2.amazonaws.com StartInstances`). The value depends on the `extension.encoding.awslogsencoding.EmitV1RPCConventions` feature gate, which is on by default; with it off, `rpc.method` is the bare `eventName`. A deployed config that builds the body from other attributes needs the same two statements. Errors appear as `aws.error.code`, not `errorCode`.
-- The `googlecloudlogentry` decoder already sets `http.response.status_code`, `url.path` and `user_agent.original` from `httpRequest` (`log_entry.go:229,252,254`). The transform adds only the resource mapping: `gcp.label.service_name`, `gcp.label.location` and `gcp.label.project_id` become `service.name`, `cloud.region` and `cloud.account.id`.
+- The CloudTrail decoder leaves the record body empty. The `sourcetag/aws` processor sets it from `rpc.method`, which holds `eventSource/eventName`, and replaces `/` with a space (for example `ec2.amazonaws.com StartInstances`). The value depends on the `extension.encoding.awslogsencoding.EmitV1RPCConventions` feature gate, which is on by default; with it off, `rpc.method` is the bare `eventName`. A record with no `rpc.method` gets an empty body. Errors appear as `aws.error.code`.
+- The `googlecloudlogentry` decoder already sets `http.response.status_code`, `url.path` and `user_agent.original` from `httpRequest` (`log_entry.go:229,252,254`). `sourcetag/gcp` maps `gcp.label.service_name`, `gcp.label.location` and `gcp.label.project_id` to `service.name`, `cloud.region` and `cloud.account.id`.
 - The `googlecloudlogentry` decoder rejects pretty-printed JSON. Pub/Sub delivers one compact entry per message, so only the test fixtures are compacted.
 - `jsonPayload` stays a map body. `event.category` values (`audit`, `access`, `application`) are a choice the sources do not fix.
+
+### Source tagging
+
+The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
+
+```yaml
+processors:
+  sourcetag/aws:
+    provider: aws
+  sourcetag/gcp:
+    provider: gcp
+  sourcetag/azure:
+    provider: azure
+service:
+  pipelines:
+    logs/aws:
+      processors: [memory_limiter, sourcetag/aws, resource_detection]
+    logs/gcp:
+      processors: [memory_limiter, sourcetag/gcp, resource_detection, batch]
+    logs/azure:
+      processors: [memory_limiter, sourcetag/azure, resource_detection, batch]
+```
+
+| Provider | `log.source` (`event.category`) | Resource attributes |
+|---|---|---|
+| `aws` | `aws.cloudtrail` (audit), `aws.s3access` and `aws.elb` (access), `aws.eks` (audit for the `kube-apiserver-audit` stream, else application), `aws.cloudwatch` (application) | `cloud.provider` and `cloud.region` from `aws.region`, when unset |
+| `gcp` | `gcp.audit` (audit), `gcp.cloudrun` (application), `gcp.lb` (access) | `cloud.provider`, `service.name`, `cloud.region`, `cloud.account.id` |
+| `azure` | `azure.activity` (audit) | `cloud.provider` |
+
+The `aws.eks` source needs the resource attributes `cloudwatch.log.group.name` (starting with `/aws/eks/`) and `cloudwatch.log.stream`. A record that already has a `log.source`, such as `auth0`, keeps it, except for `aws.cloudtrail`, `aws.s3access` and `aws.elb` (when the scope `encoding.format` matches), `gcp.audit` and `azure.activity`, which overwrite it. `aws.eks`, `aws.cloudwatch`, `gcp.cloudrun` and `gcp.lb` only fill a missing one. Severity is INFO when unset, WARN for a CloudTrail record with `aws.error.code`.
+
+`otelcol_sourcetag_records_unsourced` counts records that leave the processor without `log.source`, per `provider`. A rise after a roll means a source stopped matching its rule.
+
+`otelcol_sourcetag_records_uncategorized` counts records that leave without `event.category`, per `provider`. Every `aws`, `gcp` and `azure` record is expected to carry one, so a rise means a source kept its `log.source` but lost its category rule. The `auth0` receiver sets its own category.
+
+The processor gives the same output as the `transformprocessor` blocks it replaces, and running both in a row changes nothing. Roll the new image first, then change the values: the old image rejects a `sourcetag` entry at config load, and the new image still runs the old OTTL.
 
 ### Staged enablement and rollout
 
@@ -155,10 +191,10 @@ The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 th
 - Objects are `.log.gz` files under `AWSLogs/<account>/elasticloadbalancing/<region>/`. The receiver strips `.gz` before it matches the encoding suffix, so the suffix is `.log`.
 - `ALB_PREFIX` is the prefix configured on the load balancer, for example `elb/`. It must be a prefix of every object key, with the trailing slash.
 - The S3 event notification needs the same prefix and the suffix `.log.gz`, sent to the SQS queue. Give the queue a redrive policy: a message the receiver cannot process returns on every poll until it moves.
-- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. The `transform/aws` block labels the records `log.source=aws.elb`. A deployed config must carry the same statement, or `log.source` stays empty.
+- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. `sourcetag/aws` labels the records `log.source=aws.elb` and `event.category=access`. A deployed config must list `sourcetag` in the `logs/aws` pipeline, or `log.source` stays empty.
 - The collector role needs `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` and `sqs:GetQueueAttributes`.
 
-`alb_test.go` runs a synthetic line through the real decoder and `transform/aws`. `alb_e2e_test.go` covers the gunzip and SQS path: it puts a gzipped log under an `.../elasticloadbalancing/.../*.log.gz` key in moto, sends the S3 notification to SQS, runs the built collector with the `aws_s3/alb` block, and checks the records at an OTLP sink and that the SQS message is deleted. A `.txt` object is dropped with an `Unsupported file format` warning, and its notification is deleted too. `test/scrape/restart-durability.sh` runs both tests; see the next section for the requirements.
+`alb_test.go` runs a synthetic line through the real decoder and `sourcetag/aws`. `alb_e2e_test.go` covers the gunzip and SQS path: it puts a gzipped log under an `.../elasticloadbalancing/.../*.log.gz` key in moto, sends the S3 notification to SQS, runs the built collector with the `aws_s3/alb` block, and checks the records at an OTLP sink and that the SQS message is deleted. A `.txt` object is dropped with an `Unsupported file format` warning, and its notification is deleted too. `test/scrape/restart-durability.sh` runs both tests; see the next section for the requirements.
 
 ### CloudWatch log settle lag
 
@@ -193,7 +229,7 @@ The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metri
 
 `test/scrape/restart-durability.sh` builds the scratch collector for linux/amd64 and runs `TestRestartDurability` and the kill-at-intake tests below (build tag `durability`). It needs Docker and pulls `motoserver/moto` and `alpine`.
 
-The test stands in moto for S3 and SQS, because LocalStack now refuses to start without a paid auth token. It seeds 3 CloudTrail objects with 3 records each and one SQS notification per object. The collector config is built from the reference config: same `file_storage`, `memory_limiter`, `transform/aws`, `batch` and `otlp_http` blocks, with the receiver pointed at moto. A named volume holds `file_storage`. The OTLP sink runs on the host and answers 503 until released.
+The test stands in moto for S3 and SQS, because LocalStack now refuses to start without a paid auth token. It seeds 3 CloudTrail objects with 3 records each and one SQS notification per object. The collector config is built from the reference config: same `file_storage`, `memory_limiter`, `sourcetag/aws`, `batch` and `otlp_http` blocks, with the receiver pointed at moto. A named volume holds `file_storage`. The OTLP sink runs on the host and answers 503 until released.
 
 The test runs this procedure:
 
@@ -226,7 +262,7 @@ The `aws_s3` receiver deletes an SQS message once the next consumer accepts the 
 
 ### Roll back
 
-Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.8. Keep the volume, so the queue and the read positions carry over.
+Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.10. Keep the volume, so the queue and the read positions carry over.
 
 ### Alerts
 

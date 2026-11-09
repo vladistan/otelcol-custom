@@ -13,7 +13,6 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awslogsencodingextension"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/confmap"
 	"go.opentelemetry.io/collector/consumer/consumertest"
@@ -26,6 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/vladistan/otelcol-custom/processor/healthprobesampler"
+	"github.com/vladistan/otelcol-custom/processor/sourcetagprocessor"
 )
 
 const referenceConfig = "../configs/scrape.yaml"
@@ -61,11 +61,11 @@ func section(t *testing.T, cfg map[string]any, kind, name string) map[string]any
 	return block
 }
 
-// newTransform builds a transformprocessor from a block of the reference config.
-func newTransform(t *testing.T, name string, sink *consumertest.LogsSink) processor.Logs {
+// newSourceTag builds a sourcetag processor from a block of the reference config.
+func newSourceTag(t *testing.T, name string, sink *consumertest.LogsSink) processor.Logs {
 	t.Helper()
 	block := section(t, loadReference(t), "processors", name)
-	factory := transformprocessor.NewFactory()
+	factory := sourcetagprocessor.NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	if err := confmap.NewFromStringMap(block).Unmarshal(cfg); err != nil {
 		t.Fatalf("unmarshal %s: %v", name, err)
@@ -158,7 +158,7 @@ func wantAbsent(t *testing.T, m pcommon.Map, key string) {
 
 func TestCloudTrailGivesOneRecordPerEntry(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/aws", sink)
+	proc := newSourceTag(t, "sourcetag/aws", sink)
 	out := through(t, cloudTrailDecoder(t), proc, sink, readFile(t, "testdata/cloudtrail-multi.json"))
 
 	recs := recordsOf(out)
@@ -187,7 +187,7 @@ func TestCloudTrailGivesOneRecordPerEntry(t *testing.T) {
 func TestS3AccessLogSource(t *testing.T) {
 	dec := newDecoder(t, awslogsencodingextension.NewFactory(), map[string]any{"format": "s3access"})
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/aws", sink)
+	proc := newSourceTag(t, "sourcetag/aws", sink)
 	recs := recordsOf(through(t, dec, proc, sink, readFile(t, "testdata/s3access.log")))
 	if len(recs) == 0 {
 		t.Fatal("no records from the S3 access log line")
@@ -203,7 +203,7 @@ func TestS3AccessLogSource(t *testing.T) {
 
 func TestCloudWatchLogsSource(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/aws", sink)
+	proc := newSourceTag(t, "sourcetag/aws", sink)
 
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
@@ -221,7 +221,7 @@ func TestCloudWatchLogsSource(t *testing.T) {
 
 func TestAuth0RecordKeepsItsOwnSource(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/aws", sink)
+	proc := newSourceTag(t, "sourcetag/aws", sink)
 
 	ld := plog.NewLogs()
 	lr := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
@@ -263,7 +263,7 @@ func cloudRunEntries(t *testing.T) [][]byte {
 
 func TestCloudRunMapping(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/gcp", sink)
+	proc := newSourceTag(t, "sourcetag/gcp", sink)
 	dec := gcpDecoder(t)
 	entries := cloudRunEntries(t)
 
@@ -301,7 +301,7 @@ func TestCloudRunMapping(t *testing.T) {
 
 func TestAuditEntrySource(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/gcp", sink)
+	proc := newSourceTag(t, "sourcetag/gcp", sink)
 	rec := recordsOf(through(t, gcpDecoder(t), proc, sink, compact(t, readFile(t, "testdata/gcp-audit-entry.json"))))[0]
 	wantStr(t, rec.log.Attributes(), "log.source", "gcp.audit")
 	wantStr(t, rec.log.Attributes(), "event.category", "audit")
@@ -326,7 +326,7 @@ func sampler(t *testing.T, keepRatio float64, sink *consumertest.LogsSink) proce
 func mapped(t *testing.T) []plog.Logs {
 	t.Helper()
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/gcp", sink)
+	proc := newSourceTag(t, "sourcetag/gcp", sink)
 	dec := gcpDecoder(t)
 	var out []plog.Logs
 	for _, entry := range cloudRunEntries(t) {

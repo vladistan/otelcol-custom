@@ -7,7 +7,7 @@
 # because a pipeline without credentials must not be deployed.
 #
 # Usage: test/scrape/smoke.sh
-# Env: SCRAPE_IMAGE overrides the image (default ghcr.io/vladistan/otelcol-scrape:v0.3.8).
+# Env: SCRAPE_IMAGE overrides the image (default ghcr.io/vladistan/otelcol-scrape:v0.3.10).
 #      WANT_VERSION is the version `--version` must print (default: the image tag).
 #      SMOKE_LOG is the log file (default build/scrape-smoke.log).
 # Needs Docker and a network that can pull the image.
@@ -17,7 +17,7 @@ unset CDPATH
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly ROOT
-readonly IMAGE="${SCRAPE_IMAGE:-ghcr.io/vladistan/otelcol-scrape:v0.3.8}"
+readonly IMAGE="${SCRAPE_IMAGE:-ghcr.io/vladistan/otelcol-scrape:v0.3.10}"
 readonly WANT_VERSION="${WANT_VERSION:-${IMAGE##*:v}}"
 readonly LOG="${SMOKE_LOG:-$ROOT/build/scrape-smoke.log}"
 readonly NAME="scrape-smoke-$$"

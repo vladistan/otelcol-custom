@@ -1,0 +1,9 @@
+error_mode: ignore
+log_statements:
+  - context: resource
+    statements:
+      - set(attributes["cloud.provider"], "azure")
+  - context: log
+    statements:
+      - set(attributes["log.source"], "azure.activity")
+      - set(attributes["event.category"], "audit")

@@ -7,15 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-11-08
+
+The `sourcetag` processor in the scrape image, and per-core CPU series in the sample edge configs. The edge and gateway builds are unchanged apart from the version string.
+
 ### Added
 
 - **`test/scrape/smoke.sh`** runs the published `otelcol-scrape` image with one source and fake credentials, and checks the version, the health endpoint, that the collector survives a failing receiver, and a clean shutdown.
 - **End-to-end test for the ALB access log path.** `test/scrape/alb_e2e_test.go` runs a gzipped `.log.gz` object through a local S3 and SQS stand-in and the built scrape collector, then checks the decoded fields at an OTLP sink and that the SQS message is deleted. A second case shows an object whose key does not end in `.log` or `.log.gz` is dropped with a warning and not parsed. `test/scrape/restart-durability.sh` runs it.
 - **Runbook and alert queries.** `docs/windows-edge.md` and `docs/scrape-collector.md` gain a runbook: where the logs are, how to roll back, how to re-read one event-log channel and how to turn summarization off. `docs/alert-queries.sql` holds ClickHouse queries for a stopped Windows service, a metric gap over two send windows, and a spike in dropped or collected events.
+- **`sourcetag` processor in the scrape image.** It sets `log.source` and `event.category` and fills cloud resource attributes for `aws`, `gcp` and `azure` records, in Go instead of OTTL. The rules run in the order of the OTTL they replace, so a later rule sees what an earlier one set. It adds the `aws.eks` and `gcp.lb` sources, which the reference config lacked. The counters `otelcol_sourcetag_records_unsourced` and `otelcol_sourcetag_records_uncategorized` count records that leave without `log.source` and without `event.category`, per `provider`. Parity tests run the processor and the OTTL it replaces on the same records and compare every field. See `docs/scrape-collector.md`.
 
 ### Changed
 
+- **The scrape reference config uses `sourcetag`** instead of the `transform/aws`, `transform/gcp` and `transform/azure` blocks. Roll the new image before values that name `sourcetag`; the old image rejects them.
+- **The sample edge configs request per-core CPU series again.** `hostmetrics` 0.164 made the `cpu` attribute opt-in, so `system.cpu.time` (and `system.cpu.utilization` where enabled) collapsed to one series per state. `local-edge.yaml`, `gpu-edge.yaml` and `windows-edge.yaml` now set `attributes: [cpu, state]`.
 - The CHANGELOG lists the binary sizes of every release from 0.3.1 to 0.3.6.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-scrape-0.3.10-linux-amd64` | 144.3 | 151261344 |
 
 ## [0.3.9] - 2026-11-08
 

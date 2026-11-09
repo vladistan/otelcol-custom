@@ -1,5 +1,5 @@
-# Narrowed otelcol-scrape manifest for cloud source scraping. The only local
-# module is auth0receiver. CloudWatch metrics come from the metrics block of
+# Narrowed otelcol-scrape manifest for cloud source scraping. The local
+# modules are auth0receiver and sourcetagprocessor. CloudWatch metrics come from the metrics block of
 # awscloudwatchreceiver; Cloud Monitoring metrics come from
 # googlecloudmonitoringreceiver.
 dist:
@@ -11,6 +11,7 @@ dist:
 replaces:
   - github.com/vladistan/otelcol-custom/receiver/auth0receiver => ../../receiver/auth0receiver
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
+  - github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor
 extensions:
   - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.164.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.164.1
@@ -34,6 +35,7 @@ processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.164.1
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
+  - gomod: github.com/vladistan/otelcol-custom/processor/sourcetagprocessor v0.0.0
 exporters:
   - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.164.0
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.164.0

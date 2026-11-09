@@ -18,7 +18,7 @@ func newALBDecoder(t *testing.T) logsDecoder {
 
 func TestALBAccessLogFields(t *testing.T) {
 	sink := new(consumertest.LogsSink)
-	proc := newTransform(t, "transform/aws", sink)
+	proc := newSourceTag(t, "sourcetag/aws", sink)
 	out := through(t, newALBDecoder(t), proc, sink, readFile(t, "testdata/alb-access.log"))
 
 	recs := recordsOf(out)

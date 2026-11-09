@@ -22,8 +22,13 @@ receivers:
     scrapers:
       cpu:
         metrics:
+          # The cpu attribute is opt-in since hostmetrics 0.164; without it the
+          # scraper sums all cores into one series per state.
+          system.cpu.time:
+            attributes: [cpu, state]
           system.cpu.utilization:
             enabled: true
+            attributes: [cpu, state]
       memory:
         metrics:
           system.memory.utilization:

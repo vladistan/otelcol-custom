@@ -7,6 +7,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.164.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
 	github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
+	github.com/vladistan/otelcol-custom/processor/sourcetagprocessor v0.0.0
 	go.opentelemetry.io/collector/component/componenttest v0.164.0
 	go.opentelemetry.io/collector/confmap v1.70.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.164.0
@@ -111,3 +112,5 @@ require (
 replace github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler
 
 replace github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
+
+replace github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor

@@ -253,6 +253,7 @@ func TestALBGunzipAndSQSDelete(t *testing.T) {
 		wantAttr(t, rec, "aws.elb.status.code", int64(200))
 		wantAttr(t, rec, "aws.elb.target_processing_time", 0.042)
 		wantAttr(t, rec, "log.source", "aws.elb")
+		wantAttr(t, rec, "event.category", "access")
 		ports[rec.attrs["client.port"]] = true
 	}
 	if len(ports) != albLines {

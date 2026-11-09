@@ -15,6 +15,11 @@ receivers:
     collection_interval: 60s
     scrapers:
       cpu:
+        metrics:
+          # The cpu attribute is opt-in since hostmetrics 0.164; without it the
+          # scraper sums all cores into one series per state.
+          system.cpu.time:
+            attributes: [cpu, state]
       load:
       memory:
   psi:

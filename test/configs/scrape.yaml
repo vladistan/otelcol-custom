@@ -144,66 +144,14 @@ processors:
   batch: {}
   resource_detection:
     detectors: [env]
-  transform/aws:
-    error_mode: ignore
-    log_statements:
-      - context: log
-        statements:
-          - set(attributes["log.source"], "aws.cloudtrail") where instrumentation_scope.attributes["encoding.format"] == "aws.cloudtrail"
-          - set(attributes["log.source"], "aws.s3access") where instrumentation_scope.attributes["encoding.format"] == "aws.s3access"
-          - set(attributes["log.source"], "aws.elb") where instrumentation_scope.attributes["encoding.format"] == "aws.elbaccess"
-          - |-
-            set(attributes["log.source"], "aws.cloudwatch")
-            where attributes["log.source"] == nil and resource.attributes["cloudwatch.log.group.name"] != nil
-          - set(attributes["event.category"], "audit") where attributes["log.source"] == "aws.cloudtrail"
-          - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.s3access"
-          - set(attributes["event.category"], "access") where attributes["log.source"] == "aws.elb"
-          - set(attributes["event.category"], "application") where attributes["log.source"] == "aws.cloudwatch"
-          # rpc.method is "eventSource/eventName" since the encoder emits v1 RPC conventions.
-          - set(body, attributes["rpc.method"]) where attributes["log.source"] == "aws.cloudtrail"
-          - replace_pattern(body, "/", " ") where attributes["log.source"] == "aws.cloudtrail"
-          - set(severity_number, SEVERITY_NUMBER_INFO) where severity_number == SEVERITY_NUMBER_UNSPECIFIED
-          - |-
-            set(severity_number, SEVERITY_NUMBER_WARN)
-            where attributes["log.source"] == "aws.cloudtrail" and attributes["aws.error.code"] != nil
-          - set(severity_text, "INFO") where severity_number == SEVERITY_NUMBER_INFO
-          - set(severity_text, "WARN") where severity_number == SEVERITY_NUMBER_WARN
-      - context: resource
-        statements:
-          - set(attributes["cloud.provider"], "aws") where attributes["cloud.provider"] == nil and attributes["aws.region"] != nil
-          - |-
-            set(attributes["cloud.region"], attributes["aws.region"])
-            where attributes["cloud.region"] == nil and attributes["aws.region"] != nil
-  transform/gcp:
-    error_mode: ignore
-    log_statements:
-      - context: resource
-        statements:
-          - set(attributes["cloud.provider"], "gcp")
-          - set(attributes["service.name"], attributes["gcp.label.service_name"]) where attributes["gcp.label.service_name"] != nil
-          - set(attributes["cloud.region"], attributes["gcp.label.location"]) where attributes["gcp.label.location"] != nil
-          - set(attributes["cloud.account.id"], attributes["gcp.label.project_id"]) where attributes["gcp.label.project_id"] != nil
-          - |-
-            set(attributes["cloud.account.id"], attributes["gcp.project"])
-            where attributes["cloud.account.id"] == nil and attributes["gcp.project"] != nil
-      - context: log
-        statements:
-          - set(attributes["log.source"], "gcp.audit") where IsMatch(resource.attributes["cloud.resource_id"], "^cloudaudit")
-          - |-
-            set(attributes["log.source"], "gcp.cloudrun")
-            where attributes["log.source"] == nil and resource.attributes["gcp.resource_type"] == "cloud_run_revision"
-          - set(attributes["event.category"], "audit") where attributes["log.source"] == "gcp.audit"
-          - set(attributes["event.category"], "application") where attributes["log.source"] == "gcp.cloudrun"
-  transform/azure:
-    error_mode: ignore
-    log_statements:
-      - context: resource
-        statements:
-          - set(attributes["cloud.provider"], "azure")
-      - context: log
-        statements:
-          - set(attributes["log.source"], "azure.activity")
-          - set(attributes["event.category"], "audit")
+  # Tags records with log.source and event.category and fills cloud resource
+  # attributes; one instance per provider.
+  sourcetag/aws:
+    provider: aws
+  sourcetag/gcp:
+    provider: gcp
+  sourcetag/azure:
+    provider: azure
 exporters:
   otlp_http:
     endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
@@ -232,15 +180,15 @@ service:
       receivers: [aws_s3/cloudtrail, aws_s3/s3access, aws_s3/alb, awscloudwatch/logs, auth0]
       # No batch: the persistent queue in otlp_http must be the first buffer, because
       # aws_s3 and auth0 delete queue messages once the next consumer accepts them.
-      processors: [memory_limiter, transform/aws, resource_detection]
+      processors: [memory_limiter, sourcetag/aws, resource_detection]
       exporters: [otlp_http]
     logs/gcp:
       receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
-      processors: [memory_limiter, transform/gcp, resource_detection, batch]
+      processors: [memory_limiter, sourcetag/gcp, resource_detection, batch]
       exporters: [otlp_http]
     logs/azure:
       receivers: [azure_event_hub]
-      processors: [memory_limiter, transform/azure, resource_detection, batch]
+      processors: [memory_limiter, sourcetag/azure, resource_detection, batch]
       exporters: [otlp_http]
     metrics/aws:
       receivers: [awscloudwatch/metrics]

@@ -1,0 +1,24 @@
+# yamllint disable rule:line-length
+error_mode: ignore
+log_statements:
+  - context: resource
+    statements:
+      - set(attributes["cloud.provider"], "gcp")
+      - set(attributes["service.name"], attributes["gcp.label.service_name"]) where attributes["gcp.label.service_name"] != nil
+      - set(attributes["cloud.region"], attributes["gcp.label.location"]) where attributes["gcp.label.location"] != nil
+      - set(attributes["cloud.account.id"], attributes["gcp.label.project_id"]) where attributes["gcp.label.project_id"] != nil
+      - |-
+        set(attributes["cloud.account.id"], attributes["gcp.project"])
+        where attributes["cloud.account.id"] == nil and attributes["gcp.project"] != nil
+  - context: log
+    statements:
+      - set(attributes["log.source"], "gcp.audit") where IsMatch(resource.attributes["cloud.resource_id"], "^cloudaudit")
+      - |-
+        set(attributes["log.source"], "gcp.cloudrun")
+        where attributes["log.source"] == nil and resource.attributes["gcp.resource_type"] == "cloud_run_revision"
+      - |-
+        set(attributes["log.source"], "gcp.lb")
+        where attributes["log.source"] == nil and IsMatch(resource.attributes["gcp.resource_type"], "^(http_load_balancer|l7_lb_rule|https_lb_rule)$")
+      - set(attributes["event.category"], "audit") where attributes["log.source"] == "gcp.audit"
+      - set(attributes["event.category"], "access") where attributes["log.source"] == "gcp.lb"
+      - set(attributes["event.category"], "application") where attributes["log.source"] == "gcp.cloudrun"
