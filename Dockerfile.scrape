@@ -43,7 +43,7 @@ RUN mkdir -p build/scrape && /go/bin/builder --skip-compilation --config=builder
 
 # Inject the shared entrypoint (adds Sentry init) and resolve dependencies,
 # mirroring `just build-scrape`.
-RUN cp cmd/otelcol-custom/main.go build/scrape/main.go
+RUN cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/scrape/
 WORKDIR /src/build/scrape
 RUN go get github.com/getsentry/sentry-go@v0.29.1 && \
     go mod tidy

@@ -1,0 +1,28 @@
+# Config for the tcp_check receiver in the edge builds.
+# Run: ./build/edge/otelcol-edge validate --config test/configs/edge-tcpcheck.yaml
+# test/edge/tcpcheck.sh sets the endpoint variables to local listeners and runs it.
+# Endpoints take host:port. Write an IPv6 address in brackets: [2001:db8::11]:8006.
+receivers:
+  tcp_check:
+    collection_interval: 1s
+    targets:
+      - endpoint: ${env:TCP_V4_OPEN:-192.0.2.11:8006}
+        dialer:
+          timeout: 2s
+      - endpoint: ${env:TCP_V4_CLOSED:-192.0.2.11:8007}
+        dialer:
+          timeout: 2s
+      - endpoint: ${env:TCP_V6_OPEN:-[2001:db8::11]:8006}
+        dialer:
+          timeout: 2s
+      - endpoint: ${env:TCP_V6_CLOSED:-[2001:db8::11]:8007}
+        dialer:
+          timeout: 2s
+exporters:
+  file:
+    path: ${env:TCP_OUT:-/dev/null}
+service:
+  pipelines:
+    metrics/tcpcheck:
+      receivers: [tcp_check]
+      exporters: [file]

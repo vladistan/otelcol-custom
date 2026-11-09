@@ -57,6 +57,10 @@ Per-process series carry `process.executable.name`, `process.executable.path`, `
 
 The disk scraper is off. PhysicalDisk counters replace it.
 
+## TCP checks
+
+The `tcp_check` receiver is in the Windows edge build from 0.3.11. It reports `tcpcheck.status`, `tcpcheck.duration` and `tcpcheck.error` for each target, over IPv4 and over IPv6 with the address in brackets, such as `[2001:db8::11]:8006`. See the README and `test/configs/edge-tcpcheck.yaml`.
+
 ## Performance-counter extensions
 
 Perf counters are named `windows.<object>.<counter>`. Disk and network series carry the receiver's `instance` attribute.
@@ -215,7 +219,7 @@ Query 3 needs the collector's own counters in ClickHouse, sent through the `serv
 
 ### Roll back
 
-Set `otel_edge_win_version` to the previous tag and run the role. The role puts the previous binary back and leaves the config and storage in place. It renders only the features of the target version. Tags exist for v0.3.1 to v0.3.10.
+Set `otel_edge_win_version` to the previous tag and run the role. The role puts the previous binary back and leaves the config and storage in place. It renders only the features of the target version. Tags exist for v0.3.1 to v0.3.11.
 
 ### Re-read one event-log channel
 

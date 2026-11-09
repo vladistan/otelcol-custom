@@ -37,6 +37,7 @@ var (
 )
 
 // Sentry configuration - hardcoded public DSN for this collector.
+// Set OTELCOL_CUSTOM_SENTRY_DSN to send to another project instead.
 // Set OTELCOL_CUSTOM_DISABLE_TELEMETRY to any non-empty value to opt out.
 const (
 	SentryDSN = "https://b7dc01ba283fe00b2ab6a5882a172e12@o4508594232426496.ingest.us.sentry.io/4512084966178816"
@@ -263,7 +264,7 @@ func main() {
 	// set OTELCOL_CUSTOM_DISABLE_TELEMETRY to any non-empty value to opt out.
 	if SentryDSN != "" && SentryDSN != "PLACEHOLDER_DSN" && os.Getenv("OTELCOL_CUSTOM_DISABLE_TELEMETRY") == "" {
 		err := sentry.Init(sentry.ClientOptions{
-			Dsn:              SentryDSN,
+			Dsn:              sentryDSN(SentryDSN),
 			Environment:      environment,
 			Release:          serviceName + "@" + version,
 			Debug:            os.Getenv("SENTRY_DEBUG") == "true",

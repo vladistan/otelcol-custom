@@ -1,0 +1,25 @@
+{
+  "logName": "projects/proj-example/logs/cloudaudit.googleapis.com%2Factivity",
+  "protoPayload": {
+    "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+    "authenticationInfo": {
+      "principalEmail": "admin@example.com"
+    },
+    "methodName": "io.k8s.core.v1.pods.create",
+    "requestMetadata": {
+      "callerIp": "192.0.2.20"
+    },
+    "resourceName": "core/v1/namespaces/default/pods/app-0",
+    "serviceName": "k8s.io"
+  },
+  "resource": {
+    "labels": {
+      "cluster_name": "kube-v0",
+      "location": "europe-west1",
+      "project_id": "proj-example"
+    },
+    "type": "k8s_cluster"
+  },
+  "severity": "NOTICE",
+  "timestamp": "2026-10-25T10:00:04Z"
+}

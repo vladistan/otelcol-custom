@@ -7,9 +7,11 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.164.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
 	github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
+	github.com/vladistan/otelcol-custom/processor/identityfillprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/sourcetagprocessor v0.0.0
 	go.opentelemetry.io/collector/component/componenttest v0.164.0
 	go.opentelemetry.io/collector/confmap v1.70.0
+	go.opentelemetry.io/collector/consumer v1.70.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.164.0
 	go.opentelemetry.io/collector/extension v1.70.0
 	go.opentelemetry.io/collector/extension/extensiontest v0.164.0
@@ -76,7 +78,6 @@ require (
 	go.opentelemetry.io/collector/client v1.70.0 // indirect
 	go.opentelemetry.io/collector/component v1.70.0 // indirect
 	go.opentelemetry.io/collector/component/componentstatus v0.164.0 // indirect
-	go.opentelemetry.io/collector/consumer v1.70.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.164.0 // indirect
 	go.opentelemetry.io/collector/extension/extensioncapabilities v0.164.0 // indirect
 	go.opentelemetry.io/collector/extension/xextension v0.164.0 // indirect
@@ -110,6 +111,8 @@ require (
 )
 
 replace github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler
+
+replace github.com/vladistan/otelcol-custom/processor/identityfillprocessor => ../../processor/identityfillprocessor
 
 replace github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
 

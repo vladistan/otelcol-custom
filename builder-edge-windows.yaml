@@ -47,6 +47,8 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
   # Windows performance counters
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v0.164.1
+  # TCP connectivity probe (IPv4 and bracketed IPv6 targets)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
 # =============================================================================
 # Processors - Minimal processing for edge
 # =============================================================================

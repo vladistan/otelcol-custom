@@ -42,6 +42,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformpro
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
 github.com/open-telemetry/opentelemetry-collector-contrib/receiver/journaldreceiver v0.164.1
+github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
 go.opentelemetry.io/collector/client v1.70.0
 go.opentelemetry.io/collector/component v1.70.0
 go.opentelemetry.io/collector/component/componentstatus v0.164.0

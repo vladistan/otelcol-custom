@@ -15,7 +15,25 @@ import (
 const (
 	defaultSentryFlushTimeout = 5 * time.Second
 	sentryFlushTimeoutEnv     = "OTELCOL_CUSTOM_SENTRY_FLUSH_TIMEOUT"
+	sentryDSNEnv              = "OTELCOL_CUSTOM_SENTRY_DSN"
 )
+
+// sentryDSN returns the DSN from the environment when it parses, and fallback
+// when the variable is unset, empty or invalid. The value is never logged.
+func sentryDSN(fallback string) string {
+	raw := os.Getenv(sentryDSNEnv)
+	if raw == "" {
+		return fallback
+	}
+
+	if _, err := sentry.NewDsn(raw); err != nil {
+		log.Printf("WARNING: ignoring %s: not a valid DSN, using the built-in default", sentryDSNEnv)
+
+		return fallback
+	}
+
+	return raw
+}
 
 // sentryFlushTimeout reads the flush timeout from the environment and falls
 // back to 5s when it is unset, unparsable or not positive.

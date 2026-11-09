@@ -82,9 +82,34 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 ## Components
 
 ### Standard (from otelcol-contrib)
-- **Receivers**: otlp, host_metrics, journald
+- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11)
 - **Processors**: batch, memory_limiter
 - **Exporters**: otlp_grpc, debug
+
+### TCP checks on edge hosts
+
+The `tcp_check` receiver is in the Linux, static Linux and Windows edge builds from
+0.3.11. It opens a TCP connection to each target every collection interval and
+reports `tcpcheck.status` (1 connected, 0 not), `tcpcheck.duration` and
+`tcpcheck.error`. It is alpha for metrics.
+
+A target is `host:port`. Write an IPv6 address in brackets:
+
+```yaml
+receivers:
+  tcp_check:
+    collection_interval: 30s
+    targets:
+      - endpoint: 192.0.2.11:8006
+        dialer:
+          timeout: 5s
+      - endpoint: "[2001:db8::11]:8006"
+        dialer:
+          timeout: 5s
+```
+
+`test/configs/edge-tcpcheck.yaml` is the full config, and `test/edge/tcpcheck.sh
+build/edge/otelcol-edge` runs it against local IPv4 and IPv6 listeners.
 
 ### Custom (in-tree)
 

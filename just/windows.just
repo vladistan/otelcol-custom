@@ -81,7 +81,7 @@ test-svcwrapper: generate-edge-windows
     cd {{edge_windows_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    go test -covermode=set -coverprofile=svcwrapper.cover -run 'RunReporting|ReportExitCode|SentryFlushTimeout' ./...
+    go test -covermode=set -coverprofile=svcwrapper.cover -run 'RunReporting|ReportExitCode|SentryFlushTimeout|SentryDSN' ./...
     awk '$1 ~ /svcwrapper\.go:/ { total += $2; if ($3 > 0) cov += $2 }
          END { pct = total ? 100 * cov / total : 0
                printf "svcwrapper.go statement coverage: %.1f%%\n", pct

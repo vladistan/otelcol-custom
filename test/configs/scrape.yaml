@@ -152,6 +152,10 @@ processors:
     provider: gcp
   sourcetag/azure:
     provider: azure
+  # Fills host.name, service.name and an empty audit body on GCP audit records.
+  # Runs in logs/gcp only, after sourcetag/gcp. AWS and Azure records carry none
+  # of the attributes it reads.
+  identityfill: {}
 exporters:
   otlp_http:
     endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
@@ -184,7 +188,7 @@ service:
       exporters: [otlp_http]
     logs/gcp:
       receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
-      processors: [memory_limiter, sourcetag/gcp, resource_detection, batch]
+      processors: [memory_limiter, sourcetag/gcp, identityfill, resource_detection, batch]
       exporters: [otlp_http]
     logs/azure:
       receivers: [azure_event_hub]

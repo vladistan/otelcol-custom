@@ -43,7 +43,7 @@ RUN mkdir -p build/gateway && /go/bin/builder --skip-compilation --config=builde
 # Inject the shared entrypoint (adds Sentry init) and resolve dependencies,
 # mirroring `just build-gateway`.
 # hadolint ignore=DL3003
-RUN cp cmd/otelcol-custom/main.go build/gateway/main.go && \
+RUN cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/gateway/ && \
     cd build/gateway && \
     go get github.com/getsentry/sentry-go@v0.29.1 && \
     go mod tidy

@@ -4,6 +4,9 @@
 package main
 
 import (
+	"bytes"
+	"log"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -183,5 +186,79 @@ func TestSentryFlushTimeoutRejectsBadValues(t *testing.T) {
 				t.Errorf("got %v, want the 5s default", got)
 			}
 		})
+	}
+}
+
+const (
+	testDefaultDSN  = "https://default@example.invalid/9"
+	testOverrideDSN = "https://override@example.invalid/7"
+)
+
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+
+	previous := log.Writer()
+
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(previous) })
+
+	return &buf
+}
+
+func TestSentryDSNUsesTheDefaultWhenUnset(t *testing.T) {
+	t.Setenv(sentryDSNEnv, "")
+
+	if got := sentryDSN(testDefaultDSN); got != testDefaultDSN {
+		t.Errorf("dsn = %q, want the default", got)
+	}
+}
+
+func TestSentryDSNUsesTheOverrideWhenValid(t *testing.T) {
+	t.Setenv(sentryDSNEnv, testOverrideDSN)
+
+	if got := sentryDSN(testDefaultDSN); got != testOverrideDSN {
+		t.Errorf("dsn = %q, want the override", got)
+	}
+}
+
+func TestSentryDSNFallsBackOnInvalidValues(t *testing.T) {
+	for _, bad := range []string{"not-a-dsn", "   ", "https://example.invalid/1", "ftp://k@example.invalid/1"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv(sentryDSNEnv, bad)
+			captureLog(t)
+
+			if got := sentryDSN(testDefaultDSN); got != testDefaultDSN {
+				t.Errorf("dsn = %q, want the default", got)
+			}
+		})
+	}
+}
+
+func TestSentryDSNWarnsOnInvalidValuesWithoutPrintingThem(t *testing.T) {
+	const secret = "bogus-dsn-secret-marker"
+
+	t.Setenv(sentryDSNEnv, secret)
+	buf := captureLog(t)
+	sentryDSN(testDefaultDSN)
+
+	out := buf.String()
+	if !strings.Contains(out, sentryDSNEnv) {
+		t.Errorf("log %q does not name %s", out, sentryDSNEnv)
+	}
+
+	if strings.Contains(out, secret) {
+		t.Errorf("log %q leaks the value", out)
+	}
+}
+
+func TestSentryDSNLogsNothingForAValidOverride(t *testing.T) {
+	t.Setenv(sentryDSNEnv, testOverrideDSN)
+	buf := captureLog(t)
+	sentryDSN(testDefaultDSN)
+
+	if buf.Len() != 0 {
+		t.Errorf("unexpected log output %q", buf.String())
 	}
 }

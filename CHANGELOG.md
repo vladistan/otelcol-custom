@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-11-09
+
+The `tcp_check` receiver in the edge builds, the `identityfill` processor in the scrape image, and a Sentry DSN override in every binary. The gateway gains no new component.
+
+### Added
+
+- **`OTELCOL_CUSTOM_SENTRY_DSN` overrides the Sentry DSN.** When set to a valid DSN, the collector and the Windows service wrapper send events to that project. Unset or empty keeps the built-in DSN, so default behavior is unchanged. An invalid value is ignored with a warning that does not print the value. The edge, gateway and scrape binaries all carry it. See `docs/otel-metrics.md`.
+- **`identityfill` processor in the scrape image.** GCP audit records from the scrape collector had no `host.name`, no `service.name` and an empty body. The processor, already in the gateway image, now ships in the scrape image and fills them. The reference config runs it in `logs/gcp` after `sourcetag/gcp`. `test/scrape/identityfill_test.go` runs a GKE audit entry through the decoder, `sourcetag/gcp` and `identityfill`. Roll the new image before values that name `identityfill`; the old image rejects them. See `docs/scrape-collector.md`.
+- **`tcp_check` receiver in the edge builds.** The Linux, static Linux and Windows edge collectors now ship `tcpcheckreceiver` v0.164.1, alpha for metrics, so an edge host can probe TCP targets and report `tcpcheck.status`, `tcpcheck.duration` and `tcpcheck.error`. Targets take IPv4 `host:port` and IPv6 in brackets, `[::1]:port`. `test/edge/tcpcheck.sh` runs the built edge binary against local IPv4 and IPv6 listeners and checks status 1 for an open port and 0 for a closed one. `test/configs/edge-tcpcheck.yaml` is the config it runs. See the README.
+
+### Binary size
+
+| Asset | MiB | Bytes |
+|---|---|---|
+| `otelcol-edge-0.3.11-linux-amd64` | 127.0 | 133120162 |
+| `otelcol-edge-0.3.11-linux-amd64-gpu` | 128.2 | 134454472 |
+| `otelcol-edge-0.3.11-windows-amd64.exe` | 130.4 | 136691200 |
+
+The receiver adds about 56 to 64 KiB to each edge binary against 0.3.10. The gateway gains the Sentry DSN override and no component. Its asset size comes from the release build and is not listed here.
+
+The scrape collector is not a release asset; it ships in the image `ghcr.io/vladistan/otelcol-scrape:v0.3.11`. The binary in that image is 147.0 MiB (154140834 bytes), 28 KiB more than in 0.3.10.
+
 ## [0.3.10] - 2026-11-08
 
 The `sourcetag` processor in the scrape image, and per-core CPU series in the sample edge configs. The edge and gateway builds are unchanged apart from the version string.
@@ -28,7 +50,12 @@ The `sourcetag` processor in the scrape image, and per-core CPU series in the sa
 
 | Asset | MiB | Bytes |
 |---|---|---|
-| `otelcol-scrape-0.3.10-linux-amd64` | 144.3 | 151261344 |
+| `otelcol-edge-0.3.10-linux-amd64` | 126.9 | 133054626 |
+| `otelcol-edge-0.3.10-linux-amd64-gpu` | 128.2 | 134396776 |
+| `otelcol-edge-0.3.10-windows-amd64.exe` | 130.3 | 136630272 |
+| `otelcol-gateway-0.3.10-linux-amd64` | 208.0 | 218149026 |
+
+The scrape collector is not a release asset; it ships in the image `ghcr.io/vladistan/otelcol-scrape:v0.3.10`. The binary in that image is 147.0 MiB (154112162 bytes).
 
 ## [0.3.9] - 2026-11-08
 

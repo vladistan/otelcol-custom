@@ -165,7 +165,16 @@ initialization:
 | `SENTRY_ENVIRONMENT` | Sets the `environment` tag on all events sent to Sentry | any string | `production` |
 | `SENTRY_DEBUG` | Enables the Sentry SDK's own debug logging (`sentry.ClientOptions.Debug`) | `"true"` enables; anything else is treated as disabled | disabled |
 | `OTELCOL_CUSTOM_DISABLE_TELEMETRY` | Opts out of Sentry entirely; no client is initialized when set | any non-empty value | unset (telemetry on) |
+| `OTELCOL_CUSTOM_SENTRY_DSN` | Sends events to this Sentry project instead of the built-in one | a valid Sentry DSN | unset (built-in DSN) |
 
-All three are read once at process start; there is no live-reload. Sentry
+All four are read once at process start; there is no live-reload. Sentry
 itself is only initialized if a non-placeholder DSN is compiled into the
 binary and `OTELCOL_CUSTOM_DISABLE_TELEMETRY` is unset.
+
+An empty `OTELCOL_CUSTOM_SENTRY_DSN` keeps the built-in DSN. A value that does
+not parse as a DSN is ignored: the collector logs a warning that names the
+variable, not its value, and starts with the built-in DSN. On Windows the
+variable goes in the service's `Environment` registry value
+(`REG_MULTI_SZ`, one `NAME=value` per line) under
+`HKLM\SYSTEM\CurrentControlSet\Services\<service>`; restart the service
+afterwards.

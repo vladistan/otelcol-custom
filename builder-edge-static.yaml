@@ -39,6 +39,8 @@ receivers:
   # --- Metrics ---
   # Host metrics (CPU, memory, disk, network, load, paging, filesystem)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
+  # TCP connectivity probe (IPv4 and bracketed IPv6 targets)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
   # --- Custom (local) ---
   # PSI (Pressure Stall Information) metrics from /proc/pressure
   - gomod: github.com/vladistan/otelcol-custom/receiver/psireceiver v0.0.0

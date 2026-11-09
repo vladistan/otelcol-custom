@@ -112,7 +112,7 @@ generate:
 # Build the full collector
 build: generate
     @echo "Building otelcol-custom {{version}}..."
-    cp cmd/otelcol-custom/main.go build/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/
     cd build && go get github.com/getsentry/sentry-go@v0.29.1
     cd build && go mod tidy
     cd build && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
@@ -122,7 +122,7 @@ build: generate
 # Build full collector for Linux (cross-compile from macOS)
 build-linux: generate
     @echo "Building otelcol-custom {{version}} for Linux amd64..."
-    cp cmd/otelcol-custom/main.go build/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/
     cd build && go get github.com/getsentry/sentry-go@v0.29.1
     cd build && go mod tidy
     cd build && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
@@ -148,7 +148,7 @@ generate-edge:
 # Build the edge collector
 build-edge: generate-edge
     @echo "Building otelcol-edge {{version}}..."
-    cp cmd/otelcol-custom/main.go build/edge/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/edge/
     cd build/edge && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/edge && go mod tidy
     cd build/edge && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" -o otelcol-edge .
@@ -176,7 +176,7 @@ build-edge-linux: build-edge-image
     export CGO_ENABLED=1
     go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge.yaml
     (cd receiver/gpureceiver && go vet ./... && go test ./...)
-    cp cmd/otelcol-custom/main.go build/edge/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/edge/
     cd build/edge
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
@@ -201,7 +201,7 @@ build-edge-static-linux: build-edge-image
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0
     go run go.opentelemetry.io/collector/cmd/builder@v{{ocb_version_v164}} --config builder-edge-static.yaml
-    cp cmd/otelcol-custom/main.go build/edge-static/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/edge-static/
     cd build/edge-static
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
@@ -293,7 +293,7 @@ generate-scrape:
 # Build the scrape collector
 build-scrape: generate-scrape
     @echo "Building otelcol-scrape {{version}}..."
-    cp cmd/otelcol-custom/main.go build/scrape/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/scrape/
     cd build/scrape && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/scrape && go mod tidy
     cd build/scrape && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
@@ -303,7 +303,7 @@ build-scrape: generate-scrape
 # Build scrape collector for Linux
 build-scrape-linux: generate-scrape
     @echo "Building otelcol-scrape {{version}} for Linux amd64..."
-    cp cmd/otelcol-custom/main.go build/scrape/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/scrape/
     cd build/scrape && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/scrape && go mod tidy
     cd build/scrape && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
@@ -338,7 +338,7 @@ generate-gateway:
 # Build the gateway collector
 build-gateway: generate-gateway
     @echo "Building otelcol-gateway {{version}}..."
-    cp cmd/otelcol-custom/main.go build/gateway/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/gateway/
     cd build/gateway && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/gateway && go mod tidy
     cd build/gateway && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .
@@ -348,7 +348,7 @@ build-gateway: generate-gateway
 # Build gateway collector for Linux
 build-gateway-linux: generate-gateway
     @echo "Building otelcol-gateway {{version}} for Linux amd64..."
-    cp cmd/otelcol-custom/main.go build/gateway/main.go
+    cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go build/gateway/
     cd build/gateway && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/gateway && go mod tidy
     cd build/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .

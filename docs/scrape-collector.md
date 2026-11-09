@@ -159,6 +159,27 @@ The `aws.eks` source needs the resource attributes `cloudwatch.log.group.name` (
 
 The processor gives the same output as the `transformprocessor` blocks it replaces, and running both in a row changes nothing. Roll the new image first, then change the values: the old image rejects a `sourcetag` entry at config load, and the new image still runs the old OTTL.
 
+### Identity fill
+
+A GCP audit record leaves the decoder with no `host.name`, no `service.name` and an empty body. The `identityfill` processor, in the image from 0.3.11, fills them. It needs no settings:
+
+```yaml
+processors:
+  identityfill: {}
+service:
+  pipelines:
+    logs/gcp:
+      processors: [memory_limiter, sourcetag/gcp, identityfill, resource_detection, batch]
+```
+
+| Value | Default |
+|---|---|
+| `host.name` | the first non-empty of `k8s.node.name`, `k8s.cluster.name`, `gcp.label.cluster_name` |
+| `service.name` | `gcp-audit` for an audit record, `k8s-events` for a Kubernetes event, `k8s-pod-status` for a pod status record |
+| body | for an audit record with an empty body, `gcp.audit.method.name` and `gcp.audit.resource.name` joined by a space |
+
+A value the record already has is kept. The reference config runs it after `sourcetag/gcp`, in `logs/gcp` only. AWS and Azure records carry none of the attributes it reads, so `logs/aws` and `logs/azure` do not run it. `otelcol_identityfill_records_filled` counts the values it sets, per rule. `test/scrape/identityfill_test.go` runs a GKE audit entry through the decoder, `sourcetag/gcp` and `identityfill`.
+
 ### Staged enablement and rollout
 
 A receiver and its pipeline go into the deployed config only when its Secret exists. A pipeline with no receivers fails config load. A Deployment uses the Recreate strategy with one replica and a ReadWriteOnce volume for `file_storage`, so no second pod runs against the same sources.
@@ -262,7 +283,7 @@ The `aws_s3` receiver deletes an SQS message once the next consumer accepts the 
 
 ### Roll back
 
-Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.10. Keep the volume, so the queue and the read positions carry over.
+Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.11. Keep the volume, so the queue and the read positions carry over.
 
 ### Alerts
 
