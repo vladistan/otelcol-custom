@@ -22,26 +22,8 @@ type device struct {
 	handle gonvml.Device
 }
 
-// kindOf folds frequency and argument-version codes into NotSupported and
-// VersionMismatch; every code the table omits is Other.
-func kindOf(ret gonvml.Return) port.Kind {
-	switch ret {
-	case gonvml.ERROR_NOT_SUPPORTED, gonvml.ERROR_FREQ_NOT_SUPPORTED:
-		return port.NotSupported
-	case gonvml.ERROR_GPU_IS_LOST:
-		return port.GPULost
-	case gonvml.ERROR_LIBRARY_NOT_FOUND:
-		return port.LibraryNotFound
-	case gonvml.ERROR_DRIVER_NOT_LOADED:
-		return port.DriverNotLoaded
-	case gonvml.ERROR_NO_PERMISSION:
-		return port.NoPermission
-	case gonvml.ERROR_LIB_RM_VERSION_MISMATCH, gonvml.ERROR_ARGUMENT_VERSION_MISMATCH:
-		return port.VersionMismatch
-	default:
-		return port.Other
-	}
-}
+// kindOf maps a go-nvml return code through the shared table in abi.go.
+func kindOf(ret gonvml.Return) port.Kind { return kindOfCode(uint32(ret)) }
 
 func check(ret gonvml.Return) error {
 	if ret == gonvml.SUCCESS {

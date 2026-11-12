@@ -19,7 +19,7 @@ const (
 
 // The first scrape may overrun, so the bound covers scrapes 2..10.
 func TestRealScrapeTiming(t *testing.T) {
-	p, err := nvmladapter.NewPort()
+	p, err := nvmladapter.NewPort("")
 	require.NoError(t, err)
 	if err := p.Init(); err != nil {
 		t.Skipf("nvml unavailable: %v", err)

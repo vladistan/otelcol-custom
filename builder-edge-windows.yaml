@@ -6,7 +6,8 @@ dist:
   skip_compilation: true
 # =============================================================================
 # Windows edge: builder-edge-static.yaml minus journaldreceiver and
-# psireceiver, plus windowsperfcountersreceiver and windowseventlogreceiver.
+# psireceiver, plus windowsperfcountersreceiver, windowseventlogreceiver and
+# gpureceiver.
 # check-edge-windows-manifest holds this list; extend it when a component is
 # added here.
 # =============================================================================
@@ -23,6 +24,7 @@ replaces:
   - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../../stanza/operator/transformer/ansistrip
   - github.com/vladistan/otelcol-custom/processor/windowhistprocessor => ../../processor/windowhistprocessor
   - github.com/vladistan/otelcol-custom/processor/winlogprocessor => ../../processor/winlogprocessor
+  - github.com/vladistan/otelcol-custom/receiver/gpureceiver => ../../receiver/gpureceiver
 # =============================================================================
 # Extensions - Minimal set for edge deployments
 # =============================================================================
@@ -47,6 +49,8 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
   # Windows performance counters
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v0.164.1
+  # NVIDIA GPU metrics through nvml.dll (no cgo)
+  - gomod: github.com/vladistan/otelcol-custom/receiver/gpureceiver v0.0.0
   # TCP connectivity probe (IPv4 and bracketed IPv6 targets)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
 # =============================================================================

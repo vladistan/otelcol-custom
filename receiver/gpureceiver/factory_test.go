@@ -57,6 +57,27 @@ func TestCreateStartShutdownMakePortCallsNone(t *testing.T) {
 	assert.Zero(t, p.calls())
 }
 
+// The configured library_path reaches the port constructor.
+func TestCreateMetricsPassesConfigToPortConstructor(t *testing.T) {
+	var got string
+	f := newFactoryFor(
+		func(cfg *Config) (port.Port, error) {
+			got = cfg.LibraryPath
+			return &recordingPort{}, nil
+		},
+		func(*Config) collectorBuilder { return newEmptyCollector },
+	)
+	cfg := f.CreateDefaultConfig().(*Config)
+	cfg.LibraryPath = `C:\nvml.dll`
+	cfg.InitialDelay = time.Hour
+
+	_, err := f.CreateMetrics(
+		context.Background(), receivertest.NewNopSettings(typeStr), cfg, consumertest.NewNop())
+
+	require.NoError(t, err)
+	assert.Equal(t, `C:\nvml.dll`, got)
+}
+
 func TestCreateMetricsReturnsPortConstructorError(t *testing.T) {
 	f := newFactory(func() (port.Port, error) { return nil, nvmladapter.ErrPlatformUnsupported }, newEmptyCollector)
 

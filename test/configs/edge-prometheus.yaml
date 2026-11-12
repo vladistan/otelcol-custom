@@ -1,0 +1,20 @@
+# Config for the prometheus receiver in the edge builds.
+# Run: ./build/edge/otelcol-edge validate --config test/configs/edge-prometheus.yaml
+# test/edge/prometheus.sh points PROM_TARGET at a local exporter and runs it.
+# Scrape local exporters (node_exporter, pve-exporter) on localhost.
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: ${env:PROM_JOB:-local-exporter}
+          scrape_interval: 1s
+          static_configs:
+            - targets: ["${env:PROM_TARGET:-127.0.0.1:9100}"]
+exporters:
+  file:
+    path: ${env:PROM_OUT:-/dev/null}
+service:
+  pipelines:
+    metrics/prometheus:
+      receivers: [prometheus]
+      exporters: [file]

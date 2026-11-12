@@ -77,16 +77,21 @@ test-rotating-sink: generate-edge-windows
 test-svcwrapper: generate-edge-windows
     #!/usr/bin/env bash
     set -euo pipefail
-    cp cmd/otelcol-custom/svcwrapper*.go {{edge_windows_dir}}/
+    for f in cmd/otelcol-custom/*.go; do
+        case "$f" in
+            rotatingsink_test.go) ;;
+            *) cp "$f" {{edge_windows_dir}}/ ;;
+        esac
+    done
     cd {{edge_windows_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
+    go get gopkg.in/natefinch/lumberjack.v2
     go mod tidy
-    go test -covermode=set -coverprofile=svcwrapper.cover -run 'RunReporting|ReportExitCode|SentryFlushTimeout|SentryDSN' ./...
+    go test -covermode=set -coverprofile=svcwrapper.cover -run 'RunReporting|ReportExitCode|SentryFlushTimeout|SentryDSN|SentryNoise|SentryCapture|SentryStartup' ./...
     awk '$1 ~ /svcwrapper\.go:/ { total += $2; if ($3 > 0) cov += $2 }
          END { pct = total ? 100 * cov / total : 0
                printf "svcwrapper.go statement coverage: %.1f%%\n", pct
                exit (pct < 80) }' svcwrapper.cover
-    cp ../../cmd/otelcol-custom/main_windows.go .
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o /dev/null .
 
 # Build the Windows manifest for the host OS and run `validate` on a config.

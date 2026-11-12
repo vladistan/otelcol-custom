@@ -82,7 +82,7 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 ## Components
 
 ### Standard (from otelcol-contrib)
-- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11)
+- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12)
 - **Processors**: batch, memory_limiter
 - **Exporters**: otlp_grpc, debug
 
@@ -110,6 +110,28 @@ receivers:
 
 `test/configs/edge-tcpcheck.yaml` is the full config, and `test/edge/tcpcheck.sh
 build/edge/otelcol-edge` runs it against local IPv4 and IPv6 listeners.
+
+### Prometheus scraping on edge hosts
+
+The `prometheus` receiver is in the Linux and static Linux edge builds from 0.3.12.
+It scrapes Prometheus exporters on the host, such as node_exporter, with the same
+`scrape_configs` as Prometheus. The scrape job becomes `service.name` and the
+target `host:port` becomes `service.instance.id`. The Windows edge build does not
+include it.
+
+```yaml
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: node
+          scrape_interval: 30s
+          static_configs:
+            - targets: ["127.0.0.1:9100"]
+```
+
+`test/configs/edge-prometheus.yaml` is the full config, and
+`test/edge/prometheus.sh build/edge/otelcol-edge` runs it against a local exporter.
 
 ### Custom (in-tree)
 

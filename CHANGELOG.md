@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-11-12
+
+The `prometheus` receiver in the Linux edge builds, the `gpu` receiver in the Windows edge build, and a fix for duplicate and noisy Sentry events. The gateway and the scrape image gain no new component.
+
+### Added
+
+- **`prometheus` receiver in the Linux edge builds.** The Linux and static Linux edge collectors now ship `prometheusreceiver` v0.164.1, so an edge host can scrape Prometheus exporters on localhost, such as node_exporter, with the usual `scrape_configs`. The scrape job becomes `service.name` and the target `host:port` becomes `service.instance.id`. `test/edge/prometheus.sh` runs the built edge binary against a local exporter and checks the scraped gauge, its job and instance, and `up`. `test/configs/edge-prometheus.yaml` is the config it runs. See the README.
+- **GPU metrics in the Windows edge.** The `gpu` receiver is now in the Windows edge build. It calls `nvml.dll` from the NVIDIA driver through `golang.org/x/sys/windows`, without cgo, and emits the same `hw.gpu.*`, `hw.temperature`, `hw.power` and `hw.errors` series as the Linux edge. The optional `library_path` setting names `nvml.dll` by absolute path when the driver keeps it outside System32; it is rejected on other systems and when relative. `test/configs/windows-edge.yaml` has the receiver and a `metrics/gpu` pipeline commented out, and a `gpu` group in `windowhist`. The adapter's tests run without a GPU. Not run on a host with a GPU yet. See `docs/windows-edge.md`.
+
+### Fixed
+
+- **Sentry noise.** Log lines containing `use of closed network connection` or `failed to find MUI file` no longer become Sentry events. Each ERROR log line was sent twice, by the core wrapper and by a second hook; only the wrapper remains, so each is sent once. The startup event now has a fixed fingerprint and a `server_name` tag, so hosts share one Sentry issue.
+
+### Binary size
+
+| Asset | MiB | Bytes | Change from 0.3.11 |
+|---|---|---|---|
+| `otelcol-edge-0.3.12-linux-amd64` | 168.5 | 176672930 | +41.5 MiB (+32.7%) |
+| `otelcol-edge-0.3.12-linux-amd64-gpu` | 169.8 | 178016328 | +41.5 MiB (+32.4%) |
+| `otelcol-edge-0.3.12-windows-amd64.exe` | 130.5 | 136788992 | +96.5 KiB (+0.07%) |
+
+The `prometheus` receiver adds 9 Go modules to each Linux edge build. The Windows build gains the `gpu` receiver.
+
+The gateway gains no component. Its asset size comes from the release build and is not listed here. The scrape collector ships in the image `ghcr.io/vladistan/otelcol-scrape:v0.3.12`; the binary in that image is 147.0 MiB (154136738 bytes), 4 KiB less than in 0.3.11.
+
 ## [0.3.11] - 2026-11-09
 
 The `tcp_check` receiver in the edge builds, the `identityfill` processor in the scrape image, and a Sentry DSN override in every binary. The gateway gains no new component.
@@ -23,7 +48,7 @@ The `tcp_check` receiver in the edge builds, the `identityfill` processor in the
 |---|---|---|
 | `otelcol-edge-0.3.11-linux-amd64` | 127.0 | 133120162 |
 | `otelcol-edge-0.3.11-linux-amd64-gpu` | 128.2 | 134454472 |
-| `otelcol-edge-0.3.11-windows-amd64.exe` | 130.4 | 136691200 |
+| `otelcol-edge-0.3.11-windows-amd64.exe` | 130.4 | 136690176 |
 
 The receiver adds about 56 to 64 KiB to each edge binary against 0.3.10. The gateway gains the Sentry DSN override and no component. Its asset size comes from the release build and is not listed here.
 

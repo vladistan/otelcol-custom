@@ -57,36 +57,16 @@ func serviceDescription() string {
 	}
 }
 
-// sentryZapHook creates a zap hook that sends error-level logs to Sentry
-// This captures collector internal errors that wouldn't otherwise reach Sentry
-func sentryZapHook(entry zapcore.Entry) error {
-	// Only capture error and higher severity
-	if entry.Level < zapcore.ErrorLevel {
-		return nil
-	}
-
-	// Skip known noisy errors
-	if filterNoiseErrors(entry.Message) {
-		return nil
-	}
-
-	// Create Sentry event from zap entry
+// startupEvent builds the "service started" event. A fixed fingerprint groups
+// every host together; the host goes in the server_name tag.
+func startupEvent(hostname string) *sentry.Event {
 	event := sentry.NewEvent()
-	event.Level = zapLevelToSentry(entry.Level)
-	event.Message = entry.Message
-	event.Logger = entry.LoggerName
-	event.Timestamp = entry.Time
+	event.Level = sentry.LevelInfo
+	event.Message = fmt.Sprintf("%s started on %s", serviceName, hostname)
+	event.Fingerprint = []string{"service-started"}
+	event.Tags["server_name"] = hostname
 
-	// Add context as extra data
-	event.Extra["caller"] = entry.Caller.String()
-	if entry.Stack != "" {
-		event.Extra["stack"] = entry.Stack
-	}
-
-	// Capture the event
-	sentry.CaptureEvent(event)
-
-	return nil
+	return event
 }
 
 // zapLevelToSentry converts zap log level to Sentry level
@@ -212,14 +192,13 @@ func (c *sentryCoreWrapper) Sync() error {
 	return c.Core.Sync()
 }
 
-// createSentryLoggingOptions creates zap options that integrate with Sentry
+// createSentryLoggingOptions creates zap options that integrate with Sentry.
+// The core wrapper is the only capture path, so each ERROR is sent once.
 func createSentryLoggingOptions() []zap.Option {
 	return []zap.Option{
 		zap.WrapCore(func(core zapcore.Core) zapcore.Core {
 			return newSentryCoreWrapper(core)
 		}),
-		// Also add simple hook as backup
-		zap.Hooks(sentryZapHook),
 	}
 }
 
@@ -229,6 +208,8 @@ func filterNoiseErrors(msg string) bool {
 		// Add patterns for known noisy errors that don't need Sentry alerts
 		"context canceled",
 		"connection reset by peer",
+		"use of closed network connection",       // Idle connection closed by the peer; the exporter retries
+		"failed to find mui file",                // Event-log provider without message resources; the event still ships
 		"regex pattern does not match",           // Expected when log format doesn't match parser
 		"no such file or directory",              // Filesystem paths that don't exist or are inaccessible
 		"failed to read usage",                   // Hostmetrics filesystem scraper permission errors
@@ -250,6 +231,19 @@ func filterNoiseErrors(msg string) bool {
 	return false
 }
 
+// sentryClientOptions builds the options passed to sentry.Init. The DSN comes
+// from sentryDSN, so OTELCOL_CUSTOM_SENTRY_DSN reaches Sentry through here.
+func sentryClientOptions(environment string) sentry.ClientOptions {
+	return sentry.ClientOptions{
+		Dsn:              sentryDSN(SentryDSN),
+		Environment:      environment,
+		Release:          serviceName + "@" + version,
+		Debug:            os.Getenv("SENTRY_DEBUG") == "true",
+		EnableTracing:    false, // Collector handles its own tracing
+		AttachStacktrace: true,
+	}
+}
+
 func main() {
 	// Set collector version for resourceversion processor
 	resourceversionprocessor.SetCollectorVersion(version)
@@ -263,21 +257,14 @@ func main() {
 	// Initialize Sentry for error tracking. Telemetry is on by default;
 	// set OTELCOL_CUSTOM_DISABLE_TELEMETRY to any non-empty value to opt out.
 	if SentryDSN != "" && SentryDSN != "PLACEHOLDER_DSN" && os.Getenv("OTELCOL_CUSTOM_DISABLE_TELEMETRY") == "" {
-		err := sentry.Init(sentry.ClientOptions{
-			Dsn:              sentryDSN(SentryDSN),
-			Environment:      environment,
-			Release:          serviceName + "@" + version,
-			Debug:            os.Getenv("SENTRY_DEBUG") == "true",
-			EnableTracing:    false, // Collector handles its own tracing
-			AttachStacktrace: true,
-		})
+		err := sentry.Init(sentryClientOptions(environment))
 		if err != nil {
 			log.Printf("WARNING: Failed to initialize Sentry: %v", err)
 		} else {
 			log.Printf("Sentry initialized: service=%s, environment=%s, release=%s@%s", serviceName, environment, serviceName, version)
 			// Send startup event to Sentry for verification
 			hostname, _ := os.Hostname()
-			sentry.CaptureMessage(fmt.Sprintf("%s started on %s", serviceName, hostname))
+			sentry.CaptureEvent(startupEvent(hostname))
 		}
 		defer sentry.Flush(2 * time.Second)
 	}

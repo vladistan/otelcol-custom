@@ -171,6 +171,8 @@ All four are read once at process start; there is no live-reload. Sentry
 itself is only initialized if a non-placeholder DSN is compiled into the
 binary and `OTELCOL_CUSTOM_DISABLE_TELEMETRY` is unset.
 
+<!-- cspell:ignore HKLM -->
+
 An empty `OTELCOL_CUSTOM_SENTRY_DSN` keeps the built-in DSN. A value that does
 not parse as a DSN is ignored: the collector logs a warning that names the
 variable, not its value, and starts with the built-in DSN. On Windows the
@@ -178,3 +180,20 @@ variable goes in the service's `Environment` registry value
 (`REG_MULTI_SZ`, one `NAME=value` per line) under
 `HKLM\SYSTEM\CurrentControlSet\Services\<service>`; restart the service
 afterwards.
+
+## Sentry events
+
+Each collector log line at ERROR or above becomes one Sentry event, grouped by
+message and source file. A log line whose message contains one of these
+strings (case-insensitive) is dropped instead, because it is expected and the
+collector recovers on its own:
+
+- `use of closed network connection`: an idle connection the peer closed; the
+  exporter retries the upload.
+- `failed to find MUI file`: an event-log provider without message resources;
+  the event still ships.
+- the older entries in `filterNoiseErrors` in `cmd/otelcol-custom/main.go`,
+  such as `context canceled` and `connection reset by peer`.
+
+At start the collector sends one info event, `<service> started on <host>`. All
+hosts share one Sentry issue; the host name is in the `server_name` tag.

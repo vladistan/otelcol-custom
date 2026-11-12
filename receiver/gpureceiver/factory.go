@@ -41,7 +41,10 @@ func newEmptyCollector(
 
 // NewFactory wires the NVML adapter; tests call newFactory with a fake port.
 func NewFactory() receiver.Factory {
-	return newFactoryFor(nvmladapter.NewPort, collectBuilderFor)
+	return newFactoryFor(
+		func(cfg *Config) (port.Port, error) { return nvmladapter.NewPort(cfg.LibraryPath) },
+		collectBuilderFor,
+	)
 }
 
 // collectBuilderFor passes the configured interval to collect.New, whose
@@ -60,11 +63,14 @@ func collectBuilderFor(cfg *Config) collectorBuilder {
 }
 
 func newFactory(newPort func() (port.Port, error), build collectorBuilder) receiver.Factory {
-	return newFactoryFor(newPort, func(*Config) collectorBuilder { return build })
+	return newFactoryFor(
+		func(*Config) (port.Port, error) { return newPort() },
+		func(*Config) collectorBuilder { return build },
+	)
 }
 
 func newFactoryFor(
-	newPort func() (port.Port, error),
+	newPort func(*Config) (port.Port, error),
 	builderFor func(*Config) collectorBuilder,
 ) receiver.Factory {
 	return receiver.NewFactory(
@@ -77,7 +83,7 @@ func newFactoryFor(
 }
 
 func createMetricsReceiverFunc(
-	newPort func() (port.Port, error),
+	newPort func(*Config) (port.Port, error),
 	builderFor func(*Config) collectorBuilder,
 ) receiver.CreateMetricsFunc {
 	return func(
@@ -87,7 +93,7 @@ func createMetricsReceiverFunc(
 		nextConsumer consumer.Metrics,
 	) (receiver.Metrics, error) {
 		gpuCfg := cfg.(*Config)
-		p, err := newPort()
+		p, err := newPort(gpuCfg)
 		if err != nil {
 			return nil, err
 		}

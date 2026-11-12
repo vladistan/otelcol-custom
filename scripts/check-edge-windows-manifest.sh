@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Guards builder-edge-windows.yaml: its components may differ from
-# builder-edge-static.yaml only by the REMOVED and ADDED lists below. Later
-# integration steps extend ADDED (4.1 winlogprocessor, 6.1 windowhistprocessor).
+# builder-edge-static.yaml only by the REMOVED and ADDED lists below. Extend
+# ADDED when a component is added to the Windows edge (winlogprocessor,
+# windowhistprocessor, gpureceiver).
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -19,6 +20,7 @@ readonly CONTRIB="github.com/open-telemetry/opentelemetry-collector-contrib"
 readonly LOCAL="github.com/vladistan/otelcol-custom"
 readonly REMOVED=(
 	"$CONTRIB/receiver/journaldreceiver"
+	"$CONTRIB/receiver/prometheusreceiver"
 	"$LOCAL/receiver/psireceiver"
 	"replace:$LOCAL/receiver/psireceiver"
 )
@@ -27,6 +29,8 @@ readonly ADDED=(
 	"$CONTRIB/receiver/windowsperfcountersreceiver"
 	"$LOCAL/processor/winlogprocessor"
 	"replace:$LOCAL/processor/winlogprocessor"
+	"$LOCAL/receiver/gpureceiver"
+	"replace:$LOCAL/receiver/gpureceiver"
 )
 
 die() {

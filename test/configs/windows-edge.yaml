@@ -56,6 +56,13 @@ receivers:
         include_fs_types:
           match_type: strict
           fs_types: [NTFS, ReFS]
+  # NVIDIA GPU metrics through nvml.dll, disabled. On a host with an NVIDIA
+  # driver, uncomment this receiver and the metrics/gpu pipeline below. The
+  # default loads nvml.dll from System32; library_path is optional and must be
+  # an absolute path. With windowhist on, set collection_interval to 10s.
+  # gpu:
+  #   collection_interval: 60s
+  #   library_path: 'C:\Program Files\NVIDIA Corporation\NVSMI\nvml.dll'
   windowsperfcounters:
     collection_interval: 60s
     metrics:
@@ -302,6 +309,7 @@ processors:
       network_pressure: {}
       process: {}
       plain: {}
+      gpu: {}
       filesystem: {scrape_interval: 15m, send_interval: 15m}
 exporters:
   otlp_http:
@@ -347,6 +355,11 @@ service:
       receivers: [host_metrics, host_metrics/filesystem, windowsperfcounters]
       processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, resourceversion]
       exporters: [otlp_http]
+    # GPU pipeline, disabled with the gpu receiver above.
+    # metrics/gpu:
+    #   receivers: [gpu]
+    #   processors: [memory_limiter, resource_detection, resource/host, resourceversion]
+    #   exporters: [otlp_http]
     logs:
       receivers: [windows_event_log/security, windows_event_log/system, windows_event_log/application, windows_event_log/bucket-0]
       processors: [memory_limiter, winlog, resource_detection, resource/host, resourceversion]

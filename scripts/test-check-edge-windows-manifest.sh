@@ -56,6 +56,10 @@ grep -v "windowseventlogreceiver" "$WINDOWS" >"$SCRATCH/missing.yaml"
 expect_exit_code "a missing expected component fails" 1 "$CHECK" "$SCRATCH/missing.yaml" "$STATIC"
 expect_output "the missing component is named" "windowseventlogreceiver"
 
+grep -v "gpureceiver" "$WINDOWS" >"$SCRATCH/no-gpu.yaml"
+expect_exit_code "a Windows manifest without gpureceiver fails" 1 "$CHECK" "$SCRATCH/no-gpu.yaml" "$STATIC"
+expect_output "the missing gpureceiver is named" "expected addition is missing: .*gpureceiver"
+
 grep -v "journaldreceiver" "$STATIC" >"$SCRATCH/static-no-journald.yaml"
 expect_exit_code "journaldreceiver no longer removed from static fails" 1 \
 	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-journald.yaml"

@@ -74,3 +74,34 @@ func TestConfig_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLibraryPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		goos    string
+		path    string
+		wantErr string
+	}{
+		{"unset on windows", "windows", "", ""},
+		{"unset on linux", "linux", "", ""},
+		{"absolute drive path on windows", "windows", `C:\Program Files\NVIDIA Corporation\NVSMI\nvml.dll`, ""},
+		{"relative path on windows", "windows", `nvml.dll`, "absolute"},
+		{"set on linux", "linux", `C:\nvml.dll`, "only supported on windows"},
+		{"set on darwin", "darwin", `C:\nvml.dll`, "only supported on windows"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateLibraryPath(tt.goos, tt.path)
+
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestDefaultConfigLeavesLibraryPathUnset(t *testing.T) {
+	assert.Empty(t, createDefaultConfig().LibraryPath)
+}

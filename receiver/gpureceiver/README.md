@@ -6,7 +6,8 @@ Original: https://github.com/pmady/otel-gpu-receiver@ac756935ca040923d98af5a0d05
 Collects NVIDIA GPU metrics through NVML and emits them with OpenTelemetry
 semantic-convention names. It is part of `otelcol-edge` only. Status: alpha.
 
-The receiver is functional in Linux builds with cgo. Elsewhere the `gpu`
+The receiver is functional in Linux builds with cgo, which use go-nvml, and in
+Windows builds, which load `nvml.dll` without cgo. Elsewhere the `gpu`
 component is registered as a stub: a config that puts it in a pipeline fails
 startup with `platform unsupported`.
 
@@ -95,6 +96,12 @@ service:
 Put `gpu` in a pipeline that runs `resource_detection`, which adds the host
 identity to the resource. The receiver itself sets no resource attributes.
 
+`library_path` is Windows only. It names `nvml.dll` by absolute path, for a
+driver that keeps the DLL outside System32, such as
+`C:\Program Files\NVIDIA Corporation\NVSMI\nvml.dll`. Unset, the receiver loads
+`nvml.dll` from System32 only. A relative path, or the key on another OS, fails
+config validation.
+
 ## Operator notes
 
 - **`hw.gpu.io` is approximate.** NVML reports a sampled PCIe rate in KiB/s (1 KiB = 1024 bytes), not a byte counter. The receiver multiplies each sample by the measured time since the previous sample and sums it. The first sample emits 0. A gap longer than three collection intervals adds nothing and starts a new baseline.
@@ -107,6 +114,7 @@ identity to the resource. The receiver itself sets no resource attributes.
 - **`hw.status`** is ok=1 when at least one enabled call succeeded and none reported a lost GPU, failed=1 for a lost GPU, and degraded is always 0. All three at 0 means the state is unknown for that scrape.
 - **Errors** appear in the collector log and in `hw.status`. The collector's own `errored_metric_points` stays 0 by design.
 - **glibc 2.35 floor.** Linux builds use cgo and link glibc dynamically, so the edge binary needs glibc 2.35 or newer. musl systems are not supported. NVML itself is loaded at run time and is not linked.
+- **Windows binding.** `internal/nvmladapter/adapter_windows.go` calls the C functions of `nvml.dll` through `golang.org/x/sys/windows`; go-nvml supports Linux only. It binds the 17 functions the Linux adapter uses. A function missing from the installed DLL counts as not supported, so that one metric is dropped. Which calls a given driver and GPU mode support is not known without a Windows host with a GPU.
 
 ## Development
 

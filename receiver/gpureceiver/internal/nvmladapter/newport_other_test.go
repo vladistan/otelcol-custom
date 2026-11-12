@@ -1,4 +1,4 @@
-//go:build !(linux && cgo)
+//go:build !(linux && cgo) && !windows
 
 package nvmladapter
 
@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewPortReportsPlatformUnsupported(t *testing.T) {
-	p, err := NewPort()
+	p, err := NewPort("")
 
 	assert.Nil(t, p)
 	assert.ErrorIs(t, err, ErrPlatformUnsupported)

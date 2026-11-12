@@ -1,9 +1,10 @@
-// Package nvmladapter wraps go-nvml behind the port contract on linux with
-// cgo; every other build gets a constructor that reports the platform as
-// unsupported.
+// Package nvmladapter wraps NVML behind the port contract: go-nvml on linux
+// with cgo, nvml.dll loaded without cgo on windows. Every other build gets a
+// constructor that reports the platform as unsupported.
 package nvmladapter
 
 import "errors"
 
-// ErrPlatformUnsupported is returned by NewPort on builds without linux and cgo.
-var ErrPlatformUnsupported = errors.New("gpu receiver: platform unsupported, NVML needs linux with cgo")
+// ErrPlatformUnsupported is returned by NewPort on builds that are neither
+// linux with cgo nor windows.
+var ErrPlatformUnsupported = errors.New("gpu receiver: platform unsupported, NVML needs linux with cgo or windows")

@@ -61,6 +61,16 @@ The disk scraper is off. PhysicalDisk counters replace it.
 
 The `tcp_check` receiver is in the Windows edge build from 0.3.11. It reports `tcpcheck.status`, `tcpcheck.duration` and `tcpcheck.error` for each target, over IPv4 and over IPv6 with the address in brackets, such as `[2001:db8::11]:8006`. See the README and `test/configs/edge-tcpcheck.yaml`.
 
+## GPU metrics
+
+The `gpu` receiver is in the Windows edge build from 0.3.12. It reads NVIDIA GPU metrics from `nvml.dll`, which the NVIDIA driver installs, and emits the same `hw.gpu.*`, `hw.temperature`, `hw.power` and `hw.errors` series as the Linux edge. See `receiver/gpureceiver/README.md` for the metric list.
+
+The sample config has the receiver and a `metrics/gpu` pipeline commented out. On a host with an NVIDIA GPU, uncomment both. With no driver or no `nvml.dll`, the receiver logs one warning at the first scrape and sends nothing; the rest of the collector is not affected.
+
+The receiver loads `nvml.dll` from System32. If the driver keeps it elsewhere, such as `C:\Program Files\NVIDIA Corporation\NVSMI\`, set `library_path` to the absolute path. The `windowhist` processor has a `gpu` group; with summarization on, set the receiver's `collection_interval` to 10s.
+
+The Windows driver may not support every NVML call for every GPU mode (WDDM or TCC); a call that is not supported drops that metric for that GPU and logs one info line, `GPU call not supported`.
+
 ## Performance-counter extensions
 
 Perf counters are named `windows.<object>.<counter>`. Disk and network series carry the receiver's `instance` attribute.
@@ -246,3 +256,4 @@ File logs are held open only while read. Upstream documents that Move/Create rot
 
 - The `include_fs_types` filter on `NTFS` and `ReFS` as the fixed-drive rule.
 - The `host.ip` resource attribute from the system detector.
+- The `gpu` receiver on a host with an NVIDIA GPU: where `nvml.dll` sits, which NVML calls the driver supports, and that the values match `nvidia-smi`. The adapter's tests run without a GPU.

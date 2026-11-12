@@ -16,7 +16,7 @@ func init() {
 		name: "nvml",
 		new: func(t *testing.T) port.Port {
 			t.Helper()
-			p, err := nvmladapter.NewPort()
+			p, err := nvmladapter.NewPort("")
 			require.NoError(t, err)
 			return p
 		},

@@ -41,7 +41,7 @@ func TestCheckPassesSuccessAsNil(t *testing.T) {
 }
 
 func TestNewPortReturnsUninitialisedAdapter(t *testing.T) {
-	p, err := NewPort()
+	p, err := NewPort("")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, p)

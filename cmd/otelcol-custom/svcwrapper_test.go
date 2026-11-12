@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 type fakeTransport struct {
@@ -237,7 +240,7 @@ func TestSentryDSNFallsBackOnInvalidValues(t *testing.T) {
 }
 
 func TestSentryDSNWarnsOnInvalidValuesWithoutPrintingThem(t *testing.T) {
-	const secret = "bogus-dsn-secret-marker"
+	const secret = "bogus-dsn-secret-marker" // pragma: allowlist secret
 
 	t.Setenv(sentryDSNEnv, secret)
 	buf := captureLog(t)
@@ -260,5 +263,173 @@ func TestSentryDSNLogsNothingForAValidOverride(t *testing.T) {
 
 	if buf.Len() != 0 {
 		t.Errorf("unexpected log output %q", buf.String())
+	}
+}
+
+func TestSentryDSNWiringInClientOptionsUsesTheOverride(t *testing.T) {
+	t.Setenv(sentryDSNEnv, testOverrideDSN)
+
+	if got := sentryClientOptions("test").Dsn; got != testOverrideDSN {
+		t.Errorf("client options dsn = %q, want the override", got)
+	}
+}
+
+func TestSentryDSNWiringInClientOptionsKeepsTheBuiltInDefault(t *testing.T) {
+	t.Setenv(sentryDSNEnv, "")
+
+	if got := sentryClientOptions("test").Dsn; got != SentryDSN {
+		t.Errorf("client options dsn = %q, want the built-in DSN", got)
+	}
+}
+
+func TestSentryDSNWiringInClientOptionsFallsBackWithoutLoggingTheValue(t *testing.T) {
+	const bad = "bogus-wiring-marker" // pragma: allowlist secret
+
+	t.Setenv(sentryDSNEnv, bad)
+	buf := captureLog(t)
+
+	if got := sentryClientOptions("test").Dsn; got != SentryDSN {
+		t.Errorf("client options dsn = %q, want the built-in DSN", got)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, sentryDSNEnv) || strings.Contains(out, bad) {
+		t.Errorf("log %q must name %s and not print the value", out, sentryDSNEnv)
+	}
+}
+
+func TestSentryDSNWiringInClientOptionsKeepsEnvironmentAndRelease(t *testing.T) {
+	t.Setenv(sentryDSNEnv, "")
+
+	options := sentryClientOptions("staging")
+	if options.Environment != "staging" || options.Release != serviceName+"@"+version {
+		t.Errorf("environment %q release %q", options.Environment, options.Release)
+	}
+}
+
+// bindFakeClient points the global Sentry hub at a fake transport for one test.
+func bindFakeClient(t *testing.T) *fakeTransport {
+	t.Helper()
+
+	transport := &fakeTransport{}
+
+	client, err := sentry.NewClient(sentry.ClientOptions{Dsn: testDefaultDSN, Transport: transport})
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	hub := sentry.CurrentHub()
+	previous := hub.Client()
+
+	hub.BindClient(client)
+	t.Cleanup(func() { hub.BindClient(previous) })
+
+	return transport
+}
+
+// newSentryTestLogger builds a logger with the production Sentry options over
+// an in-memory core.
+func newSentryTestLogger() *zap.Logger {
+	core, _ := observer.New(zapcore.DebugLevel)
+
+	options := append([]zap.Option{zap.AddCaller()}, createSentryLoggingOptions()...)
+
+	return zap.New(core, options...)
+}
+
+func TestSentryNoiseFilterDropsKnownMessages(t *testing.T) {
+	messages := []string{
+		"context canceled",
+		"connection reset by peer",
+		"failed to upload metrics: Post \"https://gw.example.invalid/v1/metrics\": write tcp 10.0.0.2:5000->10.0.0.3:4318: use of closed network connection",
+		"USE OF CLOSED NETWORK CONNECTION",
+		"EvtFormatMessage failed: failed to find MUI file for provider",
+		"Failed To Find MUI File",
+	}
+	for _, msg := range messages {
+		t.Run(msg, func(t *testing.T) {
+			if !filterNoiseErrors(msg) {
+				t.Errorf("%q should be filtered", msg)
+			}
+		})
+	}
+}
+
+func TestSentryNoiseFilterKeepsRealErrors(t *testing.T) {
+	for _, msg := range []string{"exporter failed", "failed to upload metrics: status 500", "closed"} {
+		t.Run(msg, func(t *testing.T) {
+			if filterNoiseErrors(msg) {
+				t.Errorf("%q should reach Sentry", msg)
+			}
+		})
+	}
+}
+
+func TestSentryCaptureSendsOneEventPerError(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Error("exporter failed")
+
+	if got := transport.eventCount(); got != 1 {
+		t.Fatalf("got %d events, want 1", got)
+	}
+}
+
+func TestSentryCaptureSkipsNoiseErrors(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Error("failed to upload metrics: use of closed network connection")
+
+	if got := transport.eventCount(); got != 0 {
+		t.Errorf("got %d events, want 0", got)
+	}
+}
+
+func TestSentryCaptureIgnoresLevelsBelowError(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Warn("exporter slow")
+
+	if got := transport.eventCount(); got != 0 {
+		t.Errorf("got %d events, want 0", got)
+	}
+}
+
+func TestSentryCaptureFingerprintsByMessageAndCaller(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Error("exporter failed")
+
+	fingerprint := transport.firstEvent().Fingerprint
+	if len(fingerprint) != 2 || fingerprint[0] != "exporter failed" {
+		t.Fatalf("fingerprint = %q, want [message, caller file]", fingerprint)
+	}
+
+	if !strings.HasSuffix(fingerprint[1], "svcwrapper_test.go") {
+		t.Errorf("caller file = %q, want svcwrapper_test.go", fingerprint[1])
+	}
+}
+
+func TestSentryStartupEventUsesAFixedFingerprint(t *testing.T) {
+	for _, host := range []string{"HOST-A", "HOST-B"} {
+		got := startupEvent(host).Fingerprint
+		if len(got) != 1 || got[0] != "service-started" {
+			t.Errorf("host %s: fingerprint = %q, want [service-started]", host, got)
+		}
+	}
+}
+
+func TestSentryStartupEventTagsTheHost(t *testing.T) {
+	if got := startupEvent("HOST-A").Tags["server_name"]; got != "HOST-A" {
+		t.Errorf("server_name tag = %q, want HOST-A", got)
+	}
+}
+
+func TestSentryStartupEventNamesTheServiceAndHost(t *testing.T) {
+	got := startupEvent("HOST-A").Message
+	if !strings.Contains(got, serviceName) || !strings.Contains(got, "HOST-A") {
+		t.Errorf("message = %q, want service and host", got)
+	}
+}
+
+func TestSentryStartupEventIsInfoLevel(t *testing.T) {
+	if got := startupEvent("HOST-A").Level; got != sentry.LevelInfo {
+		t.Errorf("level = %q, want info", got)
 	}
 }
