@@ -60,10 +60,69 @@ grep -v "gpureceiver" "$WINDOWS" >"$SCRATCH/no-gpu.yaml"
 expect_exit_code "a Windows manifest without gpureceiver fails" 1 "$CHECK" "$SCRATCH/no-gpu.yaml" "$STATIC"
 expect_output "the missing gpureceiver is named" "expected addition is missing: .*gpureceiver"
 
+grep -v "fswatchreceiver" "$WINDOWS" >"$SCRATCH/no-fswatch.yaml"
+expect_exit_code "a Windows manifest without fswatchreceiver fails" 1 "$CHECK" "$SCRATCH/no-fswatch.yaml" "$STATIC"
+expect_output "the missing fswatchreceiver is named" "expected addition is missing: .*fswatchreceiver"
+
+grep -v "tightvncprocessor" "$WINDOWS" >"$SCRATCH/no-tightvnc.yaml"
+expect_exit_code "a Windows manifest without tightvncprocessor fails" 1 "$CHECK" "$SCRATCH/no-tightvnc.yaml" "$STATIC"
+expect_output "the missing tightvncprocessor is named" "expected addition is missing: .*tightvncprocessor"
+
+for linux in builder-config.yaml builder-edge.yaml builder-edge-static.yaml builder-gateway.yaml builder-scrape.yaml; do
+	if grep -q "fswatch" "$ROOT/$linux"; then
+		echo "FAIL: $linux lists fswatch; only the Windows edge manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $linux has no fswatch entry"
+	fi
+	if grep -q "tightvnc" "$ROOT/$linux"; then
+		echo "FAIL: $linux lists tightvnc; only the Windows edge manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $linux has no tightvnc entry"
+	fi
+done
+
 grep -v "journaldreceiver" "$STATIC" >"$SCRATCH/static-no-journald.yaml"
 expect_exit_code "journaldreceiver no longer removed from static fails" 1 \
 	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-journald.yaml"
 expect_output "the missing removal is named" "expected removal is missing: .*journaldreceiver"
+
+grep -v "containernameprocessor" "$STATIC" >"$SCRATCH/static-no-containername.yaml"
+expect_exit_code "containernameprocessor no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-containername.yaml"
+expect_output "the missing containername removal is named" "expected removal is missing: .*containernameprocessor"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-containername.yaml"
+sed -i.bak '/^processors:/a\
+  - gomod: github.com/vladistan/otelcol-custom/processor/containernameprocessor v0.0.0' "$SCRATCH/windows-with-containername.yaml"
+expect_exit_code "containernameprocessor on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-containername.yaml" "$STATIC"
+expect_output "the Windows containername is named" "containernameprocessor"
+
+grep -v "kthreadprocessor" "$STATIC" >"$SCRATCH/static-no-kthread.yaml"
+expect_exit_code "kthreadprocessor no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-kthread.yaml"
+expect_output "the missing kthread removal is named" "expected removal is missing: .*kthreadprocessor"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-kthread.yaml"
+sed -i.bak '/^processors:/a\
+  - gomod: github.com/vladistan/otelcol-custom/processor/kthreadprocessor v0.0.0' "$SCRATCH/windows-with-kthread.yaml"
+expect_exit_code "kthreadprocessor on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-kthread.yaml" "$STATIC"
+expect_output "the Windows kthread is named" "kthreadprocessor"
+
+grep -v "processlifetimeprocessor" "$STATIC" >"$SCRATCH/static-no-processlifetime.yaml"
+expect_exit_code "processlifetimeprocessor no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-processlifetime.yaml"
+expect_output "the missing processlifetime removal is named" "expected removal is missing: .*processlifetimeprocessor"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-processlifetime.yaml"
+sed -i.bak '/^processors:/a\
+  - gomod: github.com/vladistan/otelcol-custom/processor/processlifetimeprocessor v0.0.0' "$SCRATCH/windows-with-processlifetime.yaml"
+expect_exit_code "processlifetimeprocessor on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-processlifetime.yaml" "$STATIC"
+expect_output "the Windows processlifetime is named" "processlifetimeprocessor"
 
 expect_exit_code "a missing manifest is a usage error" 2 "$CHECK" "$SCRATCH/absent.yaml"
 expect_output "usage error names the file" "absent.yaml"

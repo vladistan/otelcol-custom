@@ -1,0 +1,14 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/vladistan/otelcol-custom/test/bench
+cpu: Intel(R) Xeon(R) W-3245 CPU @ 3.20GHz
+BenchmarkTightvnc/impl=stanza-chain-32         	       3	 620835256 ns/op	     10731 ns/record	102445690 B/op	 2266219 allocs/op
+BenchmarkTightvnc/impl=stanza-chain-32         	       3	 616404828 ns/op	     10655 ns/record	102554778 B/op	 2266232 allocs/op
+BenchmarkTightvnc/impl=stanza-chain-32         	       3	 620198158 ns/op	     10720 ns/record	102565981 B/op	 2266241 allocs/op
+BenchmarkTightvnc/impl=stanza-chain-32         	       3	 621259662 ns/op	     10739 ns/record	102516706 B/op	 2266236 allocs/op
+BenchmarkTightvnc/impl=stanza-chain-32         	       3	 620638225 ns/op	     10728 ns/record	102628914 B/op	 2266256 allocs/op
+BenchmarkTightvnc/impl=tightvnc-32             	       3	  12485051 ns/op	       215.8 ns/record	       0 B/op	       0 allocs/op
+BenchmarkTightvnc/impl=tightvnc-32             	       3	  11728121 ns/op	       202.7 ns/record	       0 B/op	       0 allocs/op
+BenchmarkTightvnc/impl=tightvnc-32             	       3	  11633760 ns/op	       201.1 ns/record	       0 B/op	       0 allocs/op
+BenchmarkTightvnc/impl=tightvnc-32             	       3	  11784876 ns/op	       203.7 ns/record	       0 B/op	       0 allocs/op
+BenchmarkTightvnc/impl=tightvnc-32             	       3	  11783016 ns/op	       203.7 ns/record	       0 B/op	       0 allocs/op

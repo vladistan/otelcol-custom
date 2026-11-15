@@ -9,6 +9,9 @@ dist:
   # dist is generated only; the entrypoint with Sentry init is injected and compiled afterwards
   skip_compilation: true
 replaces:
+  # Pin sentry-go to the version cmd/otelcol-custom compiles against. The builder
+  # compiles before the entrypoint is copied in; unpinned it takes the newest release.
+  - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
   - github.com/vladistan/otelcol-custom/receiver/auth0receiver => ../../receiver/auth0receiver
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
   - github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor

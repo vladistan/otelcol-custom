@@ -1,0 +1,8 @@
+TITLE,OpenVPN 2.7.0 x86_64-pc-linux-gnu
+TIME,2026-11-13 10:00:00,1794564000
+HEADER,CLIENT_LIST,Common Name,Real Address,Virtual Address,Bytes Received,Bytes Sent,Connected Since,Connected Since (time_t),Username
+CLIENT_LIST,alice,203.0.113.5:51234,10.8.0.2,1000,2000,2026-11-13 09:00:00,1794560400,UNDEF
+CLIENT_LIST,bob,198.51.100.7:40222,10.8.0.3,3000,4000,2026-11-13 09:30:00,1794562200,UNDEF
+NEW_SECTION,something,added,later
+GLOBAL_STATS,Max bcast/mcast queue length,0
+END

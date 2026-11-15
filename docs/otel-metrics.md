@@ -184,9 +184,10 @@ afterwards.
 ## Sentry events
 
 Each collector log line at ERROR or above becomes one Sentry event, grouped by
-message and source file. A log line whose message contains one of these
-strings (case-insensitive) is dropped instead, because it is expected and the
-collector recovers on its own:
+message and source file. A log line is dropped instead when its message, or
+the text of its `error` field, contains one of these strings
+(case-insensitive), because it is expected and the collector recovers on its
+own:
 
 - `use of closed network connection`: an idle connection the peer closed; the
   exporter retries the upload.
@@ -194,6 +195,20 @@ collector recovers on its own:
   the event still ships.
 - the older entries in `filterNoiseErrors` in `cmd/otelcol-custom/main.go`,
   such as `context canceled` and `connection reset by peer`.
+
+A failed upload of the collector's own telemetry is dropped when its error
+text ends in `: EOF`, or contains `connection reset by peer` or
+`use of closed network connection`. The log message is
+`OpenTelemetry internal telemetry error`, or the error starts with
+`failed to upload metrics`, `logs` or `traces`. These are reused connections
+the gateway closed; the next push succeeds. Upload failures with other causes,
+such as a timeout, an HTTP 5xx or a DNS error, still reach Sentry because they
+can signal a real outage.
+
+The `process` scraper error for a process that exited between the listing and
+the read is dropped when every `; `-joined part has the form
+`error reading <what> for process "<name>" (pid <n>): The parameter is incorrect.`
+Access-denied and other read failures still reach Sentry.
 
 At start the collector sends one info event, `<service> started on <host>`. All
 hosts share one Sentry issue; the host name is in the `server_name` tag.

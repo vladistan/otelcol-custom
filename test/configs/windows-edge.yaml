@@ -208,6 +208,13 @@ receivers:
     include_log_record_original: true
     raw: false
     ignore_channel_errors: true
+  # TightVNC server log. The service writes UTF-16LE, so filelog decodes it and the
+  # tightvnc processor reads the lines. A host without the file reads nothing.
+  filelog/tightvnc:
+    include: ['C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\TightVNC\tvnserver.log']
+    encoding: utf-16le
+    start_at: end
+    storage: file_storage
     # File logs, disabled. Uncomment an entry and add it to the logs pipeline.
     # The role appends C:\ProgramData\otelcol-edge\logs\** to every exclude.
     #
@@ -286,6 +293,10 @@ processors:
       - name: collector-self-info
         levels: [4]
         providers: [otelcol-edge]
+  # Parses TightVNC log lines, sets severity from the message, and drops unmarked
+  # noise lines. `drop_prefixes` replaces the built-in list; see docs/windows-edge.md.
+  tightvnc:
+    time_zone: Local
   normalizedload:
     cpu_count: 0
   # Same low-resource rule as the Linux edge; thresholds are role variables.
@@ -363,4 +374,8 @@ service:
     logs:
       receivers: [windows_event_log/security, windows_event_log/system, windows_event_log/application, windows_event_log/bucket-0]
       processors: [memory_limiter, winlog, resource_detection, resource/host, resourceversion]
+      exporters: [otlp_http]
+    logs/tightvnc:
+      receivers: [filelog/tightvnc]
+      processors: [memory_limiter, tightvnc, resource_detection, resource/host, resourceversion]
       exporters: [otlp_http]

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-11-15
+
+The `openvpnstatus`, `containername`, `kthread` and `processlifetime` components in the Linux edge builds, the `tightvnc` processor and the `fswatch` receiver in the Windows edge build, and fixes for Sentry noise and the builder. The gateway and the scrape image gain no new component.
+
+### Added
+
+- **`containername` processor in the Linux edge builds.** Docker logs read through the journald driver arrive with `service.name=docker.service`. The new `containername` logs processor sets `service.name` to `container.name` whenever the resource has a non-empty `container.name`, replacing any existing value. Resources without one are unchanged, and a second pass changes nothing. It has no settings and is in the Linux and static Linux edge builds only. Dashboards and alerts keyed on `service.name=docker.service` stop matching those records. A Go benchmark in `test/bench` runs it against the equivalent OTTL `transform` statement on the same batch. See the README.
+- **`openvpnstatus` receiver in the Linux edge builds.** It polls an OpenVPN status file and emits one log record per connected client for each new snapshot, with the attributes `common_name`, `real_address`, `bytes_received` and `bytes_sent` (integers) and `connected_since`. The record timestamp is the snapshot time. It reads status versions 1, 2 and 3, and csv or tab separators, from the file content; the v1 `Updated` line is accepted in both date layouts, and a leading byte order mark is ignored. A snapshot without its `END` line is skipped and read again at the next poll, and an unchanged snapshot is emitted once. A row that cannot be parsed, or a v2 or v3 row of an unknown type, is skipped with one warning and the other clients are still emitted. A file over 1 MiB is not loaded. Config keys: `path` (required), `poll_interval` (default `20s`) and `join_routing_table` (default `false`; adds `virtual_address` and `last_ref` from the routing row with the same `common_name` and `real_address`). See `docs/openvpnstatus.md`.
+- **TightVNC server log in the Windows edge.** The `tightvnc` processor reads the lines that `filelog` delivers from the TightVNC server log, which the server writes in UTF-16LE. It splits each line into process and thread ids, time, marker and message, sets the record time in the configured `time_zone` (`Local` or `UTC`), sets severity from the message text, and adds `tightvnc.event`, `client.address`, `server.port`, `tightvnc.client.id` and similar attributes. Unmarked debug lines that start with a listed prefix are dropped, unless the line holds an error word; every other line is kept. A line outside the format is kept unchanged with `tightvnc.parse=failed`. A leading byte order mark is removed. The counters `otelcol_tightvnc_records_kept`, `_dropped` and `_unparsed` count every record once. `test/configs/windows-edge.yaml` has the `filelog/tightvnc` receiver and a `logs/tightvnc` pipeline. See `docs/windows-edge.md`.
+- **New-file records in the Windows edge.** The `fswatch` receiver (own module, alpha) emits one log record for each file created in or moved into a watched directory, with the path, name, extension, size, directory under the root and creation time. It calls `ReadDirectoryChangesW` directly, with no cgo and no new module in the build. A saved position per root, kept in `file_storage`, reports files created while the collector was down, marked `file.catchup=true`. A buffer overflow or a failed delivery triggers a rescan. When a file's size has stayed the same for `settle` (5 minutes by default), a second record, `file write complete`, carries `file.size_final`; a caught-up file that is already stable gets one record with `file.size_final`. A second record that cannot be delivered is retried and then dropped after 10 attempts or `settle_timeout` (`otelcol_fswatch_writes_dropped`), and after a restart the files created within `settle_timeout` are checked again. Not run on a Windows host yet. See `docs/windows-edge.md` and `receiver/fswatchreceiver/README.md`.
+- **`kthread` processor in the Linux edge builds.** On a Linux host the process scraper emits a new series for every pid, and kernel threads such as `kworker` change their pid often. The new `kthread` metrics processor merges every process resource whose `process.executable.name` matches a pattern (default `kworker*`, `ksoftirqd*` and `migration*`) into one resource per scrape, named by `aggregate_name` (default `kernel_threads`) and without `process.pid`. Each metric of the aggregate is the sum of the merged points that share the same attributes and the same scrape (timestamps less than one second apart count as one scrape), so the kernel-thread total stays. A cumulative counter in the aggregate falls when a thread exits, and its start time moves forward, so a cumulative monotonic sum is written non-monotonic and the total should not be read as a rate across an exit. Stale-marked points are skipped, `process.uptime` is not merged, and the resource schema URL is kept when the merged resources agree. A pattern made only of `*` and `?` logs a warning at start. Other resources pass unchanged. It is in the Linux and static Linux edge builds only. Put it before `batch`. See the README.
+- **`processlifetime` processor in the Linux edge builds.** `process.cpu.time` and `process.disk.io` are already lifetime totals; the new `processlifetime` metrics processor adds the two ratios that need the age of the process. `process.cpu.lifetime.utilization` (unit `1`) is the CPU seconds over all states divided by `process.uptime`, and `process.disk.io.lifetime.rate` (unit `By/s`, attribute `direction`) is the bytes read or written divided by `process.uptime`. A resource without a positive `process.uptime` gauge gets neither, and the source metrics are not changed. The host metrics process scraper must have `process.cpu.time`, `process.disk.io` and `process.uptime` enabled; `process.uptime` is off by default. It has no settings and is in the Linux and static Linux edge builds only. See the README.
+
+### Fixed
+
+- **Builds no longer pick up a newer `sentry-go`.** Every `builder-*.yaml` now pins `sentry-go` to the version in `go.mod` (v0.29.1) with a `replaces` entry. The builder compiles the generated distribution before the Sentry entrypoint is copied in. Without the pin it took the newest release, and any `svcwrapper.go` left in the output directory by an earlier build stopped compiling (`event.Extra undefined`). `just check-sentry-go-pin` fails when a manifest lacks the pin or names another version, and `just test-custom` runs it.
+- **Sentry noise in the error field.** The noise filter now also checks the log line's `error` field, not just its message. Event-log lines such as `process event` carry the cause only in that field, so the `failed to find MUI file` and `use of closed network connection` errors still reached Sentry in 0.3.12.
+- **Sentry noise from self-metrics uploads.** A failed upload of the collector's own metrics, logs or traces no longer becomes a Sentry event when its error ends in `: EOF`, or contains `connection reset by peer` or `use of closed network connection`. These are reused connections that the gateway closed, and the next push succeeds. Timeouts, HTTP 5xx and DNS errors still reach Sentry, because they can signal a real outage.
+- **Sentry noise from exited processes.** The `process` scraper error for a process that exits between the listing and the read, such as `error reading cpu times for process "example.exe" (pid 7320): The parameter is incorrect.`, no longer becomes a Sentry event. Every `; `-joined part of the error must be such a read; access-denied and other read failures still reach Sentry.
+- **Scrape rollback wording.** `docs/scrape-collector.md` said the Recreate strategy applies to the rollback of any workload. A StatefulSet supports only RollingUpdate and OnDelete; with one replica and a ReadWriteOnce volume it also stops the old pod first, leaving a short gap and one reader on the volume at a time. The text now names both workload kinds.
+
+### Binary size
+
+| Asset | MiB | Bytes | Change from 0.3.12 |
+|---|---|---|---|
+| `otelcol-edge-0.3.13-linux-amd64` | 168.6 | 176771234 | +96.0 KiB (+0.06%) |
+| `otelcol-edge-0.3.13-linux-amd64-gpu` | 169.9 | 178115592 | +100.9 KiB (+0.06%) |
+| `otelcol-edge-0.3.13-windows-amd64.exe` | 130.6 | 136948224 | +157.5 KiB (+0.12%) |
+
+The Linux edge builds gain `openvpnstatus`, `containername`, `kthread` and `processlifetime`; the Windows build gains `tightvnc` and `fswatch`. Sizes are from the release container builds.
+
+The gateway gains no component. Its asset size comes from the release build and is not listed here. The scrape image gains no component.
+
 ## [0.3.12] - 2026-11-12
 
 The `prometheus` receiver in the Linux edge builds, the `gpu` receiver in the Windows edge build, and a fix for duplicate and noisy Sentry events. The gateway and the scrape image gain no new component.
@@ -14,7 +47,7 @@ The `prometheus` receiver in the Linux edge builds, the `gpu` receiver in the Wi
 ### Added
 
 - **`prometheus` receiver in the Linux edge builds.** The Linux and static Linux edge collectors now ship `prometheusreceiver` v0.164.1, so an edge host can scrape Prometheus exporters on localhost, such as node_exporter, with the usual `scrape_configs`. The scrape job becomes `service.name` and the target `host:port` becomes `service.instance.id`. `test/edge/prometheus.sh` runs the built edge binary against a local exporter and checks the scraped gauge, its job and instance, and `up`. `test/configs/edge-prometheus.yaml` is the config it runs. See the README.
-- **GPU metrics in the Windows edge.** The `gpu` receiver is now in the Windows edge build. It calls `nvml.dll` from the NVIDIA driver through `golang.org/x/sys/windows`, without cgo, and emits the same `hw.gpu.*`, `hw.temperature`, `hw.power` and `hw.errors` series as the Linux edge. The optional `library_path` setting names `nvml.dll` by absolute path when the driver keeps it outside System32; it is rejected on other systems and when relative. `test/configs/windows-edge.yaml` has the receiver and a `metrics/gpu` pipeline commented out, and a `gpu` group in `windowhist`. The adapter's tests run without a GPU. Not run on a host with a GPU yet. See `docs/windows-edge.md`.
+- **GPU metrics in the Windows edge.** The `gpu` receiver is now in the Windows edge build. It calls `nvml.dll` from the NVIDIA driver through `golang.org/x/sys/windows`, without cgo, and emits the same `hw.gpu.*`, `hw.temperature`, `hw.power` and `hw.errors` series as the Linux edge. The optional `library_path` setting names `nvml.dll` by absolute path when the driver keeps it outside System32; it is rejected on other systems and when relative. `test/configs/windows-edge.yaml` has the receiver and a `metrics/gpu` pipeline commented out, and a `gpu` group in `windowhist`. The adapter's tests run without a GPU. The receiver has run on one Windows host with an NVIDIA GPU. See `docs/windows-edge.md`.
 
 ### Fixed
 
@@ -25,8 +58,8 @@ The `prometheus` receiver in the Linux edge builds, the `gpu` receiver in the Wi
 | Asset | MiB | Bytes | Change from 0.3.11 |
 |---|---|---|---|
 | `otelcol-edge-0.3.12-linux-amd64` | 168.5 | 176672930 | +41.5 MiB (+32.7%) |
-| `otelcol-edge-0.3.12-linux-amd64-gpu` | 169.8 | 178016328 | +41.5 MiB (+32.4%) |
-| `otelcol-edge-0.3.12-windows-amd64.exe` | 130.5 | 136788992 | +96.5 KiB (+0.07%) |
+| `otelcol-edge-0.3.12-linux-amd64-gpu` | 169.8 | 178012232 | +41.5 MiB (+32.4%) |
+| `otelcol-edge-0.3.12-windows-amd64.exe` | 130.5 | 136786944 | +94.5 KiB (+0.07%) |
 
 The `prometheus` receiver adds 9 Go modules to each Linux edge build. The Windows build gains the `gpu` receiver.
 

@@ -3,8 +3,10 @@ module github.com/vladistan/otelcol-custom/test/bench
 go 1.26.0
 
 require (
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/stanza v0.164.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
 	github.com/vladistan/otelcol-custom/processor/journaldprocessor v0.0.0
+	github.com/vladistan/otelcol-custom/processor/tightvncprocessor v0.0.0
 	go.opentelemetry.io/collector/confmap v1.70.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.164.0
 	go.opentelemetry.io/collector/pdata v1.70.0
@@ -14,11 +16,19 @@ require (
 )
 
 require (
+	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/expohisto v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/contexts/xprofile v0.164.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl/xottl v0.164.1 // indirect
+	github.com/stretchr/objx v0.5.3 // indirect
+	go.opentelemetry.io/collector/config/configauth v1.70.0 // indirect
+	go.opentelemetry.io/collector/extension v1.70.0 // indirect
+	go.opentelemetry.io/collector/extension/extensionauth v1.70.0 // indirect
+	go.opentelemetry.io/collector/extension/xextension v0.164.0 // indirect
 	go.opentelemetry.io/collector/pdata/xpdata v0.164.0 // indirect
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
+	gonum.org/v1/gonum v0.17.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 )
 
 require (
@@ -58,6 +68,7 @@ require (
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/twmb/murmur3 v1.2.1 // indirect
 	github.com/ua-parser/uap-go v0.0.0-20251207011819-db9adb27a0b8 // indirect
+	github.com/vladistan/otelcol-custom/processor/containernameprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
 	github.com/vladistan/otelcol-custom/processor/internal/probesample v0.0.0 // indirect
 	github.com/vladistan/otelcol-custom/processor/k8seventprocessor v0.0.0
@@ -67,7 +78,7 @@ require (
 	go.opentelemetry.io/collector/client v1.70.0 // indirect
 	go.opentelemetry.io/collector/component v1.70.0 // indirect
 	go.opentelemetry.io/collector/component/componentstatus v0.164.0 // indirect
-	go.opentelemetry.io/collector/component/componenttest v0.164.0 // indirect
+	go.opentelemetry.io/collector/component/componenttest v0.164.0
 	go.opentelemetry.io/collector/consumer v1.70.0
 	go.opentelemetry.io/collector/consumer/xconsumer v0.164.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.70.0 // indirect
@@ -88,7 +99,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/grpc v1.84.0 // indirect
 )
@@ -102,3 +113,6 @@ replace github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../.
 replace github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
 
 replace github.com/vladistan/otelcol-custom/processor/k8seventprocessor => ../../processor/k8seventprocessor
+
+replace github.com/vladistan/otelcol-custom/processor/containernameprocessor => ../../processor/containernameprocessor
+replace github.com/vladistan/otelcol-custom/processor/tightvncprocessor => ../../processor/tightvncprocessor

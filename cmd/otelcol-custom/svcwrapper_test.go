@@ -1,10 +1,13 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore sppsvc kdumpctl statm lsass
+
 package main
 
 import (
 	"bytes"
+	"errors"
 	"log"
 	"strings"
 	"sync"
@@ -380,6 +383,168 @@ func TestSentryCaptureSkipsNoiseErrors(t *testing.T) {
 
 	if got := transport.eventCount(); got != 0 {
 		t.Errorf("got %d events, want 0", got)
+	}
+}
+
+const (
+	muiErrorText    = "render deep event: syscall to 'EvtFormatMessage' failed: The resource loader failed to find MUI file."
+	closedErrorText = "Post \"https://gw.example.invalid/v1/metrics\": write tcp 10.0.0.2:5000->10.0.0.3:4318: use of closed network connection"
+)
+
+func TestSentryCaptureSkipsNoiseInTheErrorField(t *testing.T) {
+	cases := map[string]zap.Field{
+		"mui error":        zap.Error(errors.New(muiErrorText)),
+		"closed error":     zap.Error(errors.New(closedErrorText)),
+		"upper-case error": zap.Error(errors.New("USE OF CLOSED NETWORK CONNECTION")),
+		"string error key": zap.String("error", muiErrorText),
+	}
+	for name, field := range cases {
+		t.Run(name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error("process event", field)
+
+			if got := transport.eventCount(); got != 0 {
+				t.Errorf("got %d events, want 0", got)
+			}
+		})
+	}
+}
+
+func TestSentryCaptureSkipsNoiseInTheErrorFieldOfAChildLogger(t *testing.T) {
+	transport := bindFakeClient(t)
+	child := newSentryTestLogger().With(zap.Error(errors.New(muiErrorText)))
+	child.Error("process event", zap.String("operator_type", "winlog"))
+
+	if got := transport.eventCount(); got != 0 {
+		t.Errorf("got %d events, want 0", got)
+	}
+}
+
+func TestSentryCaptureKeepsOrdinaryErrorFields(t *testing.T) {
+	cases := map[string]zap.Field{
+		"error type":       zap.Error(errors.New("render deep event: access denied")),
+		"string error key": zap.String("error", "access denied"),
+	}
+	for name, field := range cases {
+		t.Run(name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error("process event", field)
+
+			if got := transport.eventCount(); got != 1 {
+				t.Errorf("got %d events, want 1", got)
+			}
+		})
+	}
+}
+
+func TestSentryCaptureIgnoresNoiseInOtherFields(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Error("process event", zap.String("detail", muiErrorText))
+
+	if got := transport.eventCount(); got != 1 {
+		t.Errorf("got %d events, want 1", got)
+	}
+}
+
+func TestSentryCaptureIgnoresANilErrorField(t *testing.T) {
+	transport := bindFakeClient(t)
+	newSentryTestLogger().Error("process event", zap.Error(nil))
+
+	if got := transport.eventCount(); got != 1 {
+		t.Errorf("got %d events, want 1", got)
+	}
+}
+
+const testSelfTelemetryMessage = "OpenTelemetry internal telemetry error"
+
+func TestSentryCaptureSkipsUploadConnectionFailures(t *testing.T) {
+	cases := []struct{ name, message, errText string }{
+		{"self-metrics EOF", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": EOF`},
+		{"self-metrics read tcp reset", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": read tcp 10.0.0.2:5000->10.0.0.3:4318: read: connection reset by peer`},
+		{"self-metrics closed connection", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": write tcp 10.0.0.2:5000->10.0.0.3:4318: use of closed network connection`},
+		{"lower-case eof", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": eof`},
+		{"upload logs under another message", "exporter failed", `failed to upload logs: Post "http://gw.example.invalid:4318/v1/logs": EOF`},
+		{"upload traces under another message", "exporter failed", `failed to upload traces: Post "http://gw.example.invalid:4318/v1/traces": EOF`},
+		{"self-telemetry message, other upload text", testSelfTelemetryMessage, `Post "http://gw.example.invalid:4318/v1/metrics": EOF`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error(tc.message, zap.Error(errors.New(tc.errText)))
+
+			if got := transport.eventCount(); got != 0 {
+				t.Errorf("got %d events, want 0", got)
+			}
+		})
+	}
+}
+
+func TestSentryCaptureKeepsOtherUploadFailures(t *testing.T) {
+	cases := []struct{ name, message, errText string }{
+		{"503 response", testSelfTelemetryMessage, "failed to upload metrics: unexpected HTTP status 503 Service Unavailable"},
+		{"DNS failure", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": dial tcp: lookup gw.example.invalid: no such host`},
+		{"read tcp i/o timeout", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": read tcp 10.0.0.2:5000->10.0.0.3:4318: i/o timeout`},
+		{"read tcp timeout under an upload message", "exporter failed", `failed to upload traces: Post "http://gw.example.invalid:4318/v1/traces": read tcp 10.0.0.2:5000->10.0.0.3:4318: i/o timeout`},
+		{"read tcp forcibly closed", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": read tcp 10.0.0.2:5000->10.0.0.3:4318: An existing connection was forcibly closed by the remote host.`},
+		{"context deadline exceeded", testSelfTelemetryMessage, `failed to upload metrics: Post "http://gw.example.invalid:4318/v1/metrics": context deadline exceeded`},
+		{"EOF inside the text", testSelfTelemetryMessage, "failed to upload metrics: EOF while reading the body: status 500"},
+		{"EOF outside an upload", "process event", "read body: EOF"},
+		{"read tcp outside an upload", "process event", "read tcp 10.0.0.2:5000->10.0.0.3:4318: i/o timeout"},
+		{"upload text with another message and no connection error", "exporter failed", "failed to upload metrics: status 500"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error(tc.message, zap.Error(errors.New(tc.errText)))
+
+			if got := transport.eventCount(); got != 1 {
+				t.Errorf("got %d events, want 1", got)
+			}
+		})
+	}
+}
+
+const scrapeErrorMessage = "Error scraping metrics"
+
+func TestSentryCaptureSkipsProcessExitRaceErrors(t *testing.T) {
+	cases := map[string]string{
+		"all three reads":       `error reading cpu times for process "sppsvc.exe" (pid 7320): The parameter is incorrect.; error reading memory info for process "sppsvc.exe" (pid 7320): The parameter is incorrect.; error reading handle count for process "sppsvc.exe" (pid 7320): The parameter is incorrect.`,
+		"one read":              `error reading cpu times for process "conhost.exe" (pid 4100): The parameter is incorrect.`,
+		"two processes":         `error reading cpu times for process "WmiPrvSE.exe" (pid 7432): The parameter is incorrect.; error reading cpu times for process "conhost.exe" (pid 4100): The parameter is incorrect.`,
+		"upper-case text":       `ERROR READING CPU TIMES FOR PROCESS "SPPSVC.EXE" (PID 7320): THE PARAMETER IS INCORRECT.`,
+		"linux file vanished":   `error reading cpu times for process "kdumpctl" (pid 733): open /proc/733/stat: no such file or directory; error reading memory utilization for process "kdumpctl" (pid 733): open /proc/733/statm: no such file or directory`,
+		"no trailing full stop": `error reading cpu times for process "sppsvc.exe" (pid 7320): The parameter is incorrect`,
+	}
+	for name, errText := range cases {
+		t.Run(name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error(scrapeErrorMessage, zap.Error(errors.New(errText)))
+
+			if got := transport.eventCount(); got != 0 {
+				t.Errorf("got %d events, want 0", got)
+			}
+		})
+	}
+}
+
+func TestSentryCaptureKeepsOtherProcessReadErrors(t *testing.T) {
+	cases := map[string]string{
+		"access denied":                 `error reading cpu times for process "lsass.exe" (pid 780): Access is denied.`,
+		"one denied among races":        `error reading cpu times for process "sppsvc.exe" (pid 7320): The parameter is incorrect.; error reading memory info for process "lsass.exe" (pid 780): Access is denied.`,
+		"race text without a process":   `error reading cpu times for host: The parameter is incorrect.`,
+		"race text from another source": `The parameter is incorrect.`,
+		"extra text after a race":       `error reading cpu times for process "sppsvc.exe" (pid 7320): The parameter is incorrect.; scrape aborted`,
+		"other wording":                 `error reading cpu times for process "sppsvc.exe" (pid 7320): The handle is invalid.`,
+	}
+	for name, errText := range cases {
+		t.Run(name, func(t *testing.T) {
+			transport := bindFakeClient(t)
+			newSentryTestLogger().Error(scrapeErrorMessage, zap.Error(errors.New(errText)))
+
+			if got := transport.eventCount(); got != 1 {
+				t.Errorf("got %d events, want 1", got)
+			}
+		})
 	}
 }
 

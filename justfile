@@ -244,6 +244,14 @@ check-edge-windows-manifest:
 test-check-edge-windows-manifest:
     scripts/test-check-edge-windows-manifest.sh
 
+# Fail unless every builder-*.yaml pins sentry-go to the version in go.mod.
+check-sentry-go-pin:
+    scripts/check-sentry-go-pin.sh
+
+# Tests for check-sentry-go-pin; no network.
+test-check-sentry-go-pin:
+    scripts/test-check-sentry-go-pin.sh
+
 # Fail when the binary needs glibc newer than 2.35 or a shared library outside
 # libc.so.6 and ld-linux-x86-64.so.2. A static binary passes with no entries.
 check-edge-glibc binary="build/edge/otelcol-edge": build-edge-image
@@ -465,6 +473,10 @@ test-custom:
     @echo ""
     @echo "Testing the rotating self-log sink..."
     just test-rotating-sink
+    @echo ""
+    @echo "Checking the sentry-go pin in the builder manifests..."
+    just test-check-sentry-go-pin
+    just check-sentry-go-pin
 
 # Run tests for every nested Go module under processor/, receiver/, stanza/
 # and test/, dynamically discovered rather than hardcoded.

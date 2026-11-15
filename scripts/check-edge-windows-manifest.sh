@@ -2,7 +2,8 @@
 # Guards builder-edge-windows.yaml: its components may differ from
 # builder-edge-static.yaml only by the REMOVED and ADDED lists below. Extend
 # ADDED when a component is added to the Windows edge (winlogprocessor,
-# windowhistprocessor, gpureceiver).
+# windowhistprocessor, gpureceiver, fswatchreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
+# component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus).
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -23,6 +24,14 @@ readonly REMOVED=(
 	"$CONTRIB/receiver/prometheusreceiver"
 	"$LOCAL/receiver/psireceiver"
 	"replace:$LOCAL/receiver/psireceiver"
+	"$LOCAL/processor/containernameprocessor"
+	"replace:$LOCAL/processor/containernameprocessor"
+	"$LOCAL/receiver/openvpnstatusreceiver"
+	"replace:$LOCAL/receiver/openvpnstatusreceiver"
+	"$LOCAL/processor/kthreadprocessor"
+	"replace:$LOCAL/processor/kthreadprocessor"
+	"$LOCAL/processor/processlifetimeprocessor"
+	"replace:$LOCAL/processor/processlifetimeprocessor"
 )
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"
@@ -31,6 +40,10 @@ readonly ADDED=(
 	"replace:$LOCAL/processor/winlogprocessor"
 	"$LOCAL/receiver/gpureceiver"
 	"replace:$LOCAL/receiver/gpureceiver"
+	"$LOCAL/processor/tightvncprocessor"
+	"replace:$LOCAL/processor/tightvncprocessor"
+	"$LOCAL/receiver/fswatchreceiver"
+	"replace:$LOCAL/receiver/fswatchreceiver"
 )
 
 die() {

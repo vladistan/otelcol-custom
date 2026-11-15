@@ -71,6 +71,54 @@ The receiver loads `nvml.dll` from System32. If the driver keeps it elsewhere, s
 
 The Windows driver may not support every NVML call for every GPU mode (WDDM or TCC); a call that is not supported drops that metric for that GPU and logs one info line, `GPU call not supported`.
 
+## New-file records
+
+The `fswatch` receiver reports each new file under a watched directory as one log record. It is in the Windows edge build only, and it is alpha. It reads no file contents.
+
+```yaml
+receivers:
+  fswatch/cds:
+    paths: ['D:\CDSProjects']
+    exclude: ['**/~*', '**/*.tmp']
+    start_at: end
+    storage: file_storage
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `paths` | required | Roots to watch, each with a drive letter or a UNC prefix. No glob characters, no duplicate or nested roots. |
+| `exclude` | none | Globs (`**` allowed) matched against the path under the root, without regard to case. |
+| `start_at` | `end` | For a root with no saved state: `end` reports nothing that exists; `beginning` reports every existing file once. |
+| `storage` | none | A storage extension that keeps the position of each root. Without it nothing survives a restart. |
+| `settle` | `5m` | After the creation record, the file size is watched. When it has stayed the same for this long, a second record `file write complete` follows with `file.size_final`. `0s` turns this off. |
+| `settle_timeout` | `10m` | Longest a file is watched for growth. A file still changing then gets the second record without `file.size_final`. |
+| `max_catchup` | `168h` | How far back a restart looks for files created while the collector was down. |
+| `buffer_size` | `262144` | Bytes of the Windows change buffer per root, 4096 to 1048576. |
+| `max_rescans` | `6` | Rescans an hour after a lost event or a failed delivery. |
+| `rescan_interval` | `0s` | When set, scan the tree this often as well. Use it on a network share. |
+
+Each record has the body `file created`, severity INFO, the file creation time as its timestamp, and the time the receiver saw it as its observed timestamp. Attributes: `file.path`, `file.name`, `file.extension` (no dot), `file.size`, `file.dir_relative` (backslashes, `.` for a file directly under the root), `file.root`, `file.size_final` (on the second record only) and `file.catchup`. `file.catchup` is `true` for a file found by a scan and `false` for a live event.
+
+The second record has the body `file write complete`, the time of the stable-size check as its timestamp, and `file.size` and `file.size_final` both set to the final size. A catch-up file whose last write is already older than `settle` gets one record with `file.size_final` and no second record. After a restart, files created within `settle_timeout` whose last record is not out are checked again: a stable one gets its second record at once, with `file.catchup=true`, and a file still being written is watched as usual. A second record that cannot be delivered is retried; after 10 failed attempts, or `settle_timeout` after the first failure, it is dropped with one warning and counted in `otelcol_fswatch_writes_dropped`.
+
+A file counts as new when it is created in the tree or moved into it. Writes, deletions and renames inside the tree are ignored, except a rename from an excluded name, such as `~run.tmp` to `run.dx`, which reports the final name.
+
+### Restarts and lost events
+
+The receiver keeps one position per root, the creation time of the newest file reported. At start it opens the watch first, then scans for files created after that position and reports them with `file.catchup=true`. A file is never reported twice for the same path and creation time, across restarts included. Only the 256 newest files created in the 2 seconds before the position are remembered, so a crash or restart can repeat files beyond that.
+
+If the Windows change buffer overflows, or a delivery fails, the receiver holds the position back and scans the tree again. It scans at most `max_rescans` times an hour and at least a minute apart. While a scan is owed, a restart can repeat files. If the root disappears, the receiver logs a warning, retries from 5 seconds up to a minute, and scans when the root is back. The collector starts without the root.
+
+### Not covered
+
+- A file moved into the tree while the collector is down keeps its old creation time, so the restart scan cannot tell it from an old file.
+- A clock set back: files created after the jump have a creation time below the position and are missed by a scan. The live watch still sees them.
+- A restore that keeps the creation time, such as `robocopy /COPY:T`, is missed by a scan for the same reason.
+- Windows keeps the creation time of a file that is deleted and created again under the same name within about 15 seconds. The live watch reports it. A scan does not.
+- Network roots are best effort. A mapped drive letter is not visible to a service account; use a UNC path. Set `rescan_interval` on a share.
+
+Counters: `otelcol_fswatch_records_emitted` (attribute `catchup`), `otelcol_fswatch_excluded`, `otelcol_fswatch_vanished`, `otelcol_fswatch_overflows`, `otelcol_fswatch_rescans`, `otelcol_fswatch_rescans_capped` (once an hour while the limit holds), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_dropped`, `otelcol_fswatch_settle_timeouts` and `otelcol_fswatch_scan_skipped` (attribute `reason`: `denied` or `future`).
+
 ## Performance-counter extensions
 
 Perf counters are named `windows.<object>.<counter>`. Disk and network series carry the receiver's `instance` attribute.
@@ -205,6 +253,126 @@ The record has severity INFO and the body `winlog drop summary: <n> events dropp
 
 Both leave through the collector's internal telemetry with the resource attributes in `service.telemetry.resource`.
 
+## TightVNC server log
+
+The TightVNC server, running as a service, writes `C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\TightVNC\tvnserver.log`. The file is UTF-16LE with CRLF line ends and a byte order mark. At log level 9 almost every line is debug output, and a restart of the service renames the file and starts a new one.
+
+The sample config reads it with `filelog/tightvnc` and the `tightvnc` processor in the `logs/tightvnc` pipeline:
+
+```yaml
+receivers:
+  filelog/tightvnc:
+    include: ['C:\WINDOWS\system32\config\systemprofile\AppData\Roaming\TightVNC\tvnserver.log']
+    encoding: utf-16le
+    start_at: end
+    storage: file_storage
+processors:
+  tightvnc:
+    time_zone: Local
+```
+
+- `start_at: end` reads nothing of an existing file at the first start. The read position lives in `file_storage`, so a restart of the collector continues where it stopped.
+- A host without the file reads nothing.
+- The receiver has no operators; the processor does the parsing.
+- Only `tvnserver.log` matches `include`, so the renamed files `tvnserver.1.log` and `tvnserver.2.log` are not read again. Lines written to the old file between the last poll and the rename can be lost, which is the limit of `filelog` on Windows.
+
+### Line format
+
+```
+[ <pid>/ <tid>] YYYY-MM-DD HH:MM:SS:mmm <marker> <message>
+```
+
+The marker is `+`, `-` or `!`, or absent. A line without a marker has `:` or blanks where the marker would be. The marker does not mean severity: `!` marks both `Client #0 connected` and `Exception in control client thread`.
+
+| Field | Result |
+|---|---|
+| Time | The record time, read in `time_zone`. A time that does not exist in the zone, such as one skipped by a clock change, leaves the observed time. A time in the repeated hour of a clock change takes the first occurrence. |
+| Message | The record body, without the line prefix |
+| Marker | `tightvnc.marker`, empty when the line has none |
+| Process and thread | `tightvnc.pid`, `tightvnc.tid` |
+
+`time_zone` takes `Local` (the default, the zone of the host) or `UTC`. A zone name such as `America/New_York` is rejected, because the Windows build carries no zone database.
+
+A leading byte order mark is removed from the body of every record.
+
+### Severity and event type
+
+Severity comes from the message text:
+
+| Severity | Message |
+|---|---|
+| ERROR | Starts with `Exception`, or contains `error` or `failed` in any case |
+| WARN | Not ERROR, and contains `rejected`, `denied`, `refused` or `warning` in any case |
+| INFO | Every other line |
+
+`tightvnc.event` is the first of these that matches the message, in this order:
+
+| Value | Message contains |
+|---|---|
+| `disconnect` | `disconnect` |
+| `auth` | `authenticat` |
+| `connect` | `connection from` or `connected` |
+| `error` | an ERROR word |
+| `lifecycle` | none of the above, and the line has a marker |
+| `other` | none of the above |
+
+The word lists are checked against the lines of one host. Real disconnect and failed-authentication lines have not been checked.
+
+| Attribute | Set when the message is |
+|---|---|
+| `client.address`, `server.port` | `Incoming rfb connection from <ip> to port <port>` |
+| `tightvnc.client.id` | a line containing `Client #<n>` |
+| `tightvnc.view_only` | `Authenticated with view-only password = <n>` |
+| `server.address`, `server.port` | `Rfb server started at <ip>:<port>` |
+
+### Dropped and kept lines
+
+The processor keeps every line with a marker. It drops a line without a marker when the message starts with a prefix from `drop_prefixes` and holds no ERROR word. A line outside the format, an empty line, and a record whose body is not a string are kept unchanged with `tightvnc.parse=failed`.
+
+A new TightVNC debug line that no prefix lists is therefore kept, and the kept counter rises. Add its prefix to `drop_prefixes`. A configured list replaces the default list, which holds these prefixes:
+
+```yaml
+tightvnc:
+  drop_prefixes:
+    - Control client
+    - Recieved control message
+    - process memory usage
+    - new client, process memory usage
+    - Shared flag
+    - Initial view-only state
+    - RFB initialization phase 1 completed
+    - Requested to start up extra RFB servers
+    - Requested to shut down extra RFB servers
+    - Considering to reload extra RFB servers
+    - Same Extra Ports configuration
+    - Timeout on acquire frame
+    - DesktopSrvDispatcher
+    - View port
+    - Constrained
+    - Active console session Id
+    - Destination dirty rect
+    - update detected
+    - Acquire frame
+    - get frame buffer
+    - Time between
+    - UpdateFilter
+    - WinVideoRegionUpdaterImpl
+```
+
+`Recieved` is the server's own spelling.
+
+An empty entry in `drop_prefixes`, and a `time_zone` other than `Local` or `UTC`, fail the config load. The `time_zone` error names `Local` and `UTC` as the accepted values.
+
+### Counters
+
+| Counter | Counts |
+|---|---|
+| `otelcol_tightvnc_records_kept` | Parsed records passed on |
+| `otelcol_tightvnc_records_dropped` | Records removed as noise |
+| `otelcol_tightvnc_records_unparsed` | Records outside the format, passed on unchanged |
+
+Every record is counted once, so the three add up to the records read. They leave through the collector's internal telemetry with the resource attributes in `service.telemetry.resource`.
+
 ## Runbook
 
 ### Where to look
@@ -256,4 +424,5 @@ File logs are held open only while read. Upstream documents that Move/Create rot
 
 - The `include_fs_types` filter on `NTFS` and `ReFS` as the fixed-drive rule.
 - The `host.ip` resource attribute from the system detector.
-- The `gpu` receiver on a host with an NVIDIA GPU: where `nvml.dll` sits, which NVML calls the driver supports, and that the values match `nvidia-smi`. The adapter's tests run without a GPU.
+- The `gpu` receiver on other GPU models and driver modes. It has run on one Windows host with an NVIDIA GPU; the adapter's tests run without a GPU.
+- The `fswatch` receiver on a Windows host: a real watch handle, shutdown while a read is pending, an overflow at `buffer_size: 4096`, a removed root, NTFS creation times, the events for a directory moved in and for a temp name renamed to a final name. The logic runs in unit tests against a fake watcher and a fake tree.

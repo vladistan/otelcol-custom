@@ -72,8 +72,9 @@ receivers:
             enabled: false
           process.memory.utilization:
             enabled: false
+          # processlifetime divides cpu.time and disk.io by uptime, so all three are on
           process.disk.io:
-            enabled: false
+            enabled: true
           process.uptime:
             enabled: true
         mute_process_exe_error: true
@@ -103,6 +104,14 @@ processors:
       - key: deployment.environment
         value: development
         action: insert
+  # Container name (custom): service.name from container.name on Docker journald logs
+  containername: {}
+  # Process lifetime (custom): CPU time and disk bytes divided by process.uptime. Runs before kthread
+  processlifetime: {}
+  # Kernel threads (custom): one aggregate resource per scrape in place of per-pid kernel-thread series
+  kthread:
+    patterns: [kworker*, ksoftirqd*, migration*]
+    aggregate_name: kernel_threads
   # Normalized load processor (custom)
   normalizedload:
     cpu_count: 0 # auto-detect
@@ -147,7 +156,7 @@ service:
   pipelines:
     logs:
       receivers: [file_log/testdata]
-      processors: [memory_limiter, resource_detection, resource/host, batch]
+      processors: [memory_limiter, resource_detection, resource/host, containername, batch]
       exporters: [debug, file/logs]
     metrics:
       receivers: [host_metrics, psi]
@@ -156,5 +165,5 @@ service:
     # Hourly process metrics - cpu.time and uptime for long-running processes
     metrics/process_hourly:
       receivers: [host_metrics/process_hourly]
-      processors: [memory_limiter, filter/process_hourly, resource_detection, resource/host, batch]
+      processors: [memory_limiter, processlifetime, kthread, filter/process_hourly, resource_detection, resource/host, batch]
       exporters: [debug, file/metrics]

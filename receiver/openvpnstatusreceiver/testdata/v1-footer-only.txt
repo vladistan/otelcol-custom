@@ -1,0 +1,3 @@
+GLOBAL STATS
+Max bcast/mcast queue length,0
+END

@@ -1,0 +1,4 @@
+OpenVPN CLIENT LIST
+Updated,yesterday
+Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since
+END

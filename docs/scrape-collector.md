@@ -283,7 +283,7 @@ The `aws_s3` receiver deletes an SQS message once the next consumer accepts the 
 
 ### Roll back
 
-Set the Deployment or StatefulSet image to the previous tag and apply it. The Recreate strategy stops the old pod before the new one starts, so no second pod reads the same sources. Tags exist for v0.3.1 to v0.3.11. Keep the volume, so the queue and the read positions carry over.
+Set the Deployment or StatefulSet image to the previous tag and apply it. A Deployment uses the Recreate strategy and a StatefulSet uses RollingUpdate. With one replica and a ReadWriteOnce volume, both stop the old pod before the new one starts, so there is a short gap and one pod at a time reads the sources. Tags exist for v0.3.1 to v0.3.11. Keep the volume, so the queue and the read positions carry over.
 
 ### Alerts
 

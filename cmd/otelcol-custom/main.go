@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -116,8 +117,12 @@ func (c *sentryCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) e
 	// Write to underlying core first
 	err := c.Core.Write(entry, fields)
 
+	allFields := make([]zapcore.Field, 0, len(c.fields)+len(fields))
+	allFields = append(allFields, c.fields...)
+	allFields = append(allFields, fields...)
+
 	// Capture errors to Sentry (skip known noisy errors)
-	if entry.Level >= zapcore.ErrorLevel && !filterNoiseErrors(entry.Message) {
+	if entry.Level >= zapcore.ErrorLevel && !isNoiseEntry(entry.Message, allFields) {
 		event := sentry.NewEvent()
 		event.Level = zapLevelToSentry(entry.Level)
 		event.Message = entry.Message
@@ -135,7 +140,6 @@ func (c *sentryCoreWrapper) Write(entry zapcore.Entry, fields []zapcore.Field) e
 		}
 
 		// Add all fields as extra data
-		allFields := append(c.fields, fields...)
 		for _, field := range allFields {
 			// Convert field to string representation
 			switch field.Type {
@@ -200,6 +204,82 @@ func createSentryLoggingOptions() []zap.Option {
 			return newSentryCoreWrapper(core)
 		}),
 	}
+}
+
+// isNoiseEntry reports whether the log message or an error field is known noise.
+// Stanza operators put the cause in the error field, not in the message.
+func isNoiseEntry(msg string, fields []zapcore.Field) bool {
+	if filterNoiseErrors(msg) || isUploadConnectionNoise(msg, fields) {
+		return true
+	}
+
+	for _, field := range fields {
+		if text, ok := errorFieldText(field); ok && (filterNoiseErrors(text) || isProcessExitRace(text)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+var processReadRacePattern = regexp.MustCompile(`^error reading [a-z ]+ for process ".*" \(pid \d+\): the parameter is incorrect\.?$`)
+
+// isProcessExitRace matches the process scraper error for a process that exited
+// between the listing and the read. Every "; "-joined part must be such a read,
+// so access-denied and other failures still count.
+func isProcessExitRace(text string) bool {
+	for _, part := range strings.Split(strings.ToLower(strings.TrimSpace(text)), "; ") {
+		if !processReadRacePattern.MatchString(part) {
+			return false
+		}
+	}
+
+	return true
+}
+
+const selfTelemetryMessage = "opentelemetry internal telemetry error"
+
+var uploadFailurePattern = regexp.MustCompile(`^failed to upload (metrics|logs|traces)`)
+
+// isUploadConnectionNoise matches an upload failure whose error ends in ": EOF",
+// a reused connection the gateway closed. Resets and closed connections are
+// already noise patterns. Timeouts, HTTP 5xx and DNS errors still count.
+func isUploadConnectionNoise(msg string, fields []zapcore.Field) bool {
+	isSelfTelemetry := strings.EqualFold(msg, selfTelemetryMessage)
+
+	for _, field := range fields {
+		text, ok := errorFieldText(field)
+		if !ok {
+			continue
+		}
+
+		text = strings.ToLower(strings.TrimSpace(text))
+		if !isSelfTelemetry && !uploadFailurePattern.MatchString(text) {
+			continue
+		}
+
+		if strings.HasSuffix(text, ": eof") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// errorFieldText returns the text of an error-typed field or a string field keyed "error".
+func errorFieldText(field zapcore.Field) (string, bool) {
+	switch field.Type {
+	case zapcore.ErrorType:
+		if err, ok := field.Interface.(error); ok {
+			return err.Error(), true
+		}
+	case zapcore.StringType:
+		if field.Key == "error" {
+			return field.String, true
+		}
+	}
+
+	return "", false
 }
 
 // filterNoiseErrors checks if an error message is a known noisy error that shouldn't be sent to Sentry

@@ -8,6 +8,9 @@ dist:
 # Replaces - Local module overrides for custom components
 # =============================================================================
 replaces:
+  # Pin sentry-go to the version cmd/otelcol-custom compiles against. The builder
+  # compiles before the entrypoint is copied in; unpinned it takes the newest release.
+  - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
   # Custom components from this repository (paths relative to build/ directory)
   - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../receiver/psireceiver
   - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../processor/normalizedloadprocessor
