@@ -27,6 +27,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		CollectionInterval: 60 * time.Second,
 		ProcPath:           "/proc",
+		Cgroup:             defaultCgroupConfig(),
 	}
 }
 

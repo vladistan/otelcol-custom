@@ -82,7 +82,7 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 ## Components
 
 ### Standard (from otelcol-contrib)
-- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12)
+- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12), docker_stats (Linux edge builds from 0.3.14)
 - **Processors**: batch, memory_limiter
 - **Exporters**: otlp_grpc, debug
 
@@ -111,6 +111,35 @@ receivers:
 `test/configs/edge-tcpcheck.yaml` is the full config, and `test/edge/tcpcheck.sh
 build/edge/otelcol-edge` runs it against local IPv4 and IPv6 listeners.
 
+### Optional receivers
+
+A receiver that fails to start normally stops the collector. Two receivers are
+optional: `docker_stats` and `tcp_check`. If one of them fails to start, for
+example because Docker is not running yet, the collector keeps running without
+it. The list is fixed in the code and cannot be changed in the configuration.
+Every other receiver, `journald` and `hostmetrics` included, still stops the
+collector on a failed start. A configuration that cannot build the receiver at
+all is still rejected at startup.
+
+What you see when an optional receiver is skipped:
+
+- A WARN log line `optional receiver did not start and is skipped`, with the
+  `receiver` ID and the `error`. Credentials in a URL in the error text are
+  replaced with `***`.
+- The counter `otelcol_optional_receiver_skipped` with the attribute `receiver`.
+  It is 0 from the start and goes to 1 on a skip. It is a collector self-metric,
+  so it appears only when the collector's own metrics are enabled
+  (`service.telemetry.metrics.level` is not `none`).
+- The component status of the receiver becomes `RecoverableError` after the
+  first retry (30 s), so an extension that watches component status, such as
+  `health_check`, can report it. Until then the status is OK.
+- Sentry does not see the WARN. Only errors that stop the collector reach it.
+
+The collector retries the start in the background after 30 s, then after 60 s,
+120 s and so on up to every 5 minutes. A WARN is logged on the first failure and
+on every tenth failure after it. When a start succeeds the collector logs an
+INFO line and the status returns to OK. The retry stops at shutdown.
+
 ### Prometheus scraping on edge hosts
 
 The `prometheus` receiver is in the Linux and static Linux edge builds from 0.3.12.
@@ -132,6 +161,87 @@ receivers:
 
 `test/configs/edge-prometheus.yaml` is the full config, and
 `test/edge/prometheus.sh build/edge/otelcol-edge` runs it against a local exporter.
+
+### Docker container metrics
+
+The `docker_stats` receiver is in the Linux and static Linux edge builds from 0.3.14.
+It reads container statistics and settings from the Docker socket: CPU and memory
+use, block I/O and network traffic, plus the limits each container runs with. The
+Windows edge, the gateway and the scrape collector do not include it. The Docker log
+driver does not matter, because the receiver uses the stats and inspect API.
+
+```yaml
+receivers:
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    api_version: ""
+    collection_interval: 60s
+    metrics:
+      container.cpu.limit:
+        enabled: true
+      container.memory.usage.limit:
+        enabled: true
+```
+
+- Keep `api_version` empty. In v0.164.1 the receiver's default is `1.44`, although its
+  README says it negotiates. A Docker daemon whose API stops below 1.44 (Docker 24
+  answers up to 1.43) rejects that version, the receiver fails to start, and the
+  collector keeps restarting. An empty value lets the Docker client negotiate the
+  version with the daemon on its first request. `just check-docker-stats-api-version`
+  fails when a sample config has a `docker_stats` block without it.
+
+- `container.memory.usage.limit` is on by default. A container with no memory limit
+  reports the host's memory, so a value near the host total means no limit.
+- `container.cpu.limit` is off by default and the block above turns it on. It comes
+  from `--cpus` (or compose `cpus:`), then the cpuset size, then the CPU quota. A
+  container with no CPU limit reports nothing.
+- The socket belongs to root and the `docker` group. The collector must run as root
+  or as a member of that group. Without access the receiver logs the error and the
+  collector keeps running.
+- Each metric carries `container.id`, `container.name`, `container.image.name`,
+  `container.hostname` and `container.runtime`, the names the log path already uses.
+- Series grow with container churn: every new container id is a new series. With the
+  limit metrics on, a container sends 14 points per scrape.
+
+`test/configs/local-edge.yaml` has the block in a full edge config.
+
+### Network allowance counters on AWS hosts
+
+The `ethtool` receiver is in the Linux and static Linux edge builds. An AWS ENA
+network interface counts the packets the instance dropped or queued because it
+exceeded a network allowance. The receiver reads the five counters in the collector
+process with the `SIOCETHTOOL` ioctl; it starts no external command and needs no cgo.
+
+```yaml
+receivers:
+  ethtool:
+    collection_interval: 60s   # default
+    drivers: [ena]             # default
+    interfaces: []             # empty: every interface with a matching driver
+```
+
+It emits one cumulative sum, `network.allowance.exceeded` (unit `{packet}`), with
+the attributes `network.interface.name` and `allowance`:
+
+| `allowance` | ENA counter |
+|---|---|
+| `bandwidth_in` | `bw_in_allowance_exceeded` |
+| `bandwidth_out` | `bw_out_allowance_exceeded` |
+| `pps` | `pps_allowance_exceeded` |
+| `conntrack` | `conntrack_allowance_exceeded` |
+| `linklocal` | `linklocal_allowance_exceeded` |
+
+No other statistic is read, and the receiver has no option for more. An interface
+that does not support statistics (a bridge, `veth` or loopback) is skipped without a
+warning. A matching interface whose driver lacks the counters gets one warning, as
+does a permission error. The read commands need no capability, so a permission error
+means a seccomp or security profile of the container blocks the ioctl; the warning names
+the interface. The counters count from the driver load, so the start time of each
+point is the boot time of the host, as in the host metrics receiver; a backend that
+turns a cumulative sum into a rate sees the first point as the total since boot.
+With no interface of a matching driver the receiver logs one info line and emits
+nothing. In a pod the receiver sees only the interfaces of the pod's network
+namespace, so the DaemonSet needs `hostNetwork: true` to see the host's ENA interface.
 
 ### Container names in Docker logs
 
@@ -155,7 +265,50 @@ service:
 
 Dashboards and alerts that match logs on `service.name=docker.service` stop matching
 those records. The Windows edge, the gateway and the scrape collector do not include
-the processor.
+the processor. A rule further down the pipeline, or in a gateway, that sets
+`service.name` replaces the value this processor set.
+
+#### Multi-line Docker logs
+
+The `logrecombine` processor joins log lines that arrive within `gap_timeout` and do
+not start with a timestamp. It groups entries by `source_identifier` (`body._PID`). For
+Docker's journald driver that PID belongs to the daemon and is the same for every
+container, so `container_identifier` (default `body.CONTAINER_ID`) groups an entry that
+has that field by container instead. A daemon line has no `CONTAINER_ID`, so it is never
+joined to a container's lines, and two containers are never joined to each other.
+Entries that do not carry the field are grouped by PID as before; `container_identifier: ""`
+turns the container grouping off.
+
+```yaml
+processors:
+  logrecombine:
+    container_identifier: body.CONTAINER_ID   # default
+```
+
+### Journald resource attributes
+
+With `set_resource` on (the default), the `journald` processor of the gateway maps
+the journal fields `_HOSTNAME`, `_MACHINE_ID`, `_PID`, `_COMM` and `_SYSTEMD_UNIT` to
+the resource attributes `host.name`, `host.id`, `process.pid`, `process.command` and
+`service.name`. It sets an attribute only when the resource does not already have a
+value for it; an empty string counts as no value, so a blank name from a failed
+detector or an unset role variable is filled from the journal. A value put there by an
+earlier stage, such as `service.name` from a container name (see the section above),
+is kept, because that stage knew more than the journal does: the unit of a container's
+log line is always the Docker daemon's. The same rule applies to the other four
+attributes, so a host name or process command added by the edge also wins.
+
+Two consequences to check in a role. The edge's `host.name` now beats the journal's
+`_HOSTNAME`: when the gateway receives journals that a log forwarder relays from other
+hosts, the records carry the forwarder's name, as the resource says, and no longer the
+origin's. And a Linux edge that puts its own `service.name` on every log resource keeps
+it on the journal records too, instead of the unit name.
+
+Attributes the processor sets itself still follow the records it reads;
+`split_resources` (default on) gives each distinct set of journal fields its own
+resource, comparing only the fields of attributes the resource does not own, and does
+not split at all when the resource owns all five. With it off, the last record read
+sets the attributes the resource does not own.
 
 ### Kernel threads in process metrics
 
@@ -257,6 +410,59 @@ service:
 Put `processlifetime` before `kthread`: each kernel thread then gets its own ratio,
 and `kthread` sums them into one aggregate ratio per host.
 
+### ZFS pool and ARC metrics
+
+The `zfskstat` receiver is in the Linux and static Linux edge builds. It reads the
+OpenZFS kstat files in process, with no external command and no privilege beyond
+read access. Per pool it reports I/O bytes and operations by direction, the time the
+wait and run queues were busy (in seconds, not a latency), queue lengths and the pool
+state; it also reports the ARC size, hits and misses. The metric names, types and units are in
+`docs/otel-metrics.md`.
+
+```yaml
+receivers:
+  zfskstat:
+    collection_interval: 60s              # default
+    kstat_path: /proc/spl/kstat/zfs       # default
+    pools: []                             # empty means every pool
+    exclude_pools: []
+    arcstats: true                        # default
+
+service:
+  pipelines:
+    metrics:
+      receivers: [host_metrics, zfskstat]
+```
+
+On a host without the ZFS module the path does not exist. The receiver starts, logs
+one info line and sends nothing, then looks again at each interval, so a module
+loaded later is picked up. In a container, mount the host `/proc/spl` and point
+`kstat_path` at it. Counters restart from zero when a pool is imported again. The
+sums start at host boot, read from `/proc/uptime`, or at the time the collector
+started when that file cannot be read. Per-dataset counters are not read.
+The Windows edge, the gateway and the scrape collector do not include the receiver.
+
+### OpenVPN client traffic
+
+The `openvpnstatus` receiver is in the Linux and static Linux edge builds. It reads the
+status file an OpenVPN server writes and reports, for each connected client, the bytes
+received and sent and the time the session started:
+
+```yaml
+receivers:
+  openvpnstatus:
+    path: /var/log/openvpn/status.log
+```
+
+The metrics are `openvpn.client.bytes_received` and `openvpn.client.bytes_sent`
+(cumulative sums in bytes, starting at the session start) and
+`openvpn.client.connected_since` (a gauge of Unix seconds), each with the attributes
+`common_name` and `real_address`. `real_address` is the client's IP address without
+the port. The receiver emits the signal of each pipeline it is in, so a 0.3.13 config with it
+in a logs pipeline keeps emitting log records, and a metrics pipeline gets the metrics.
+The `output` key (`metrics`, `logs` or `both`) restricts it. Use status version 2 or 3
+for metrics. See `docs/openvpnstatus.md`.
+
 ### Custom (in-tree)
 
 **Processors** (`processor/`, 37 total — 35 are independently-versioned nested Go
@@ -279,8 +485,11 @@ from 0.3.1 and join the manifests in later releases.
 
 **Receivers** (`receiver/`): `ciscologreceiver` (root module, parses Cisco device
 logs), `psireceiver` (own module, Pressure Stall Information metrics from
-`/proc/pressure/`), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
+`/proc/pressure/`), `ethtoolreceiver` (own module, AWS ENA allowance counters by ioctl,
+Linux edge only), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
 `fswatchreceiver` (own module, one log record per new file, Windows edge only),
+`zfskstatreceiver` (own module, ZFS pool I/O, pool state and ARC metrics, Linux edge only),
+`openvpnstatusreceiver` (own module, OpenVPN client traffic from the status file, Linux edge only),
 `auth0receiver` (own module, Auth0 events from SQS; in the tree from 0.3.1 and
 joins the scrape build in a later release)
 

@@ -27,9 +27,11 @@ const (
 var errTooLarge = errors.New("status file is larger than 1 MiB")
 
 type statusReceiver struct {
-	logger   *zap.Logger
-	config   *Config
-	consumer consumer.Logs
+	logger *zap.Logger
+	config *Config
+	// Exactly one is set: the factory builds one receiver per signal.
+	logs    consumer.Logs
+	metrics consumer.Metrics
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -39,8 +41,8 @@ type statusReceiver struct {
 	lastProblem  string
 }
 
-func newStatusReceiver(settings receiver.Settings, cfg *Config, next consumer.Logs) *statusReceiver {
-	return &statusReceiver{logger: settings.Logger, config: cfg, consumer: next}
+func newStatusReceiver(settings receiver.Settings, cfg *Config, logs consumer.Logs, metrics consumer.Metrics) *statusReceiver {
+	return &statusReceiver{logger: settings.Logger, config: cfg, logs: logs, metrics: metrics}
 }
 
 func (r *statusReceiver) Start(ctx context.Context, _ component.Host) error {
@@ -105,12 +107,19 @@ func (r *statusReceiver) poll(ctx context.Context) {
 		return
 	}
 	if len(snap.clients) > 0 {
-		if err := r.consumer.ConsumeLogs(ctx, r.buildLogs(snap)); err != nil {
-			r.logger.Error("Failed to send OpenVPN status records", zap.Error(err))
+		if err := r.emit(ctx, snap); err != nil {
+			r.logger.Error("Failed to send OpenVPN status data", zap.Error(err))
 			return
 		}
 	}
 	r.lastIdentity = snap.identity
+}
+
+func (r *statusReceiver) emit(ctx context.Context, snap snapshot) error {
+	if r.logs != nil {
+		return r.logs.ConsumeLogs(ctx, r.buildLogs(snap))
+	}
+	return r.metrics.ConsumeMetrics(ctx, r.buildMetrics(snap))
 }
 
 // readCapped reads at most maxFileSize bytes; a larger file is refused so a
@@ -172,7 +181,7 @@ func (r *statusReceiver) buildLogs(snap snapshot) plog.Logs {
 		rec.SetObservedTimestamp(observed)
 		attrs := rec.Attributes()
 		attrs.PutStr("common_name", c.commonName)
-		attrs.PutStr("real_address", c.realAddress)
+		attrs.PutStr("real_address", c.ip)
 		attrs.PutInt("bytes_received", c.bytesReceived)
 		attrs.PutInt("bytes_sent", c.bytesSent)
 		attrs.PutStr("connected_since", c.connectedSince)

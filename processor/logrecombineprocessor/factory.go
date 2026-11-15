@@ -29,6 +29,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		CombineField:        "body.MESSAGE",
 		SourceIdentifier:    "body._PID",
+		ContainerIdentifier: "body.CONTAINER_ID",
 		IsFirstEntryPattern: `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`,
 		CombineWith:         "\n",
 		GapTimeout:          10 * time.Millisecond,

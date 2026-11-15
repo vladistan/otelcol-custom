@@ -13,6 +13,7 @@ replaces:
   - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
   # Custom components from this repository (paths relative to build/edge/ directory)
   - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../../receiver/psireceiver
+  - github.com/vladistan/otelcol-custom/receiver/ethtoolreceiver => ../../receiver/ethtoolreceiver
   - github.com/vladistan/otelcol-custom/receiver/gpureceiver => ../../receiver/gpureceiver
   - github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver => ../../receiver/openvpnstatusreceiver
   - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
@@ -25,6 +26,7 @@ replaces:
   - github.com/vladistan/otelcol-custom/processor/containernameprocessor => ../../processor/containernameprocessor
   - github.com/vladistan/otelcol-custom/processor/kthreadprocessor => ../../processor/kthreadprocessor
   - github.com/vladistan/otelcol-custom/processor/processlifetimeprocessor => ../../processor/processlifetimeprocessor
+  - github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver => ../../receiver/zfskstatreceiver
 # =============================================================================
 # Extensions - Minimal set for edge deployments
 # =============================================================================
@@ -51,9 +53,15 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
   # Scrape Prometheus exporters on the host (node_exporter and similar)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.164.1
+  # Container CPU, memory, network and block I/O from the Docker socket (Linux only)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/dockerstatsreceiver v0.164.1
   # --- Custom (local) ---
   # PSI (Pressure Stall Information) metrics from /proc/pressure
   - gomod: github.com/vladistan/otelcol-custom/receiver/psireceiver v0.0.0
+  # AWS ENA network allowance counters, read by ioctl
+  - gomod: github.com/vladistan/otelcol-custom/receiver/ethtoolreceiver v0.0.0
+  # ZFS pool I/O, pool state and ARC metrics from /proc/spl/kstat/zfs
+  - gomod: github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver v0.0.0
   - gomod: github.com/vladistan/otelcol-custom/receiver/gpureceiver v0.0.0
   # OpenVPN status file: one log record per connected client
   - gomod: github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver v0.0.0
@@ -78,6 +86,8 @@ processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.164.1
   # Modify log/metric attributes (upsert, delete, extract, convert, hash)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
+  # Pod name and namespace from k8s.pod.uid (DaemonSet edge; Linux only)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v1.3.1
   # --- Custom (local) ---
   # Normalized load average (load / CPU count)
   - gomod: github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor v0.0.0

@@ -86,8 +86,10 @@ rescan back), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_droppe
 ## What counts as new
 
 A file created in the tree, or moved into it from outside. A directory moved in
-reports the files inside it. Writes, deletions and renames inside the tree are
-ignored. A rename from an excluded name to a name that is not excluded counts as
+reports the files inside it. Writes, deletions and renames within one directory
+are ignored. A file moved from one directory of the tree to another is reported
+again as new, because Windows sends it as a removal and an addition (a moved
+directory reports every file in it). A rename from an excluded name to a name that is not excluded counts as
 new, so `~run.tmp` renamed to `run.dx` reports `run.dx`.
 
 ## Position, catch-up and rescans
@@ -122,7 +124,9 @@ These are known gaps, not defects to fix in a configuration:
   misses them and the live watch sees them.
 - A restore that keeps the creation time, such as `robocopy /COPY:T`.
 - A file deleted and created again under the same name within about 15 s. NTFS
-  keeps the old creation time. The live watch reports it; a scan does not.
+  keeps the old creation time, so the path and creation time match the earlier
+  file and no new record is sent, live or by a scan. A recreate after more than
+  15 s gets a new creation time and a new record.
 - Network roots. They are best effort. A service account sees no mapped drive
   letters; use a UNC path and set `rescan_interval`.
 

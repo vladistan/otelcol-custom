@@ -71,6 +71,21 @@ test-rotating-sink: generate-edge-windows
                printf "rotatingsink.go statement coverage: %.1f%%\n", pct
                exit (pct < 80) }' rotatingsink.cover
 
+# Run the optional-receiver tests inside the generated module and fail under
+# 80% statement coverage of optional.go.
+test-optional-receivers: generate-edge-windows
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cp cmd/otelcol-custom/optional*.go {{edge_windows_dir}}/
+    cd {{edge_windows_dir}}
+    go mod tidy
+    names=$(grep -ho '^func Test[A-Za-z0-9_]*' optional_test.go | sed 's/^func //' | paste -sd'|' -)
+    go test -race -covermode=atomic -coverprofile=optional.cover -run "^($names)\$" ./...
+    awk '$1 ~ /optional\.go:/ { total += $2; if ($3 > 0) cov += $2 }
+         END { pct = total ? 100 * cov / total : 0
+               printf "optional.go statement coverage: %.1f%%\n", pct
+               exit (pct < 80) }' optional.cover
+
 # Run the Sentry service-wrapper tests inside the generated module, fail under
 # 80% statement coverage of svcwrapper.go, and compile main_windows.go for
 # windows/amd64.

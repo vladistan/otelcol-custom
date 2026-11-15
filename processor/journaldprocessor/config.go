@@ -12,6 +12,7 @@ import (
 // Config selects which journald mappings the processor applies.
 type Config struct {
 	// SetResource maps _HOSTNAME, _MACHINE_ID, _PID, _COMM and _SYSTEMD_UNIT to resource attributes.
+	// An attribute the resource already has is left as it is.
 	SetResource bool `mapstructure:"set_resource"`
 
 	// MapSeverity maps PRIORITY 0-7 to severity.

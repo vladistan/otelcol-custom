@@ -23,6 +23,86 @@ Reads `/proc/pressure/{cpu,memory,io}` on a `collection_interval` (default
 Emitted on the **edge** profile (see `test/configs/local-edge.yaml`, `psi`
 receiver in the `metrics` pipeline).
 
+#### Per-cgroup pressure (`cgroup` block, Linux edge builds)
+
+The same receiver can read the pressure files of single cgroups (`cpu.pressure`,
+`memory.pressure`, `io.pressure`) on a cgroup v2 host. The block is off by default;
+with it off the output is as before. A config turns it on with `cgroup.enabled: true`
+and an `include` list; there is no default `include`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Turns the block on. `include` must then list at least one glob. |
+| `path` | `/sys/fs/cgroup` | The cgroup v2 root, for example a read-only host mount. |
+| `max_depth` | `4` | Levels read below `path`. Depth 4 reaches the container scope of a Kubernetes pod. |
+| `level` | `pod` | `pod` (pod cgroups), `container` (container cgroups) or `all` (every cgroup that passes the globs). |
+| `include`, `exclude` | none | Doublestar globs matched against the path relative to `path`, such as `kubepods.slice/**`. |
+| `values` | `avg10`, `total` | Which of `avg10`, `avg60`, `avg300` and `total` are emitted. |
+| `max_cgroups` | `500` | Most cgroups read in one scrape. The first ones by path are read; the rest are counted. |
+
+| Metric | Type, unit | Notes |
+|---|---|---|
+| `cgroup.pressure.<resource>.some.<avg10\|avg60\|avg300>` | gauge, `%` | resource is `cpu`, `memory` or `io` |
+| `cgroup.pressure.<resource>.full.<avg10\|avg60\|avg300>` | gauge, `%` | emitted when the file has a `full` line |
+| `cgroup.pressure.<resource>.some.total` | monotonic sum, `us` | stall time since boot |
+| `cgroup.pressure.<resource>.full.total` | monotonic sum, `us` | stall time since boot |
+| `otelcol_psi_cgroups_skipped` | counter, `{cgroup}` | cgroups left out because a scrape found more than `max_cgroups`; an over-cap cgroup is counted again at every scrape |
+
+The host `system.pressure.*` series are unchanged. The `total` sums count from boot, but
+their start time is the time the receiver started, so a pod that ran before then has a
+first value above zero; use the difference between two points, not the first value.
+
+Attributes. Every data point has `cgroup.path`, the path below the root. A leaf
+named `cri-containerd-<id>.scope`, `crio-<id>.scope`, `docker-<id>.scope` or a bare
+64-hex directory gives the data point attribute `container.id`. When the path names
+a Kubernetes pod, the resource has `k8s.pod.uid` (the systemd driver writes the uid
+with underscores; they are restored to dashes) and `k8s.pod.qos` (`guaranteed`,
+`burstable` or `besteffort`). A path that matches no known layout, such as a
+`system.slice` service, has only `cgroup.path`. The `k8s_attributes` processor can add
+the pod name and namespace from `k8s.pod.uid`; `test/configs/edge-daemonset.yaml` is a
+DaemonSet config that does so.
+
+Series count grows with the cgroups selected: each cgroup gives up to 12 series with
+the default values (three resources, `some` and `full`, two values).
+
+### ZFS pools and ARC — `receiver/zfskstatreceiver`
+
+Reads the OpenZFS kstat files under `kstat_path` (default `/proc/spl/kstat/zfs`)
+every `collection_interval` (default `60s`). The file `io` of each pool directory is
+parsed by field name. Pool metrics carry the attribute `zfs.pool`. Cumulative
+sums start at host boot (from `/proc/uptime`), or at the time the receiver
+started when the uptime cannot be read; the kstat counters themselves run from
+the module load or the pool import, so the first value is not zero.
+
+| Metric | Type | Unit | Attributes | Source |
+|---|---|---|---|---|
+| `zfs.pool.io.bytes` | monotonic sum | `By` | `zfs.pool`, `direction` (`read`, `write`) | `nread`, `nwritten` |
+| `zfs.pool.io.operations` | monotonic sum | `{operation}` | `zfs.pool`, `direction` | `reads`, `writes` |
+| `zfs.pool.io.wait.busy.time` | monotonic sum | `s` | `zfs.pool` | `wtime`, nanoseconds converted |
+| `zfs.pool.io.run.busy.time` | monotonic sum | `s` | `zfs.pool` | `rtime`, nanoseconds converted |
+| `zfs.pool.io.queue.length` | gauge | `{operation}` | `zfs.pool`, `queue` (`wait`, `run`) | `wcnt`, `rcnt` |
+| `zfs.pool.state` | gauge, always 1 | `1` | `zfs.pool`, `state` (for example `ONLINE`, `DEGRADED`) | pool `state` file |
+| `zfs.arc.size` | gauge | `By` | none | `arcstats` `size` |
+| `zfs.arc.hits` | monotonic sum | `{hit}` | none | `arcstats` `hits` |
+| `zfs.arc.misses` | monotonic sum | `{miss}` | none | `arcstats` `misses` |
+
+The two `busy.time` sums count the time the wait queue or the run queue held at
+least one operation, like the utilisation column of `iostat`. The rate of either
+is a fraction between 0 and 1. They are not latencies: do not divide them by the
+operation count. A per-operation latency needs the length-time fields `wlentime`
+and `rlentime`, which the receiver does not read yet.
+
+`zfs.pool.state` is an info metric: one series of value 1 for the current state.
+When a pool changes from `ONLINE` to `DEGRADED` the `ONLINE` series stops and a
+`DEGRADED` series starts, so an alert rule should test for `state != ONLINE` or
+for a missing `ONLINE` series, not for a value of 0.
+
+The three `zfs.arc.*` metrics are on while `arcstats` is `true` (the default). A host
+without ZFS has no `kstat_path`: the receiver starts, logs one info line, sends
+nothing and looks again at each interval. A pool whose `io` file is empty, short or
+not numeric is skipped with one warning until it reads cleanly again. Linux edge
+builds only; see the [README](../README.md#zfs-pool-and-arc-metrics).
+
 ### Normalized/denormalized load — `processor/normalizedloadprocessor`
 
 Post-processes standard `host_metrics` output, adding derived metrics

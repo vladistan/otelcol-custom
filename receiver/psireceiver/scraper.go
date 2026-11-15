@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
@@ -19,6 +20,7 @@ import (
 type psiScraper struct {
 	logger   *zap.Logger
 	procPath string
+	cgroup   *cgroupScraper // nil when the cgroup block is off
 }
 
 // psiData holds parsed PSI values for a single resource type.
@@ -35,10 +37,26 @@ type psiData struct {
 }
 
 func newPSIScraper(logger *zap.Logger, cfg *Config) (*psiScraper, error) {
-	return &psiScraper{
+	scraper := &psiScraper{
 		logger:   logger,
 		procPath: cfg.ProcPath,
-	}, nil
+	}
+	if cfg.Cgroup.Enabled {
+		cgroup, err := newCgroupScraper(logger, cfg.Cgroup)
+		if err != nil {
+			return nil, err
+		}
+		scraper.cgroup = cgroup
+	}
+	return scraper, nil
+}
+
+// useTelemetry registers the receiver's own counters; without it nothing is counted.
+func (s *psiScraper) useTelemetry(ts component.TelemetrySettings) error {
+	if s.cgroup == nil {
+		return nil
+	}
+	return s.cgroup.useTelemetry(ts)
 }
 
 func (s *psiScraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
@@ -71,6 +89,10 @@ func (s *psiScraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 			s.addGaugeMetric(sm, fmt.Sprintf("system.pressure.%s.full.avg60", resource), data.FullAvg60, now)
 			s.addGaugeMetric(sm, fmt.Sprintf("system.pressure.%s.full.avg300", resource), data.FullAvg300, now)
 		}
+	}
+
+	if s.cgroup != nil {
+		s.cgroup.scrape(ctx, md, now)
 	}
 
 	return md, nil

@@ -1,0 +1,70 @@
+# Linux edge as a Kubernetes DaemonSet: pressure per pod, with pod name and namespace added.
+#
+# Run: otelcol-edge --config test/configs/edge-daemonset.yaml
+# Validate: K8S_NODE_NAME=node-a otelcol-edge validate --config test/configs/edge-daemonset.yaml
+# (k8s_attributes rejects the config when K8S_NODE_NAME is not set)
+#
+# The pod needs:
+#   - /proc and /sys/fs/cgroup of the host mounted read only at /host/proc and /host/sys/fs/cgroup
+#   - K8S_NODE_NAME from the downward API (spec.nodeName)
+#   - a service account that can list and watch pods (and namespaces, nodes) for k8s_attributes
+# Some managed clusters do not allow host mounts; the cgroup block cannot be used there.
+#
+# The cgroup paths below fit the systemd cgroup driver and the cgroupfs driver. Keep the include list
+# to the cgroups you need: each pod gives up to 12 series with the default values.
+
+receivers:
+  psi:
+    collection_interval: 60s
+    proc_path: /host/proc
+    cgroup:
+      enabled: true
+      path: /host/sys/fs/cgroup
+      max_depth: 4
+      level: pod
+      include:
+        - "kubepods.slice/**"
+        - "kubepods/**"
+      exclude: []
+      values: [avg10, total]
+      max_cgroups: 500
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  # The cgroup.pressure series carry k8s.pod.uid on the resource; this adds the pod name, namespace and node.
+  # A uid with no pod (a pod that just ended) passes through without them.
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.namespace.name
+        - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+  batch:
+    timeout: 10s
+exporters:
+  # Replace with otlp_grpc towards the gateway.
+  debug:
+    verbosity: basic
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      level: basic
+  pipelines:
+    metrics:
+      receivers: [psi]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [debug]

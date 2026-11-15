@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -30,11 +31,16 @@ var (
 )
 
 type client struct {
-	commonName     string
-	realAddress    string
+	commonName string
+	// realAddress is the address and port as written, the key of the routing join.
+	realAddress string
+	// ip is realAddress without the port; it is the only form that is emitted.
+	ip             string
 	connectedSince string
-	bytesReceived  int64
-	bytesSent      int64
+	// connectedAt is zero when the file gives no readable start time.
+	connectedAt   time.Time
+	bytesReceived int64
+	bytesSent     int64
 }
 
 type route struct {
@@ -125,7 +131,7 @@ func (s *snapshot) addV1Line(section, line string) error {
 		if line == v1ClientHeader {
 			return nil
 		}
-		s.noteSkip(s.addClient(strings.Split(line, ",")))
+		s.noteSkip(s.addClient(strings.Split(line, ","), ""))
 	case v1RoutingTitle:
 		if line == v1RoutingHeader {
 			return nil
@@ -149,8 +155,9 @@ func (s *snapshot) setTime(value string) error {
 	return nil
 }
 
-// addClient takes the five client columns in v1 order.
-func (s *snapshot) addClient(f []string) error {
+// addClient takes the five client columns in v1 order; epoch is the optional
+// "Connected Since (time_t)" column of v2 and v3, empty in v1.
+func (s *snapshot) addClient(f []string, epoch string) error {
 	if len(f) != 5 {
 		return shapeError("client row with %d fields", len(f))
 	}
@@ -159,10 +166,62 @@ func (s *snapshot) addClient(f []string) error {
 	if errR != nil || errS != nil {
 		return shapeError("byte counts %q, %q", f[2], f[3])
 	}
+	ip, err := ipOf(f[1])
+	if err != nil {
+		return shapeError("real address is not an IP address")
+	}
 	s.clients = append(s.clients, client{
-		commonName: f[0], realAddress: f[1], bytesReceived: received, bytesSent: sent, connectedSince: f[4],
+		commonName: f[0], realAddress: f[1], ip: ip, bytesReceived: received, bytesSent: sent,
+		connectedSince: f[4], connectedAt: connectedAt(f[4], epoch),
 	})
 	return nil
+}
+
+// connectedAt prefers the epoch column, which carries no zone ambiguity; else it
+// reads the date text as server-local time, like the snapshot time. An unreadable
+// value gives the zero time, and the client is still kept.
+func connectedAt(text, epoch string) time.Time {
+	if seconds, err := strconv.ParseInt(epoch, 10, 64); err == nil && seconds > 0 {
+		return time.Unix(seconds, 0)
+	}
+	for _, layout := range []string{statusTimeLayout, oldStatusTimeLayout} {
+		if at, err := time.ParseInLocation(layout, text, time.Local); err == nil {
+			return at
+		}
+	}
+	return time.Time{}
+}
+
+// ipOf returns the address without the port, an IPv4-mapped IPv6 address as
+// plain IPv4. OpenVPN writes ip:port, [ip6]:port and, in some builds, a protocol
+// prefix such as udp4: before either.
+func ipOf(address string) (string, error) {
+	for candidate, tries := address, 0; tries < 2; tries++ {
+		if ap, err := netip.ParseAddrPort(candidate); err == nil {
+			return ap.Addr().Unmap().String(), nil
+		}
+		if ip, err := netip.ParseAddr(candidate); err == nil {
+			return ip.Unmap().String(), nil
+		}
+		prefix, rest, found := strings.Cut(candidate, ":")
+		if !found || !isProtocolToken(prefix) {
+			break
+		}
+		candidate = rest
+	}
+	return "", fmt.Errorf("not an IP address: %q", address)
+}
+
+func isProtocolToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	for _, r := range token {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // addRoute takes the four routing columns in v1 order.
@@ -256,7 +315,15 @@ func (s *snapshot) addClientRow(f []string, columns map[string]int) error {
 	if err != nil {
 		return err
 	}
-	return s.addClient(v)
+	return s.addClient(v, optionalColumn(f, columns, "Connected Since (time_t)"))
+}
+
+// optionalColumn is the cell of a column a version may lack, or "".
+func optionalColumn(f []string, columns map[string]int, name string) string {
+	if i, ok := columns[name]; ok && i < len(f) {
+		return f[i]
+	}
+	return ""
 }
 
 func (s *snapshot) addRouteRow(f []string, columns map[string]int) error {

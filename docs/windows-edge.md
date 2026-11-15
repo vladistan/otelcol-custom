@@ -101,7 +101,7 @@ Each record has the body `file created`, severity INFO, the file creation time a
 
 The second record has the body `file write complete`, the time of the stable-size check as its timestamp, and `file.size` and `file.size_final` both set to the final size. A catch-up file whose last write is already older than `settle` gets one record with `file.size_final` and no second record. After a restart, files created within `settle_timeout` whose last record is not out are checked again: a stable one gets its second record at once, with `file.catchup=true`, and a file still being written is watched as usual. A second record that cannot be delivered is retried; after 10 failed attempts, or `settle_timeout` after the first failure, it is dropped with one warning and counted in `otelcol_fswatch_writes_dropped`.
 
-A file counts as new when it is created in the tree or moved into it. Writes, deletions and renames inside the tree are ignored, except a rename from an excluded name, such as `~run.tmp` to `run.dx`, which reports the final name.
+A file counts as new when it is created in the tree or moved into it. Writes, deletions and renames within one directory are ignored. A file moved from one directory of the tree to another is reported again as new, because Windows sends it as a removal and an addition. The exception is a rename from an excluded name, such as `~run.tmp` to `run.dx`, which reports the final name.
 
 ### Restarts and lost events
 
@@ -114,7 +114,7 @@ If the Windows change buffer overflows, or a delivery fails, the receiver holds 
 - A file moved into the tree while the collector is down keeps its old creation time, so the restart scan cannot tell it from an old file.
 - A clock set back: files created after the jump have a creation time below the position and are missed by a scan. The live watch still sees them.
 - A restore that keeps the creation time, such as `robocopy /COPY:T`, is missed by a scan for the same reason.
-- Windows keeps the creation time of a file that is deleted and created again under the same name within about 15 seconds. The live watch reports it. A scan does not.
+- Windows keeps the creation time of a file that is deleted and created again under the same name within about 15 seconds. The path and creation time then match the earlier file, so no new record is sent, live or by a scan. A recreate after more than 15 seconds gets a new creation time and a new record.
 - Network roots are best effort. A mapped drive letter is not visible to a service account; use a UNC path. Set `rescan_interval` on a share.
 
 Counters: `otelcol_fswatch_records_emitted` (attribute `catchup`), `otelcol_fswatch_excluded`, `otelcol_fswatch_vanished`, `otelcol_fswatch_overflows`, `otelcol_fswatch_rescans`, `otelcol_fswatch_rescans_capped` (once an hour while the limit holds), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_dropped`, `otelcol_fswatch_settle_timeouts` and `otelcol_fswatch_scan_skipped` (attribute `reason`: `denied` or `future`).
@@ -425,4 +425,4 @@ File logs are held open only while read. Upstream documents that Move/Create rot
 - The `include_fs_types` filter on `NTFS` and `ReFS` as the fixed-drive rule.
 - The `host.ip` resource attribute from the system detector.
 - The `gpu` receiver on other GPU models and driver modes. It has run on one Windows host with an NVIDIA GPU; the adapter's tests run without a GPU.
-- The `fswatch` receiver on a Windows host: a real watch handle, shutdown while a read is pending, an overflow at `buffer_size: 4096`, a removed root, NTFS creation times, the events for a directory moved in and for a temp name renamed to a final name. The logic runs in unit tests against a fake watcher and a fake tree.
+- The `fswatch` receiver on a volume that is not local NTFS (a network share, ReFS) and volume removal. It ran on a Windows 11 host with a local NTFS volume: watch handle, shutdown with a read pending, overflow at `buffer_size: 4096`, removed and recreated root, creation times, moves, temp-to-final rename, restarts and a reboot. A file created in the seconds before a shutdown and not yet reported was not tested.

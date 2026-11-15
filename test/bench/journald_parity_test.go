@@ -180,6 +180,41 @@ func TestJournaldParity_EachRecordMatchesOTTLOnFieldsItSets(t *testing.T) {
 	}
 }
 
+func batchWithResource(t *testing.T, attrs map[string]string, records ...map[string]any) plog.Logs {
+	t.Helper()
+	ld := batchOf(t, records...)
+	for k, v := range attrs {
+		ld.ResourceLogs().At(0).Resource().Attributes().PutStr(k, v)
+	}
+	return ld
+}
+
+func TestJournaldParity_PresetResourceAttributesMatchOTTL(t *testing.T) {
+	preset := map[string]string{"service.name": "edge-service", "process.command": "app", "host.name": ""}
+	ottlSink, journaldSink := new(consumertest.LogsSink), new(consumertest.LogsSink)
+	ottl, journald := newOTTL(t, ottlSink), newJournald(t, journaldSink)
+
+	for i, record := range loadRecords(t) {
+		resOTTL, lrOTTL := singleRecord(t, runThrough(t, ottl, ottlSink, batchWithResource(t, preset, record)))
+		resJournald, lrJournald := singleRecord(t, runThrough(t, journald, journaldSink, batchWithResource(t, preset, record)))
+
+		want := fieldsSetByOTTL(resOTTL, lrOTTL)
+		got := fieldsSetByOTTL(resJournald, lrJournald)
+
+		if got.resource["service.name"] != "edge-service" || got.resource["process.command"] != "app" {
+			t.Errorf("record %d: journald replaced a preset attribute: %v", i, got.resource)
+		}
+		if len(got.resource) != len(want.resource) {
+			t.Errorf("record %d resource = %v, OTTL gave %v", i, got.resource, want.resource)
+		}
+		for key, value := range want.resource {
+			if got.resource[key] != value {
+				t.Errorf("record %d %s = %v, OTTL gave %v", i, key, got.resource[key], value)
+			}
+		}
+	}
+}
+
 func TestJournaldParity_MixedUnits_OnlyD5Differs(t *testing.T) {
 	ottlSink, journaldSink := new(consumertest.LogsSink), new(consumertest.LogsSink)
 	ottl, journald := newOTTL(t, ottlSink), newJournald(t, journaldSink)

@@ -367,7 +367,8 @@ func main() {
 
 	set := otelcol.CollectorSettings{
 		BuildInfo: info,
-		Factories: components,
+		// Receivers in optionalReceiverTypes log a failed start and are skipped instead of stopping the collector.
+		Factories: withOptionalReceivers(components),
 		// Add Sentry logging integration to capture error-level logs
 		LoggingOptions: createSentryLoggingOptions(),
 		ConfigProviderSettings: otelcol.ConfigProviderSettings{

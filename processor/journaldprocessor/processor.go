@@ -48,37 +48,55 @@ func (p *journaldProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 		originalCount := rls.Len()
 		for i := 0; i < originalCount; i++ {
 			rl := rls.At(i)
-			if singleTuple(rl) {
-				p.processInPlace(rl)
+			owned := ownedAttrs(rl.Resource().Attributes())
+			if len(owned) == len(resourceFields) || singleTuple(rl, owned) {
+				p.processInPlace(rl, owned)
 			} else {
-				p.split(rl, rls)
+				p.split(rl, rls, owned)
 			}
 		}
 		rls.RemoveIf(func(rl plog.ResourceLogs) bool { return rl.ScopeLogs().Len() == 0 })
 	} else {
 		for i := 0; i < rls.Len(); i++ {
-			p.processInPlace(rls.At(i))
+			rl := rls.At(i)
+			p.processInPlace(rl, ownedAttrs(rl.Resource().Attributes()))
 		}
 	}
 	return p.next.ConsumeLogs(ctx, ld)
 }
 
-func (p *journaldProcessor) processInPlace(rl plog.ResourceLogs) {
+func (p *journaldProcessor) processInPlace(rl plog.ResourceLogs, owned map[string]bool) {
 	res := rl.Resource().Attributes()
 	for j := 0; j < rl.ScopeLogs().Len(); j++ {
 		recs := rl.ScopeLogs().At(j).LogRecords()
 		for k := 0; k < recs.Len(); k++ {
 			lr := recs.At(k)
 			if lr.Body().Type() == pcommon.ValueTypeMap {
-				p.processRecord(lr, res)
+				p.processRecord(lr, res, owned)
 			}
 		}
 	}
 }
 
-// split moves map records into new ResourceLogs keyed by resource tuple.
-// Non-map records stay in rl with its resource unchanged.
-func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSlice) {
+// ownedAttrs lists the mapped resource attributes that were on the resource
+// before any record was read. The journal never replaces them: an earlier stage
+// set them on purpose, such as service.name from a container name. An empty
+// string counts as missing, so a failed detector does not block the journal.
+func ownedAttrs(res pcommon.Map) map[string]bool {
+	owned := map[string]bool{}
+	for _, f := range resourceFields {
+		v, ok := res.Get(f.attr)
+		if ok && (v.Type() != pcommon.ValueTypeStr || v.Str() != "") {
+			owned[f.attr] = true
+		}
+	}
+	return owned
+}
+
+// split moves map records into new ResourceLogs keyed by the resource tuple of
+// the attributes the resource does not own. Non-map records stay in rl with its
+// resource unchanged.
+func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSlice, owned map[string]bool) {
 	groups := map[string]plog.ResourceLogs{}
 	scopes := map[string][]plog.ScopeLogs{}
 
@@ -90,7 +108,7 @@ func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSli
 			if lr.Body().Type() != pcommon.ValueTypeMap {
 				continue
 			}
-			key := tupleKey(lr.Body().Map())
+			key := tupleKey(lr.Body().Map(), owned)
 			group, ok := groups[key]
 			if !ok {
 				group = out.AppendEmpty()
@@ -107,18 +125,21 @@ func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSli
 			}
 			moved := dst.LogRecords().AppendEmpty()
 			lr.CopyTo(moved)
-			p.processRecord(moved, group.Resource().Attributes())
+			p.processRecord(moved, group.Resource().Attributes(), owned)
 		}
 		recs.RemoveIf(func(lr plog.LogRecord) bool { return lr.Body().Type() == pcommon.ValueTypeMap })
 	}
 	rl.ScopeLogs().RemoveIf(func(sl plog.ScopeLogs) bool { return sl.LogRecords().Len() == 0 })
 }
 
-func (p *journaldProcessor) processRecord(lr plog.LogRecord, res pcommon.Map) {
+func (p *journaldProcessor) processRecord(lr plog.LogRecord, res pcommon.Map, owned map[string]bool) {
 	body := lr.Body().Map()
 
 	if p.config.SetResource {
 		for _, f := range resourceFields {
+			if owned[f.attr] {
+				continue
+			}
 			if v, ok := body.Get(f.field); ok {
 				v.CopyTo(res.PutEmpty(f.attr))
 			}
@@ -203,8 +224,9 @@ func severity(priority int) (plog.SeverityNumber, string) {
 	}
 }
 
-// singleTuple reports whether every record is a map body sharing one resource tuple.
-func singleTuple(rl plog.ResourceLogs) bool {
+// singleTuple reports whether every record is a map body sharing one resource
+// tuple; fields of attributes the resource owns are not compared.
+func singleTuple(rl plog.ResourceLogs, owned map[string]bool) bool {
 	var first pcommon.Map
 	seen := false
 	for j := 0; j < rl.ScopeLogs().Len(); j++ {
@@ -218,7 +240,7 @@ func singleTuple(rl plog.ResourceLogs) bool {
 				first, seen = b.Map(), true
 				continue
 			}
-			if !sameTuple(first, b.Map()) {
+			if !sameTuple(first, b.Map(), owned) {
 				return false
 			}
 		}
@@ -226,8 +248,11 @@ func singleTuple(rl plog.ResourceLogs) bool {
 	return true
 }
 
-func sameTuple(a, b pcommon.Map) bool {
+func sameTuple(a, b pcommon.Map, owned map[string]bool) bool {
 	for _, f := range resourceFields {
+		if owned[f.attr] {
+			continue
+		}
 		av, aok := a.Get(f.field)
 		bv, bok := b.Get(f.field)
 		if aok != bok || (aok && av.AsString() != bv.AsString()) {
@@ -237,9 +262,12 @@ func sameTuple(a, b pcommon.Map) bool {
 	return true
 }
 
-func tupleKey(body pcommon.Map) string {
+func tupleKey(body pcommon.Map, owned map[string]bool) string {
 	var b strings.Builder
 	for _, f := range resourceFields {
+		if owned[f.attr] {
+			continue
+		}
 		if v, ok := body.Get(f.field); ok {
 			b.WriteByte('1')
 			b.WriteString(v.AsString())

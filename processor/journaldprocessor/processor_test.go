@@ -378,6 +378,287 @@ func TestSplit_Off_KeepsOneResourceLogs(t *testing.T) {
 	}
 }
 
+// journalBody is the sshd record of the fixture: every mapped field is present.
+func journalBody(t *testing.T) map[string]any {
+	t.Helper()
+	return loadFixture(t)[0]
+}
+
+func resourceWith(ld plog.Logs, attrs map[string]string) {
+	for k, v := range attrs {
+		ld.ResourceLogs().At(0).Resource().Attributes().PutStr(k, v)
+	}
+}
+
+func assertAttr(t *testing.T, res pcommon.Map, key, want string) {
+	t.Helper()
+	got, ok := res.Get(key)
+	if !ok {
+		t.Errorf("resource attribute %q missing, want %q", key, want)
+		return
+	}
+	if got.AsString() != want {
+		t.Errorf("%s = %q, want %q", key, got.AsString(), want)
+	}
+}
+
+func TestNoOverwrite_ServiceNameFromTheEdgeIsKept(t *testing.T) {
+	body := journalBody(t)
+	body["_SYSTEMD_UNIT"] = "docker.service"
+	ld, _ := oneRecord(t, body)
+	resourceWith(ld, map[string]string{"service.name": "nginx-proxy"})
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "service.name", "nginx-proxy")
+}
+
+func TestNoOverwrite_EveryMappedAttributeAlreadyOnTheResourceIsKept(t *testing.T) {
+	preset := map[string]string{
+		"host.name":       "edge-host",
+		"host.id":         "edge-id",
+		"process.pid":     "77",
+		"process.command": "app",
+		"service.name":    "app-service",
+	}
+	ld, _ := oneRecord(t, journalBody(t))
+	resourceWith(ld, preset)
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	for key, want := range preset {
+		assertAttr(t, res, key, want)
+	}
+}
+
+func TestNoOverwrite_OnlyTheMissingAttributesAreFilledFromTheJournal(t *testing.T) {
+	ld, _ := oneRecord(t, journalBody(t))
+	resourceWith(ld, map[string]string{"service.name": "edge-service"})
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "service.name", "edge-service")
+	assertAttr(t, res, "host.name", "host-a.example.com")
+	assertAttr(t, res, "host.id", "00000000000000000000000000000a01")
+	assertAttr(t, res, "process.pid", "1201")
+	assertAttr(t, res, "process.command", "sshd")
+}
+
+func TestNoOverwrite_ContainerNameOnTheResourceIsLeftAlone(t *testing.T) {
+	body := journalBody(t)
+	body["_SYSTEMD_UNIT"] = "docker.service"
+	body["_COMM"] = "dockerd"
+	ld, _ := oneRecord(t, body)
+	resourceWith(ld, map[string]string{"container.name": "web-1", "service.name": "web-1", "process.command": "nginx"})
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "container.name", "web-1")
+	assertAttr(t, res, "service.name", "web-1")
+	assertAttr(t, res, "process.command", "nginx")
+}
+
+func TestNoOverwrite_EmptyResourceGetsAllFiveAttributes(t *testing.T) {
+	ld, _ := oneRecord(t, journalBody(t))
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	if res.Len() != 5 {
+		t.Errorf("resource has %d attributes, want 5: %v", res.Len(), res.AsRaw())
+	}
+	assertAttr(t, res, "service.name", "ssh.service")
+}
+
+func TestNoOverwrite_SplitGroupsKeepTheServiceNameOfTheResource(t *testing.T) {
+	ld := mixedBatch(t)
+	ld.ResourceLogs().At(0).Resource().Attributes().PutStr("service.name", "edge-service")
+
+	out := run(t, defaultConfig(), ld)
+
+	commands := map[string]bool{}
+	for i := 0; i < out.ResourceLogs().Len(); i++ {
+		attrs := out.ResourceLogs().At(i).Resource().Attributes()
+		assertAttr(t, attrs, "service.name", "edge-service")
+		if v, ok := attrs.Get("process.command"); ok {
+			commands[v.Str()] = true
+		}
+	}
+	if len(commands) != 3 {
+		t.Errorf("groups carry commands %v, want the three journal commands", commands)
+	}
+}
+
+func TestNoOverwrite_SingleTupleSplitPathKeepsTheServiceName(t *testing.T) {
+	fixture := loadFixture(t)
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "edge-service")
+	sl := rl.ScopeLogs().AppendEmpty()
+	appendMapRecord(t, sl, fixture[0])
+	appendMapRecord(t, sl, fixture[3])
+
+	out := run(t, defaultConfig(), ld)
+
+	if out.ResourceLogs().Len() != 1 {
+		t.Fatalf("got %d ResourceLogs, want 1", out.ResourceLogs().Len())
+	}
+	assertAttr(t, out.ResourceLogs().At(0).Resource().Attributes(), "service.name", "edge-service")
+}
+
+func TestNoOverwrite_SplitOffKeepsTheServiceNameAcrossRecords(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SplitResources = false
+	ld := mixedBatch(t)
+	ld.ResourceLogs().At(0).Resource().Attributes().PutStr("service.name", "edge-service")
+
+	out := run(t, cfg, ld)
+
+	assertAttr(t, out.ResourceLogs().At(0).Resource().Attributes(), "service.name", "edge-service")
+}
+
+func TestNoOverwrite_SplitOffStillTakesTheLastJournalValueForUnsetAttributes(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.SplitResources = false
+	out := run(t, cfg, mixedBatch(t))
+
+	assertAttr(t, out.ResourceLogs().At(0).Resource().Attributes(), "service.name", "nginx.service")
+}
+
+func TestNoOverwrite_SetResourceOffLeavesTheResourceAsItWas(t *testing.T) {
+	cfg := &Config{}
+	ld, _ := oneRecord(t, journalBody(t))
+	resourceWith(ld, map[string]string{"service.name": "edge-service"})
+
+	res, _ := onlyRecord(t, run(t, cfg, ld))
+
+	if res.Len() != 1 {
+		t.Errorf("resource changed: %v", res.AsRaw())
+	}
+}
+
+func TestNoOverwrite_EmptyStringCountsAsMissingAndIsFilled(t *testing.T) {
+	ld, _ := oneRecord(t, journalBody(t))
+	resourceWith(ld, map[string]string{"service.name": "", "host.name": "", "host.id": "edge-id"})
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "service.name", "ssh.service")
+	assertAttr(t, res, "host.name", "host-a.example.com")
+	assertAttr(t, res, "host.id", "edge-id")
+}
+
+func TestNoOverwrite_EmptyStringIsFilledOnTheSplitPathToo(t *testing.T) {
+	ld := mixedBatch(t)
+	ld.ResourceLogs().At(0).Resource().Attributes().PutStr("service.name", "")
+
+	out := run(t, defaultConfig(), ld)
+
+	units := map[string]bool{}
+	for i := 0; i < out.ResourceLogs().Len(); i++ {
+		if v, ok := out.ResourceLogs().At(i).Resource().Attributes().Get("service.name"); ok {
+			units[v.Str()] = true
+		}
+	}
+	for _, unit := range []string{"ssh.service", "kubelet.service", "nginx.service"} {
+		if !units[unit] {
+			t.Errorf("no group carries service.name %q: %v", unit, units)
+		}
+	}
+}
+
+func TestNoOverwrite_NonStringValueCountsAsSet(t *testing.T) {
+	ld, _ := oneRecord(t, journalBody(t))
+	ld.ResourceLogs().At(0).Resource().Attributes().PutInt("process.pid", 77)
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	got, ok := res.Get("process.pid")
+	if !ok || got.Type() != pcommon.ValueTypeInt || got.Int() != 77 {
+		t.Errorf("process.pid = %v, want the int 77 left alone", got.AsRaw())
+	}
+}
+
+func TestNoOverwrite_EmptyUnitInTheRecordDoesNotTouchAnOwnedServiceName(t *testing.T) {
+	body := journalBody(t)
+	body["_SYSTEMD_UNIT"] = ""
+	ld, _ := oneRecord(t, body)
+	resourceWith(ld, map[string]string{"service.name": "edge-service"})
+
+	res, _ := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "service.name", "edge-service")
+}
+
+func TestNoOverwrite_RelayedJournalKeepsTheHostNameOfTheResource(t *testing.T) {
+	first := map[string]any{"_HOSTNAME": "origin-a", "_COMM": "sshd", "MESSAGE": "one"}
+	second := map[string]any{"_HOSTNAME": "origin-b", "_COMM": "sshd", "MESSAGE": "two"}
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("host.name", "relay-host")
+	sl := rl.ScopeLogs().AppendEmpty()
+	appendMapRecord(t, sl, first)
+	appendMapRecord(t, sl, second)
+
+	out := run(t, defaultConfig(), ld)
+
+	for i := 0; i < out.ResourceLogs().Len(); i++ {
+		assertAttr(t, out.ResourceLogs().At(i).Resource().Attributes(), "host.name", "relay-host")
+	}
+}
+
+func TestSplit_AllMappedAttributesOwned_NoSplitAndRecordsStayTogether(t *testing.T) {
+	ld := mixedBatch(t)
+	resourceWith(ld, map[string]string{
+		"host.name": "h", "host.id": "i", "process.pid": "1", "process.command": "c", "service.name": "s",
+	})
+
+	out := run(t, defaultConfig(), ld)
+
+	if out.ResourceLogs().Len() != 1 {
+		t.Fatalf("got %d ResourceLogs, want 1: every mapped attribute is owned, so nothing can differ", out.ResourceLogs().Len())
+	}
+	if out.LogRecordCount() != 4 {
+		t.Errorf("record count = %d, want 4", out.LogRecordCount())
+	}
+	recs := out.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords()
+	for i := 0; i < recs.Len(); i++ {
+		if recs.At(i).Body().Type() != pcommon.ValueTypeStr {
+			t.Errorf("record %d body is %v, want the MESSAGE string", i, recs.At(i).Body().Type())
+		}
+	}
+}
+
+func TestSplit_DifferencesInOwnedFieldsDoNotSplit(t *testing.T) {
+	base := map[string]any{"_HOSTNAME": "h", "_MACHINE_ID": "m", "_PID": "1", "_COMM": "docker", "MESSAGE": "a"}
+	other := map[string]any{"_HOSTNAME": "h", "_MACHINE_ID": "m", "_PID": "1", "_COMM": "docker", "MESSAGE": "b", "_SYSTEMD_UNIT": "x.service"}
+	base["_SYSTEMD_UNIT"] = "docker.service"
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "edge-service")
+	sl := rl.ScopeLogs().AppendEmpty()
+	appendMapRecord(t, sl, base)
+	appendMapRecord(t, sl, other)
+
+	out := run(t, defaultConfig(), ld)
+
+	if out.ResourceLogs().Len() != 1 {
+		t.Fatalf("got %d ResourceLogs, want 1: the units differ but service.name is owned", out.ResourceLogs().Len())
+	}
+	assertAttr(t, out.ResourceLogs().At(0).Resource().Attributes(), "service.name", "edge-service")
+	assertAttr(t, out.ResourceLogs().At(0).Resource().Attributes(), "process.command", "docker")
+}
+
+func TestSplit_DifferencesInUnownedFieldsStillSplit(t *testing.T) {
+	ld := mixedBatch(t)
+	ld.ResourceLogs().At(0).Resource().Attributes().PutStr("service.name", "edge-service")
+
+	out := run(t, defaultConfig(), ld)
+
+	if out.ResourceLogs().Len() < 4 {
+		t.Errorf("got %d ResourceLogs, want one per command plus the plain-text group", out.ResourceLogs().Len())
+	}
+}
+
 func TestConfigValidate_SplitWithoutSetResource_Fails(t *testing.T) {
 	cfg := &Config{SplitResources: true}
 

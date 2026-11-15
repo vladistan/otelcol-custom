@@ -3,7 +3,8 @@
 # builder-edge-static.yaml only by the REMOVED and ADDED lists below. Extend
 # ADDED when a component is added to the Windows edge (winlogprocessor,
 # windowhistprocessor, gpureceiver, fswatchreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
-# component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus).
+# component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus,
+# docker_stats, k8sattributes, ethtool, zfskstat).
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -22,8 +23,12 @@ readonly LOCAL="github.com/vladistan/otelcol-custom"
 readonly REMOVED=(
 	"$CONTRIB/receiver/journaldreceiver"
 	"$CONTRIB/receiver/prometheusreceiver"
+	"$CONTRIB/receiver/dockerstatsreceiver"
+	"$CONTRIB/processor/k8sattributesprocessor"
 	"$LOCAL/receiver/psireceiver"
 	"replace:$LOCAL/receiver/psireceiver"
+	"$LOCAL/receiver/ethtoolreceiver"
+	"replace:$LOCAL/receiver/ethtoolreceiver"
 	"$LOCAL/processor/containernameprocessor"
 	"replace:$LOCAL/processor/containernameprocessor"
 	"$LOCAL/receiver/openvpnstatusreceiver"
@@ -32,6 +37,8 @@ readonly REMOVED=(
 	"replace:$LOCAL/processor/kthreadprocessor"
 	"$LOCAL/processor/processlifetimeprocessor"
 	"replace:$LOCAL/processor/processlifetimeprocessor"
+	"$LOCAL/receiver/zfskstatreceiver"
+	"replace:$LOCAL/receiver/zfskstatreceiver"
 )
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"

@@ -21,6 +21,13 @@ type Config struct {
 	// Default: "body._PID"
 	SourceIdentifier string `mapstructure:"source_identifier"`
 
+	// ContainerIdentifier is a field that names the container of an entry (e.g.,
+	// "body.CONTAINER_ID"). An entry that has it is grouped by that value, so it never
+	// joins an entry of another container or of a non-container source that shares
+	// the same source identifier. Empty turns this off.
+	// Default: "body.CONTAINER_ID"
+	ContainerIdentifier string `mapstructure:"container_identifier"`
+
 	// ExcludeAttribute is an attribute name that, when set to "true", causes the
 	// log entry to pass through without recombination. Useful for containers that
 	// emit single-line logs that should not be combined.

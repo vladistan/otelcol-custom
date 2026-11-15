@@ -31,6 +31,9 @@ func newPSIReceiver(
 	if err != nil {
 		return nil, err
 	}
+	if err := scraper.useTelemetry(settings.TelemetrySettings); err != nil {
+		return nil, err
+	}
 
 	return &psiReceiver{
 		logger:   settings.Logger,

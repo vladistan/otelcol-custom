@@ -72,14 +72,19 @@ processors:
         conditions:
           - IsMap(body)
         statements:
+          # Each attribute is set only when the resource has no value or an
+          # empty one, so a value from an earlier stage (service.name from a
+          # container name on the edge) is kept. A resource shared by records
+          # with different journal fields takes the first record's values;
+          # the native journald processor splits such records instead.
           # Host and machine information
-          - set(resource.attributes["host.name"], body["_HOSTNAME"]) where body["_HOSTNAME"] != nil
-          - set(resource.attributes["host.id"], body["_MACHINE_ID"]) where body["_MACHINE_ID"] != nil
+          - set(resource.attributes["host.name"], body["_HOSTNAME"]) where body["_HOSTNAME"] != nil and (resource.attributes["host.name"] == nil or resource.attributes["host.name"] == "")
+          - set(resource.attributes["host.id"], body["_MACHINE_ID"]) where body["_MACHINE_ID"] != nil and (resource.attributes["host.id"] == nil or resource.attributes["host.id"] == "")
           # Process information
-          - set(resource.attributes["process.pid"], body["_PID"]) where body["_PID"] != nil
-          - set(resource.attributes["process.command"], body["_COMM"]) where body["_COMM"] != nil
+          - set(resource.attributes["process.pid"], body["_PID"]) where body["_PID"] != nil and (resource.attributes["process.pid"] == nil or resource.attributes["process.pid"] == "")
+          - set(resource.attributes["process.command"], body["_COMM"]) where body["_COMM"] != nil and (resource.attributes["process.command"] == nil or resource.attributes["process.command"] == "")
           # Service information
-          - set(resource.attributes["service.name"], body["_SYSTEMD_UNIT"]) where body["_SYSTEMD_UNIT"] != nil
+          - set(resource.attributes["service.name"], body["_SYSTEMD_UNIT"]) where body["_SYSTEMD_UNIT"] != nil and (resource.attributes["service.name"] == nil or resource.attributes["service.name"] == "")
           # Convert PRIORITY to OTEL severity levels
           - set(severity_number, SEVERITY_NUMBER_FATAL) where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2
           - set(severity_text, "FATAL") where body["PRIORITY"] != nil and Int(body["PRIORITY"]) <= 2

@@ -39,15 +39,16 @@ type bufferedEntry struct {
 
 // logsProcessor combines multiline log entries
 type logsProcessor struct {
-	config        *Config
-	nextConsumer  consumer.Logs
-	logger        *zap.Logger
-	firstEntryRe  *regexp.Regexp
-	combineField  []string // parsed field path (e.g., ["body", "MESSAGE"])
-	sourceIdField []string // parsed field path (e.g., ["body", "_PID"])
+	config         *Config
+	nextConsumer   consumer.Logs
+	logger         *zap.Logger
+	firstEntryRe   *regexp.Regexp
+	combineField   []string // parsed field path (e.g., ["body", "MESSAGE"])
+	sourceIdField  []string // parsed field path (e.g., ["body", "_PID"])
+	containerField []string // parsed field path, nil when container grouping is off
 
 	mu      sync.Mutex
-	buffers map[string]*bufferedEntry // keyed by source identifier value
+	buffers map[string]*bufferedEntry // keyed by bufferKey
 	ticker  *time.Ticker
 	done    chan struct{}
 }
@@ -58,7 +59,7 @@ func newLogsProcessor(set processor.Settings, cfg *Config, next consumer.Logs) (
 		return nil, err
 	}
 
-	return &logsProcessor{
+	p := &logsProcessor{
 		config:        cfg,
 		nextConsumer:  next,
 		logger:        set.Logger,
@@ -67,7 +68,27 @@ func newLogsProcessor(set processor.Settings, cfg *Config, next consumer.Logs) (
 		sourceIdField: parseFieldPath(cfg.SourceIdentifier),
 		buffers:       make(map[string]*bufferedEntry),
 		done:          make(chan struct{}),
-	}, nil
+	}
+	if cfg.ContainerIdentifier != "" {
+		p.containerField = parseFieldPath(cfg.ContainerIdentifier)
+	}
+	return p, nil
+}
+
+// bufferKey returns the key of the buffer a record belongs to, or "" when the record
+// has no source identifier. A record that names a container is keyed by the container,
+// so it cannot join a buffer of another container or of a non-container source.
+func (p *logsProcessor) bufferKey(record plog.LogRecord) string {
+	sourceId := p.getFieldValue(record, p.sourceIdField)
+	if sourceId == "" {
+		return ""
+	}
+	if p.containerField != nil {
+		if id := p.getFieldValue(record, p.containerField); id != "" {
+			return "container:" + id
+		}
+	}
+	return sourceId
 }
 
 // parseFieldPath splits a dotted field path into components
@@ -213,8 +234,8 @@ func (p *logsProcessor) processRecord(ctx context.Context, outputLogs plog.Logs,
 		}
 	}
 
-	// Get source identifier value (PID)
-	sourceId := p.getFieldValue(record, p.sourceIdField)
+	// Get the buffer key: the container when the record names one, else the source (PID)
+	sourceId := p.bufferKey(record)
 	if sourceId == "" {
 		// No source identifier - pass through immediately
 		p.addRecordToLogs(outputLogs, record, resource, scope)

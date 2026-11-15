@@ -20,6 +20,9 @@ extensions:
   zpages:
     endpoint: 127.0.0.1:55679
 receivers:
+  # AWS ENA allowance counters (custom, Linux only)
+  ethtool:
+    collection_interval: 60s
   # File-based log receiver for testing with sample data
   file_log/testdata:
     include:
@@ -37,6 +40,22 @@ receivers:
   # On macOS, this will fail gracefully - use Linux VM for full testing
   psi:
     collection_interval: 60s
+  # Container CPU and memory from the Docker socket (Linux edge builds only).
+  # The collector needs root or the docker group to read the socket; without
+  # access it logs the error and keeps running. container.cpu.limit is off by
+  # default and is turned on here; container.memory.usage.limit is on by default.
+  # api_version must stay empty: the receiver's own default is 1.44, which a daemon whose API tops out
+  # lower (Docker 24 stops at 1.43) rejects, and the collector then fails to start. Empty lets the client
+  # negotiate the version with the daemon.
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    api_version: ""
+    collection_interval: 60s
+    metrics:
+      container.cpu.limit:
+        enabled: true
+      container.memory.usage.limit:
+        enabled: true
   # Host metrics for testing (works on macOS and Linux)
   host_metrics:
     collection_interval: 60s
@@ -104,6 +123,9 @@ processors:
       - key: deployment.environment
         value: development
         action: insert
+  # Multi-line recombination (custom): Docker journald lines are grouped per container, not per daemon PID
+  logrecombine:
+    container_identifier: body.CONTAINER_ID
   # Container name (custom): service.name from container.name on Docker journald logs
   containername: {}
   # Process lifetime (custom): CPU time and disk bytes divided by process.uptime. Runs before kthread
@@ -159,8 +181,12 @@ service:
       processors: [memory_limiter, resource_detection, resource/host, containername, batch]
       exporters: [debug, file/logs]
     metrics:
-      receivers: [host_metrics, psi]
+      receivers: [host_metrics, psi, docker_stats]
       processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, batch]
+      exporters: [debug, file/metrics]
+    metrics/network_allowance:
+      receivers: [ethtool]
+      processors: [memory_limiter, resource_detection, resource/host, batch]
       exporters: [debug, file/metrics]
     # Hourly process metrics - cpu.time and uptime for long-running processes
     metrics/process_hourly:
