@@ -40,6 +40,7 @@ func (r *zfsReceiver) Start(ctx context.Context, _ component.Host) error {
 	go r.collect(ctx)
 	r.logger.Info("ZFS kstat receiver started",
 		zap.Duration("collection_interval", r.config.CollectionInterval),
+		zap.String("source", r.config.resolvedSource()),
 		zap.String("kstat_path", r.config.KstatPath))
 	return nil
 }

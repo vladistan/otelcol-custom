@@ -1,0 +1,80 @@
+# Linux edge as a Kubernetes DaemonSet: scrape the pods that ask for it, with pod labels on the metrics.
+#
+# Validate: K8S_NODE_NAME=node-a otelcol-edge validate --config test/configs/edge-k8s-discovery.yaml
+# (k8s_observer and k8s_attributes reject the config when K8S_NODE_NAME is not set)
+#
+# The pod needs:
+#   - K8S_NODE_NAME from the downward API (spec.nodeName); the observer lists only that node's pods
+#   - a service account that can get, list and watch pods; k8s_attributes also reads namespaces and nodes
+# See docs/k8s-discovery.md for the Role, the failure table and the cardinality.
+#
+# A pod is scraped when its annotations say so:
+#   prometheus.io/scrape: "true"
+#   prometheus.io/port: "8080"      (default 9090)
+#   prometheus.io/path: "/metrics"  (default /metrics)
+# The rule leaves out the collector's own pod through the label the DaemonSet puts on it. Annotation
+# discovery stays off: only the rule below starts receivers.
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+  k8s_observer:
+    auth_type: serviceAccount
+    node: ${env:K8S_NODE_NAME}
+    observe_pods: true
+
+receivers:
+  receiver_creator/pods:
+    watch_observers: [k8s_observer]
+    receivers:
+      prometheus:
+        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true" && labels["app.kubernetes.io/component"] != "opentelemetry-collector"
+        config:
+          config:
+            scrape_configs:
+              - job_name: pod
+                scrape_interval: 60s
+                metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
+                static_configs:
+                  - targets: ['`joinHostPort(endpoint, "prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : "9090")`']
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  # The creator puts k8s.pod.uid on every scrape; this adds the pod name, namespace, node, labels and
+  # annotations. A uid with no pod (a pod that just ended) passes through without them.
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.namespace.name
+        - k8s.node.name
+      labels:
+        - tag_name: app
+          key: app.kubernetes.io/name
+          from: pod
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+  batch:
+    timeout: 10s
+
+exporters:
+  # Replace with otlp_grpc towards the gateway.
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check, k8s_observer]
+  pipelines:
+    metrics:
+      receivers: [receiver_creator/pods]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [debug]

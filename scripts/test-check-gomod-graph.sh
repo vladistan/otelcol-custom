@@ -88,6 +88,14 @@ awk 'NR == 2 { n = split($2, v, "."); v[n] = v[n] + 1
 expect_exit_code "edge-windows fails on a changed shared version" 1 \
 	"$CHECK" --gomod "$SCRATCH/win-bad.mod" edge-windows
 
+# edge-freebsd is compared with edge-static on shared modules, like edge-windows.
+expect_exit_code "edge-freebsd tolerates added and removed modules" 0 \
+	"$CHECK" --gomod "$SCRATCH/win-ok.mod" edge-freebsd
+expect_exit_code "edge-freebsd fails on a changed shared version" 1 \
+	"$CHECK" --gomod "$SCRATCH/win-bad.mod" edge-freebsd
+expect_exit_code "edge-freebsd has no baseline to update" 2 \
+	"$CHECK" --update --gomod "$SCRATCH/win-ok.mod" edge-freebsd
+
 expect_exit_code "unknown manifest is a usage error" 2 "$CHECK" bogus
 expect_output "unknown manifest message names it" "unknown manifest bogus"
 

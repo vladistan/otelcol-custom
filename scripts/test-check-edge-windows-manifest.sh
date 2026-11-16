@@ -193,6 +193,42 @@ expect_exit_code "ethtoolreceiver on the Windows edge fails" 1 \
 	"$CHECK" "$SCRATCH/windows-with-ethtool.yaml" "$STATIC"
 expect_output "the Windows ethtool is named" "ethtoolreceiver"
 
+grep -v "pvereceiver" "$STATIC" >"$SCRATCH/static-no-pve.yaml"
+expect_exit_code "pvereceiver no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-pve.yaml"
+expect_output "the missing pve removal is named" "expected removal is missing: .*pvereceiver"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-pve.yaml"
+sed -i.bak '/^receivers:/a\
+  - gomod: github.com/vladistan/otelcol-custom/receiver/pvereceiver v0.0.0' "$SCRATCH/windows-with-pve.yaml"
+expect_exit_code "pvereceiver on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-pve.yaml" "$STATIC"
+expect_output "the Windows pve is named" "pvereceiver"
+
+grep -v "snmpreceiver" "$STATIC" >"$SCRATCH/static-no-snmp.yaml"
+expect_exit_code "snmpreceiver no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-snmp.yaml"
+expect_output "the missing snmp removal is named" "expected removal is missing: .*snmpreceiver"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-snmp.yaml"
+sed -i.bak '/^receivers:/a\
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/snmpreceiver v0.164.1' "$SCRATCH/windows-with-snmp.yaml"
+expect_exit_code "snmpreceiver on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-snmp.yaml" "$STATIC"
+expect_output "the Windows snmp is named" "snmpreceiver"
+
+grep -v "netflowreceiver" "$STATIC" >"$SCRATCH/static-no-netflow.yaml"
+expect_exit_code "netflowreceiver no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-netflow.yaml"
+expect_output "the missing netflow removal is named" "expected removal is missing: .*netflowreceiver"
+
+cp "$WINDOWS" "$SCRATCH/windows-with-netflow.yaml"
+sed -i.bak '/^receivers:/a\
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver v0.164.1' "$SCRATCH/windows-with-netflow.yaml"
+expect_exit_code "netflowreceiver on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-netflow.yaml" "$STATIC"
+expect_output "the Windows netflow is named" "netflowreceiver"
+
 grep -v "zfskstatreceiver" "$STATIC" >"$SCRATCH/static-no-zfskstat.yaml"
 expect_exit_code "zfskstatreceiver no longer removed from static fails" 1 \
 	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-zfskstat.yaml"
@@ -214,6 +250,15 @@ else
 fi
 
 for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml; do
+	if grep -q "pvereceiver" "$ROOT/$other"; then
+		echo "FAIL: $other lists pvereceiver; only the Linux edge manifests may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no pvereceiver entry"
+	fi
+done
+
+for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml; do
 	if grep -q "zfskstat" "$ROOT/$other"; then
 		echo "FAIL: $other lists zfskstat; only the Linux edge manifests may"
 		failures=$((failures + 1))
@@ -221,6 +266,81 @@ for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml; do
 		echo "PASS: $other has no zfskstat entry"
 	fi
 done
+
+if grep -q "otelcol-custom/receiver/cloudwatchmetricsreceiver" "$ROOT/builder-scrape.yaml"; then
+	echo "PASS: builder-scrape.yaml lists cloudwatchmetricsreceiver"
+else
+	echo "FAIL: builder-scrape.yaml does not list cloudwatchmetricsreceiver"
+	failures=$((failures + 1))
+fi
+for other in builder-config.yaml builder-edge.yaml builder-edge-static.yaml builder-edge-windows.yaml builder-gateway.yaml; do
+	if grep -q "otelcol-custom/receiver/cloudwatchmetricsreceiver" "$ROOT/$other"; then
+		echo "FAIL: $other lists cloudwatchmetrics; only the scrape manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no cloudwatchmetrics entry"
+	fi
+done
+
+# The pod discovery components and the six application receivers are contrib modules for the Linux edge only.
+for entry in extensions:extension/observer/k8sobserver receivers:receiver/receivercreator receivers:receiver/redisreceiver \
+	receivers:receiver/postgresqlreceiver receivers:receiver/mysqlreceiver receivers:receiver/mongodbreceiver \
+	receivers:receiver/rabbitmqreceiver receivers:receiver/nginxreceiver; do
+	section="${entry%%:*}"
+	module="${entry#*:}"
+	name="${module##*/}"
+	grep -v -E "^[[:space:]]*-[[:space:]]*gomod:.*/${name}[[:space:]]" "$STATIC" >"$SCRATCH/static-no-$name.yaml"
+	expect_exit_code "$name no longer removed from static fails" 1 \
+		"$CHECK" "$WINDOWS" "$SCRATCH/static-no-$name.yaml"
+	expect_output "the missing $name removal is named" "expected removal is missing: .*$name"
+
+	cp "$WINDOWS" "$SCRATCH/windows-with-$name.yaml"
+	sed -i.bak "/^$section:/a\\
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/$module v0.164.1" "$SCRATCH/windows-with-$name.yaml"
+	expect_exit_code "$name on the Windows edge fails" 1 \
+		"$CHECK" "$SCRATCH/windows-with-$name.yaml" "$STATIC"
+	expect_output "the Windows $name is named" "$name"
+done
+
+# check_linux_edge_only NAME: a receiver of the Linux edge builds that the Windows edge, the
+# gateway, the scrape build and the default manifest must not list.
+check_linux_edge_only() {
+	local name="$1"
+	grep -v "${name}receiver" "$STATIC" >"$SCRATCH/static-no-$name.yaml"
+	expect_exit_code "${name}receiver no longer removed from static fails" 1 \
+		"$CHECK" "$WINDOWS" "$SCRATCH/static-no-$name.yaml"
+	expect_output "the missing $name removal is named" "expected removal is missing: .*${name}receiver"
+
+	cp "$WINDOWS" "$SCRATCH/windows-with-$name.yaml"
+	sed -i.bak "/^receivers:/a\\
+  - gomod: github.com/vladistan/otelcol-custom/receiver/${name}receiver v0.0.0" "$SCRATCH/windows-with-$name.yaml"
+	expect_exit_code "${name}receiver on the Windows edge fails" 1 \
+		"$CHECK" "$SCRATCH/windows-with-$name.yaml" "$STATIC"
+	expect_output "the Windows $name is named" "${name}receiver"
+
+	local linux
+	for linux in builder-edge.yaml builder-edge-static.yaml; do
+		if grep -q "otelcol-custom/receiver/${name}receiver v0.0.0" "$ROOT/$linux"; then
+			echo "PASS: $linux lists ${name}receiver"
+		else
+			echo "FAIL: $linux does not list ${name}receiver"
+			failures=$((failures + 1))
+		fi
+	done
+
+	local other
+	for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml builder-edge-windows.yaml; do
+		if grep -q "${name}receiver" "$ROOT/$other"; then
+			echo "FAIL: $other lists ${name}receiver; only the Linux edge manifests may"
+			failures=$((failures + 1))
+		else
+			echo "PASS: $other has no ${name}receiver entry"
+		fi
+	done
+}
+
+check_linux_edge_only hwmon
+check_linux_edge_only iscsi
 
 expect_exit_code "a missing manifest is a usage error" 2 "$CHECK" "$SCRATCH/absent.yaml"
 expect_output "usage error names the file" "absent.yaml"

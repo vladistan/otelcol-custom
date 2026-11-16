@@ -1,0 +1,46 @@
+# cspell:ignore tzdata
+# Dockerfile for otelcol-edge (linux/amd64)
+# Runtime only: the binary is the published release asset, copied from the
+# build context as `otelcol-edge`. `just docker-build-edge-ghcr` downloads it,
+# checks it against the release SHA256SUMS and builds with that directory as
+# the context. The binary is statically linked, so alpine needs no libc match.
+
+# alpine 3.22.5
+FROM alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+
+# OCI provenance labels, so GHCR links the public package to its source repo.
+LABEL org.opencontainers.image.source="https://github.com/vladistan/otelcol-custom" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}"
+
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates tzdata
+
+# Non-root user, same ids as the gateway and scrape images.
+RUN addgroup -g 10001 -S otel && \
+    adduser -u 10001 -S otel -G otel
+
+RUN mkdir -p /etc/otel /var/lib/otel/storage && \
+    chown -R otel:otel /etc/otel /var/lib/otel
+
+COPY --chown=otel:otel otelcol-edge /otelcol-edge
+
+USER otel
+
+# OTLP gRPC
+EXPOSE 4317
+# OTLP HTTP
+EXPOSE 4318
+# Health check
+EXPOSE 13133
+
+# 127.0.0.1, not localhost: the health_check extension binds IPv4 only and
+# busybox wget tries ::1 first.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:13133/ || exit 1
+
+ENTRYPOINT ["/otelcol-edge"]
+CMD ["--config", "/etc/otel/config.yaml"]

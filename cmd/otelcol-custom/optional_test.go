@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -188,7 +189,7 @@ func wrapped(t *testing.T, name string, fake *fakeReceiver, optional ...string) 
 }
 
 func TestOptionalReceiverTypesAreTheRulingList(t *testing.T) {
-	assert.Equal(t, []string{"docker_stats", "tcp_check"}, optionalReceiverTypes,
+	assert.Equal(t, []string{"docker_stats", "tcp_check", "netflow"}, optionalReceiverTypes,
 		"a core receiver must not be added here: its failure stops the collector on purpose")
 }
 
@@ -467,4 +468,63 @@ func TestSkipIsStillLoggedWhenTheCounterCannotBeCreated(t *testing.T) {
 	defer func() { require.NoError(t, rcv.Shutdown(context.Background())) }()
 
 	assert.Len(t, env.warnings(), 1)
+}
+
+// bindReceiver binds a UDP address in Start, like a flow receiver does.
+type bindReceiver struct {
+	addr string
+
+	mu   sync.Mutex
+	conn net.PacketConn
+}
+
+func (b *bindReceiver) Start(context.Context, component.Host) error {
+	conn, err := net.ListenPacket("udp", b.addr)
+	if err != nil {
+		return err
+	}
+	b.mu.Lock()
+	b.conn = conn
+	b.mu.Unlock()
+	return nil
+}
+
+func (b *bindReceiver) Shutdown(context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.conn != nil {
+		return b.conn.Close()
+	}
+	return nil
+}
+
+func TestNetflowPortInUseIsOneWarnTheCollectorStartsAndTheBindIsRetried(t *testing.T) {
+	fastRetries(t)
+	taken, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = taken.Close() })
+	typ := component.MustNewType("netflow")
+	bind := &bindReceiver{addr: taken.LocalAddr().String()}
+	inner := receiver.NewFactory(typ, func() component.Config { return &fakeConfig{} },
+		receiver.WithLogs(func(context.Context, receiver.Settings, component.Config, consumer.Logs) (receiver.Logs, error) {
+			return bind, nil
+		}, component.StabilityLevelAlpha))
+	got := wrapOptionalReceivers(otelcol.Factories{Receivers: map[component.Type]receiver.Factory{typ: inner}}, optionalReceiverTypes...)
+	env := newTestEnv(t, "netflow")
+
+	rcv, err := got.Receivers[typ].CreateLogs(context.Background(), env.set, inner.CreateDefaultConfig(), consumertest.NewNop())
+	require.NoError(t, err)
+	require.NoError(t, rcv.Start(context.Background(), componenttest.NewNopHost()), "the collector keeps running")
+
+	warnings := env.warnings()
+	require.Len(t, warnings, 1)
+	assert.Equal(t, "netflow", warnings[0].ContextMap()["receiver"])
+	assert.Regexp(t, "address already in use|Only one usage of each socket address", warnings[0].ContextMap()["error"], "the text differs by operating system")
+	assert.Equal(t, map[string]int64{"netflow": 1}, env.skipped(t))
+
+	require.NoError(t, taken.Close(), "the port is free again")
+	waitFor(t, "the bind succeeds in the background", func() bool {
+		return len(env.logs.FilterMessageSnippet("started after").All()) == 1
+	})
+	require.NoError(t, rcv.Shutdown(context.Background()))
 }

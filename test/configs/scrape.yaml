@@ -5,7 +5,7 @@
 #
 # Env: OTEL_MAIN_OTLP_ENDPOINT, AWS_REGION, CLOUDTRAIL_BUCKET, CLOUDTRAIL_SQS_URL,
 # S3ACCESS_BUCKET, S3ACCESS_PREFIX, S3ACCESS_SQS_URL, ALB_BUCKET, ALB_PREFIX,
-# ALB_SQS_URL, AUTH0_SQS_URL,
+# ALB_SQS_URL, CW_ACCOUNT_NAME, CW_ROLE_ARN, CW_EXTERNAL_ID, AUTH0_SQS_URL,
 # AUTH0_SQS_REGION, AUTH0_ROLE_ARN, AUTH0_EXTERNAL_ID, GCP_PROJECT,
 # GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, GCP_MON_PROJECT_A,
 # GCP_MON_PROJECT_B, AZ_EH_CONN.
@@ -77,27 +77,43 @@ receivers:
         autodiscover:
           prefix: /aws/lambda/
           limit: 50
-  # CloudWatch metrics: named metrics only, no discovery.
-  awscloudwatch/metrics:
-    region: ${env:AWS_REGION}
-    metrics:
-      collection_interval: 5m
-      period: 5m
-      delay: 10m
-      queries:
-        - {namespace: AWS/EC2, metric_name: CPUUtilization, stats: [Average]}
-        - {namespace: AWS/EC2, metric_name: NetworkIn, stats: [Sum]}
-        - {namespace: AWS/EC2, metric_name: NetworkOut, stats: [Sum]}
-        - {namespace: AWS/RDS, metric_name: CPUUtilization, stats: [Average]}
-        - {namespace: AWS/RDS, metric_name: DatabaseConnections, stats: [Average]}
-        - {namespace: AWS/RDS, metric_name: FreeStorageSpace, stats: [Minimum]}
-        - {namespace: AWS/Lambda, metric_name: Invocations, stats: [Sum]}
-        - {namespace: AWS/Lambda, metric_name: Errors, stats: [Sum]}
-        - {namespace: AWS/Lambda, metric_name: Duration, stats: [Average, p99]}
-        - {namespace: AWS/Lambda, metric_name: Throttles, stats: [Sum]}
-        - {namespace: AWS/ApplicationELB, metric_name: RequestCount, stats: [Sum]}
-        - {namespace: AWS/ApplicationELB, metric_name: HTTPCode_Target_5XX_Count, stats: [Sum]}
-        - {namespace: AWS/ApplicationELB, metric_name: TargetResponseTime, stats: [Average, p99]}
+  # CloudWatch metrics: one instance for every account, region and tier. A
+  # namespace lists the metric names to read; an empty list reads the whole
+  # namespace. Discovery keeps each series with its own dimensions; series over
+  # a tier's limit are counted in otelcol_aws_cloudwatch_series_discovered and
+  # not read. The daily tier reads the previous complete UTC day once a day.
+  cloudwatchmetrics:
+    storage: file_storage
+    max_catchup: 72h
+    accounts:
+      - name: ${env:CW_ACCOUNT_NAME}
+        role_arn: ${env:CW_ROLE_ARN}
+        external_id: ${env:CW_EXTERNAL_ID}
+        regions:
+          - ${env:AWS_REGION}
+    tiers:
+      operational:
+        collection_interval: 15m
+        period: 15m
+        delay: 10m
+        stats: [Average, Maximum]
+        limit: 1000
+        namespaces:
+          AWS/EC2: [CPUUtilization, NetworkIn, NetworkOut]
+          AWS/RDS: [CPUUtilization, DatabaseConnections, FreeStorageSpace]
+          AWS/Lambda: [Invocations, Errors, Duration, Throttles]
+          AWS/ApplicationELB: [RequestCount, HTTPCode_Target_5XX_Count, TargetResponseTime]
+      daily:
+        collection_interval: 24h
+        period: 24h
+        delay: 1h
+        stats: [Average, Minimum, Maximum, Sum, SampleCount, p50]
+        limit: 10000
+        namespaces:
+          AWS/EC2: []
+          AWS/RDS: []
+          AWS/Lambda: []
+          AWS/ApplicationELB: []
   auth0:
     queue_url: ${env:AUTH0_SQS_URL}
     region: ${env:AUTH0_SQS_REGION}
@@ -132,6 +148,25 @@ receivers:
       - metric_name: run.googleapis.com/container/cpu/utilizations
       - metric_name: run.googleapis.com/container/memory/utilizations
       - metric_name: run.googleapis.com/container/instance_count
+  # Daily tier: one instance for all projects. Cloud Monitoring aligns each series over the
+  # alignment period and the receiver emits one gauge per aligner with the attribute stat.
+  googlecloudmonitoring/daily:
+    projects:
+      - ${env:GCP_MON_PROJECT_A}
+      - ${env:GCP_MON_PROJECT_B}
+    collection_interval: 24h
+    aggregation:
+      alignment_period: 24h
+      per_series_aligners:
+        - ALIGN_MIN
+        - ALIGN_MAX
+        - ALIGN_MEAN
+        - ALIGN_SUM
+        - ALIGN_COUNT
+        - ALIGN_PERCENTILE_50
+    metrics_list:
+      - metric_name: run.googleapis.com/container/cpu/utilizations
+      - metric_name: run.googleapis.com/container/memory/utilizations
   azure_event_hub:
     connection: ${env:AZ_EH_CONN}
     format: azure
@@ -195,10 +230,14 @@ service:
       processors: [memory_limiter, sourcetag/azure, resource_detection, batch]
       exporters: [otlp_http]
     metrics/aws:
-      receivers: [awscloudwatch/metrics]
+      receivers: [cloudwatchmetrics]
       processors: [memory_limiter, batch]
       exporters: [otlp_http]
     metrics/gcp:
       receivers: [googlecloudmonitoring/cloudrun-a, googlecloudmonitoring/cloudrun-b]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http]
+    metrics/gcp-daily:
+      receivers: [googlecloudmonitoring/daily]
       processors: [memory_limiter, batch]
       exporters: [otlp_http]

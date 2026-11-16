@@ -18,7 +18,7 @@ Sources read from the Go module cache at tag v0.154.0 of opentelemetry-collector
 
 Removed in contrib v0.134.0 as unmaintained ("`receiver/awscloudwatchmetrics`: Remove unmaintained component", PR #42238). Its v0.133.0 `metadata.yaml` already set `unmaintained: [metrics]`.
 
-`awscloudwatchreceiver` v0.154.0 has a `metrics` block (stability alpha for logs and metrics, `README.md:9`). It is the likely replacement. Keys: `metrics.queries[]` (`namespace`, `metric_name`, `dimensions`, `stats`) or `metrics.discovery` (`filters`, `limit`, `stats`), plus `period` (5m) and `delay` (10m) (`config.go:38-82`). The old `metrics.named` key has no equivalent name. Output follows the CloudWatch Metric Streams OpenTelemetry 1.0.0 format. Check it against your data before relying on it as a replacement.
+`awscloudwatchreceiver` v0.154.0 has a `metrics` block (stability alpha for logs and metrics, `README.md:9`). It was the candidate replacement; the scrape image now uses its own `cloudwatchmetrics` receiver instead (see "CloudWatch metrics" below). Keys: `metrics.queries[]` (`namespace`, `metric_name`, `dimensions`, `stats`) or `metrics.discovery` (`filters`, `limit`, `stats`), plus `period` (5m) and `delay` (10m) (`config.go:38-82`). The old `metrics.named` key has no equivalent name. Output follows the CloudWatch Metric Streams OpenTelemetry 1.0.0 format. Check it against your data before relying on it as a replacement.
 
 #### awscloudwatchreceiver metrics keys
 
@@ -223,6 +223,47 @@ Stock `awscloudwatchreceiver` v0.164.1 reads each window up to now, and an empty
 
 The scrape image carries a local copy of the receiver, `receiver/awscloudwatchreceiver`, joined by a `replace` in `builder-scrape.yaml`. It adds `logs.settle_lag`, a duration that defaults to 0. With a value, every window ends at now minus the lag, for the request `EndTime` and for the empty-window advance. The checkpoint format is unchanged. If the lag is longer than the time since the start position, the poll for that group waits. The sample sets `30s`. A negative value is refused at startup. Everything else in the receiver is the upstream v0.164.1 code.
 
+### CloudWatch metrics
+
+The `cloudwatchmetrics` receiver reads CloudWatch metrics for every account, region and tier of one config block and feeds the `metrics/aws` pipeline. `awscloudwatch` stays for CloudWatch logs. The receiver is in development stability and is in the scrape image only.
+
+```yaml
+cloudwatchmetrics:
+  storage: file_storage         # keeps the end of the last window; without it a restart reads only the latest window
+  max_catchup: 72h              # how far back missed windows are read after a stop
+  accounts:
+    - name: prod                # becomes cloud.account.name on every resource
+      role_arn: arn:aws:iam::111111111111:role/metrics-reader   # optional; assumed with the pod's own credentials
+      external_id: ${env:CW_EXTERNAL_ID}                        # optional, needs role_arn
+      regions: [us-east-1, eu-west-1]
+  tiers:
+    operational:
+      collection_interval: 15m
+      period: 15m
+      delay: 10m
+      stats: [Average, Maximum]
+      limit: 1000
+      namespaces:
+        AWS/EC2: [CPUUtilization, NetworkIn]
+    daily:
+      collection_interval: 24h
+      period: 24h
+      delay: 1h
+      stats: [Average, Minimum, Maximum, Sum, SampleCount, p50]
+      limit: 10000
+      namespaces:
+        AWS/RDS: []             # an empty list reads every metric in the namespace
+```
+
+- Every account, region and tier pair is polled on its own schedule. A pair whose role is refused logs one warning, is tried again at the next poll, and does not stop the others. The config takes no access keys or session token: credentials come from the pod's role, and `role_arn` with `external_id` assumes another role once per account.
+- A tier must set `collection_interval`, `period`, `stats`, `limit` and `namespaces` (at least one). `stats` is never defaulted: each statistic is one query, so a tier reads only what it lists. `period` is a whole number of seconds that CloudWatch accepts: 1, 5, 10 or 30 seconds, or a multiple of 60 seconds. `collection_interval` must be a multiple of `period`, and not below it, so windows never overlap. `delay` shifts the window back for CloudWatch's publication lag. A region listed twice for an account, a statistic listed twice in a tier, and a metric name listed twice in a namespace are rejected at startup.
+- For each listed metric name the receiver calls `ListMetrics` with that namespace and name only, and keeps each series with its own dimension set. Reading goes through `GetMetricData` in calls of at most 500 queries.
+- Each statistic of a series is one gauge point named `amazonaws.com/<Namespace>/<MetricName>` with the attributes `Namespace`, `MetricName`, `Dimensions` and `stat`. Resources carry `cloud.provider`, `cloud.region` and `cloud.account.name`.
+- Discovery keeps paging past `limit`, so the whole total is counted, but only the first `limit` series are read. Three gauges, each with the attributes `account`, `region` and `tier`, show it: `otelcol_aws_cloudwatch_series_discovered`, `otelcol_aws_cloudwatch_series_limit` and `otelcol_aws_cloudwatch_discovery_truncated` (1 or 0). One warning is logged each time a run of truncated polls starts. The three gauges are the collector's own telemetry, not points in the `metrics/aws` pipeline: they reach a backend only when `service::telemetry::metrics` exports them.
+- Windows are aligned to the period in UTC. A daily tier (`period: 24h`) reads the previous complete UTC day. After each delivered window the receiver saves its end in the storage extension. After a stop it reads every whole missed window, oldest first, up to `max_catchup`; a restart inside a window reads nothing again. Each missed window is its own set of requests, billed as such: a 15-minute tier stopped for the full 72 hours reads 288 windows. A missing or unreadable entry counts as no state, and only the latest window is read.
+- `p50` and other percentile statistics are not available for every metric. When a metric returns data for the other statistics but none for a percentile, no point is emitted, nothing is logged as an error, and one info line per metric name is logged for the run.
+- `GetMetricData` is billed per metric requested, and a tier's request count is its series times its scrapes a day. Watch the CloudWatch usage in the bill after the first day.
+
 ### Cloud Run metrics
 
 The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metrics/gcp` pipeline. It is alpha.
@@ -231,8 +272,34 @@ The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metri
 - The sample polls `run.googleapis.com/request_count`, `request_latencies`, `container/cpu/utilizations`, `container/memory/utilizations` and `container/instance_count`.
 - `collection_interval` defaults to 5m and must be at least 60s. Every scrape calls the Cloud Monitoring API, which has quotas and charges.
 - Credentials come from the Google default credentials, as for Pub/Sub, with the `monitoring.read` scope. The Cloud Monitoring API must be enabled on each polled project.
-- A project the identity cannot read fails receiver start, and the collector does not start. A pipeline with no credentials must be removed from the deployed config, like any other source.
+- A project the identity cannot read is skipped with a WARN naming the project, and the receiver keeps the others; it is not tried again until the collector restarts. Receiver start fails only when no listed project can be read, or when the credentials are missing, and then the collector does not start. A pipeline with no credentials must be removed from the deployed config, like any other source.
 - Metric names are the Cloud Monitoring metric types. A delta metric stays delta in the OTLP output, so check that the receiving backend accepts delta temporality. This was not verified.
+
+#### Daily tier with aggregation
+
+The scrape image carries a local copy of the receiver, `receiver/googlecloudmonitoringreceiver`, joined by a `replace` in `builder-scrape.yaml`. It adds three keys. Without them the receiver behaves as the upstream v0.164.1 code, with one `project_id`, one request per metric and a window of at most 23 h.
+
+- `projects` is a list of project names. It adds to `project_id`, so one instance covers every project and no per-project instance is needed. At least one of `project_id` and `projects` is required. Metric descriptors are read from each project.
+- `aggregation.alignment_period` is the width of the bucket Cloud Monitoring aligns each series over, at least one minute and not longer than `collection_interval`. `24h` gives one point per series for a daily window.
+- `aggregation.per_series_aligners` lists the aligners, each sent as its own request: `ALIGN_MIN`, `ALIGN_MAX`, `ALIGN_MEAN`, `ALIGN_SUM`, `ALIGN_COUNT` and `ALIGN_PERCENTILE_50`. Any other value is refused at startup. The receiver sends one `ListTimeSeries` request per project, metric type and aligner, and emits each aligned result as a gauge with the attribute `stat` set to `min`, `max`, `mean`, `sum`, `count` or `p50`. A `count` result has the unit `1`.
+- With `aggregation` set, `collection_interval` can be longer than 23 h; the window is the whole interval, ending at the metric's ingest delay (60 s when the descriptor gives none). Without `aggregation`, a `collection_interval` above 23 h is refused at startup.
+- `ALIGN_PERCENTILE_50` applies to distribution metrics only. For a metric that is not a distribution the receiver sends no request, emits no point and logs no error; it logs one INFO line per metric name in each run.
+- When Cloud Monitoring rejects a request, for example an aligner that does not fit the metric kind or a project that denies access, the receiver logs a WARN with the project, metric and aligner and goes on with the other requests; a run without aggregation skips the failing project the same way and reports an error only when every project failed. Whether a given metric type accepts a given aligner was not checked for every type.
+- Each request counts against the Cloud Monitoring quota: a daily instance with 2 projects, 2 metrics and 6 aligners sends 24 requests a day, fewer when `ALIGN_PERCENTILE_50` skips non-distribution metrics.
+
+```yaml
+receivers:
+  googlecloudmonitoring/daily:
+    projects: [project-a, project-b]
+    collection_interval: 24h
+    aggregation:
+      alignment_period: 24h
+      per_series_aligners: [ALIGN_MIN, ALIGN_MAX, ALIGN_MEAN, ALIGN_SUM, ALIGN_COUNT, ALIGN_PERCENTILE_50]
+    metrics_list:
+      - metric_name: run.googleapis.com/container/cpu/utilizations
+```
+
+`test/configs/scrape.yaml` has this instance in the `metrics/gcp-daily` pipeline.
 
 ### API permissions
 
@@ -240,7 +307,7 @@ The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metri
 |---|---|
 | `aws_s3` | `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` |
 | `awscloudwatch` logs | `logs:DescribeLogGroups`, `logs:FilterLogEvents` |
-| `awscloudwatch` metrics | `cloudwatch:GetMetricData` (`metrics.queries` only; no discovery, so no `cloudwatch:ListMetrics`) |
+| `cloudwatchmetrics` | `cloudwatch:ListMetrics` and `cloudwatch:GetMetricData` in each account; `sts:AssumeRole` on each `role_arn` for the pod's role |
 | `googlecloudpubsub` | Pub/Sub subscriber role on each subscription |
 | `googlecloudmonitoring` | `roles/monitoring.viewer` on each polled project (`monitoring.timeSeries.list` and `monitoring.metricDescriptors.list`); role contents are from Google's IAM documentation |
 | `azure_event_hub` | Listen on the Event Hub through the connection string |

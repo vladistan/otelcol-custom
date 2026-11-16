@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/metric"
 )
 
 const (
@@ -20,18 +21,34 @@ const (
 	attrFields    = "journald.fields"
 )
 
-// resourceFields is ordered; the tuple key and the mapped-field set both derive from it.
-var resourceFields = [...]struct{ field, attr string }{
-	{"_HOSTNAME", "host.name"},
-	{"_MACHINE_ID", "host.id"},
-	{"_PID", "process.pid"},
-	{"_COMM", "process.command"},
-	{"_SYSTEMD_UNIT", "service.name"},
-}
-
 type journaldProcessor struct {
 	config *Config
 	next   consumer.Logs
+
+	// resFields are the journal fields that become resource attributes; logFields become
+	// log attributes. Both follow map_extended.
+	resFields []fieldMap
+	logFields []fieldMap
+	mapped    map[string]bool
+	resources metric.Int64Histogram
+}
+
+func newJournaldProcessor(cfg *Config, next consumer.Logs, resources metric.Int64Histogram) *journaldProcessor {
+	p := &journaldProcessor{
+		config:    cfg,
+		next:      next,
+		resFields: append([]fieldMap{}, resourceFields...),
+		mapped:    map[string]bool{fieldPriority: true, fieldMessage: true},
+		resources: resources,
+	}
+	if cfg.MapExtended {
+		p.resFields = append(p.resFields, extendedResourceFields...)
+		p.logFields = extendedLogFields
+	}
+	for _, f := range append(append([]fieldMap{}, p.resFields...), p.logFields...) {
+		p.mapped[f.field] = true
+	}
+	return p
 }
 
 func (p *journaldProcessor) Start(context.Context, component.Host) error { return nil }
@@ -48,8 +65,8 @@ func (p *journaldProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 		originalCount := rls.Len()
 		for i := 0; i < originalCount; i++ {
 			rl := rls.At(i)
-			owned := ownedAttrs(rl.Resource().Attributes())
-			if len(owned) == len(resourceFields) || singleTuple(rl, owned) {
+			owned := p.ownedAttrs(rl.Resource().Attributes())
+			if p.allOwned(owned) || p.singleTuple(rl, owned) {
 				p.processInPlace(rl, owned)
 			} else {
 				p.split(rl, rls, owned)
@@ -59,9 +76,10 @@ func (p *journaldProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error
 	} else {
 		for i := 0; i < rls.Len(); i++ {
 			rl := rls.At(i)
-			p.processInPlace(rl, ownedAttrs(rl.Resource().Attributes()))
+			p.processInPlace(rl, p.ownedAttrs(rl.Resource().Attributes()))
 		}
 	}
+	p.resources.Record(ctx, int64(rls.Len()))
 	return p.next.ConsumeLogs(ctx, ld)
 }
 
@@ -78,19 +96,42 @@ func (p *journaldProcessor) processInPlace(rl plog.ResourceLogs, owned map[strin
 	}
 }
 
-// ownedAttrs lists the mapped resource attributes that were on the resource
-// before any record was read. The journal never replaces them: an earlier stage
-// set them on purpose, such as service.name from a container name. An empty
-// string counts as missing, so a failed detector does not block the journal.
-func ownedAttrs(res pcommon.Map) map[string]bool {
+// hasValue is false for a missing attribute and for an empty string.
+func hasValue(res pcommon.Map, key string) bool {
+	v, ok := res.Get(key)
+	return ok && (v.Type() != pcommon.ValueTypeStr || v.Str() != "")
+}
+
+// ownedAttrs lists the mapped resource attributes the journal must not replace: those on the
+// resource before any record was read, an earlier stage having set them on purpose, such as
+// service.name from a container name. An empty string counts as missing, so a failed detector
+// does not block the journal. A resource that carries an attribute of skip_when_resource_has
+// also owns process.pid, process.command, service.name and container.id.
+func (p *journaldProcessor) ownedAttrs(res pcommon.Map) map[string]bool {
 	owned := map[string]bool{}
-	for _, f := range resourceFields {
-		v, ok := res.Get(f.attr)
-		if ok && (v.Type() != pcommon.ValueTypeStr || v.Str() != "") {
+	for _, f := range p.resFields {
+		if hasValue(res, f.attr) {
 			owned[f.attr] = true
 		}
 	}
+	for _, key := range p.config.SkipWhenResourceHas {
+		if hasValue(res, key) {
+			for _, attr := range guardedAttrs {
+				owned[attr] = true
+			}
+			break
+		}
+	}
 	return owned
+}
+
+func (p *journaldProcessor) allOwned(owned map[string]bool) bool {
+	for _, f := range p.resFields {
+		if !owned[f.attr] {
+			return false
+		}
+	}
+	return true
 }
 
 // split moves map records into new ResourceLogs keyed by the resource tuple of
@@ -108,7 +149,7 @@ func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSli
 			if lr.Body().Type() != pcommon.ValueTypeMap {
 				continue
 			}
-			key := tupleKey(lr.Body().Map(), owned)
+			key := p.tupleKey(lr.Body().Map(), owned)
 			group, ok := groups[key]
 			if !ok {
 				group = out.AppendEmpty()
@@ -132,17 +173,25 @@ func (p *journaldProcessor) split(rl plog.ResourceLogs, out plog.ResourceLogsSli
 	rl.ScopeLogs().RemoveIf(func(sl plog.ScopeLogs) bool { return sl.LogRecords().Len() == 0 })
 }
 
+// processRecord maps one record. The order matters: fields are read from the map body first, then
+// keep_fields copies the unmapped ones, body_from_message replaces the body, and the underscore
+// drop runs last, so it changes only a map body that survives.
 func (p *journaldProcessor) processRecord(lr plog.LogRecord, res pcommon.Map, owned map[string]bool) {
 	body := lr.Body().Map()
 
 	if p.config.SetResource {
-		for _, f := range resourceFields {
+		for _, f := range p.resFields {
 			if owned[f.attr] {
 				continue
 			}
 			if v, ok := body.Get(f.field); ok {
 				v.CopyTo(res.PutEmpty(f.attr))
 			}
+		}
+	}
+	for _, f := range p.logFields {
+		if v, ok := body.Get(f.field); ok {
+			v.CopyTo(lr.Attributes().PutEmpty(f.attr))
 		}
 	}
 	if p.config.MapSeverity {
@@ -154,8 +203,11 @@ func (p *journaldProcessor) processRecord(lr plog.LogRecord, res pcommon.Map, ow
 			}
 		}
 	}
+	if p.config.MapExtended {
+		p.moveLeftovers(lr, body)
+	}
 	if p.config.KeepFields {
-		keepUnmapped(lr, body)
+		p.keepUnmapped(lr, body)
 	}
 	if p.config.BodyFromMessage {
 		if v, ok := body.Get(fieldMessage); ok {
@@ -163,12 +215,50 @@ func (p *journaldProcessor) processRecord(lr plog.LogRecord, res pcommon.Map, ow
 			lr.Body().SetStr(msg)
 		}
 	}
+	if p.config.DropUnmappedUnderscore {
+		dropUnderscoreKeys(lr)
+	}
 }
 
-func keepUnmapped(lr plog.LogRecord, body pcommon.Map) {
+// moveLeftovers runs under map_extended once every mapping has read the body. It drops the four
+// internal keys, moves each remaining unmapped key that starts with _ into journald.unknown_fields
+// (set only when there is one), and removes the keys the attributes already carry.
+func (p *journaldProcessor) moveLeftovers(lr plog.LogRecord, body pcommon.Map) {
+	var unknown pcommon.Map
+	body.RemoveIf(func(key string, v pcommon.Value) bool {
+		if internalFields[key] {
+			return true
+		}
+		if !strings.HasPrefix(key, "_") || p.mapped[key] {
+			return false
+		}
+		if unknown == (pcommon.Map{}) {
+			unknown = lr.Attributes().PutEmptyMap(attrUnknownFields)
+		}
+		v.CopyTo(unknown.PutEmpty(key))
+		return true
+	})
+	for _, key := range removedFromBody {
+		body.Remove(key)
+	}
+}
+
+// dropUnderscoreKeys strips the keys that start with _ from a map body that has no MESSAGE.
+func dropUnderscoreKeys(lr plog.LogRecord) {
+	if lr.Body().Type() != pcommon.ValueTypeMap {
+		return
+	}
+	body := lr.Body().Map()
+	if _, hasMessage := body.Get(fieldMessage); hasMessage {
+		return
+	}
+	body.RemoveIf(func(key string, _ pcommon.Value) bool { return strings.HasPrefix(key, "_") })
+}
+
+func (p *journaldProcessor) keepUnmapped(lr plog.LogRecord, body pcommon.Map) {
 	var fields pcommon.Map
 	body.Range(func(k string, v pcommon.Value) bool {
-		if isMapped(k) {
+		if p.mapped[k] {
 			return true
 		}
 		if fields == (pcommon.Map{}) {
@@ -177,18 +267,6 @@ func keepUnmapped(lr plog.LogRecord, body pcommon.Map) {
 		v.CopyTo(fields.PutEmpty(k))
 		return true
 	})
-}
-
-func isMapped(field string) bool {
-	if field == fieldPriority || field == fieldMessage {
-		return true
-	}
-	for _, f := range resourceFields {
-		if f.field == field {
-			return true
-		}
-	}
-	return false
 }
 
 // priority returns PRIORITY as 0-7; anything else reports false so severity stays unchanged.
@@ -209,15 +287,15 @@ func priority(v pcommon.Value) (int, bool) {
 	return n, n >= 0 && n <= 7
 }
 
-func severity(priority int) (plog.SeverityNumber, string) {
+func severity(level int) (plog.SeverityNumber, string) {
 	switch {
-	case priority <= 2:
+	case level <= 2:
 		return plog.SeverityNumberFatal, "FATAL"
-	case priority == 3:
+	case level == 3:
 		return plog.SeverityNumberError, "ERROR"
-	case priority == 4:
+	case level == 4:
 		return plog.SeverityNumberWarn, "WARN"
-	case priority <= 6:
+	case level <= 6:
 		return plog.SeverityNumberInfo, "INFO"
 	default:
 		return plog.SeverityNumberDebug, "DEBUG"
@@ -226,7 +304,7 @@ func severity(priority int) (plog.SeverityNumber, string) {
 
 // singleTuple reports whether every record is a map body sharing one resource
 // tuple; fields of attributes the resource owns are not compared.
-func singleTuple(rl plog.ResourceLogs, owned map[string]bool) bool {
+func (p *journaldProcessor) singleTuple(rl plog.ResourceLogs, owned map[string]bool) bool {
 	var first pcommon.Map
 	seen := false
 	for j := 0; j < rl.ScopeLogs().Len(); j++ {
@@ -240,7 +318,7 @@ func singleTuple(rl plog.ResourceLogs, owned map[string]bool) bool {
 				first, seen = b.Map(), true
 				continue
 			}
-			if !sameTuple(first, b.Map(), owned) {
+			if !p.sameTuple(first, b.Map(), owned) {
 				return false
 			}
 		}
@@ -248,8 +326,8 @@ func singleTuple(rl plog.ResourceLogs, owned map[string]bool) bool {
 	return true
 }
 
-func sameTuple(a, b pcommon.Map, owned map[string]bool) bool {
-	for _, f := range resourceFields {
+func (p *journaldProcessor) sameTuple(a, b pcommon.Map, owned map[string]bool) bool {
+	for _, f := range p.resFields {
 		if owned[f.attr] {
 			continue
 		}
@@ -262,19 +340,19 @@ func sameTuple(a, b pcommon.Map, owned map[string]bool) bool {
 	return true
 }
 
-func tupleKey(body pcommon.Map, owned map[string]bool) string {
-	var b strings.Builder
-	for _, f := range resourceFields {
+func (p *journaldProcessor) tupleKey(body pcommon.Map, owned map[string]bool) string {
+	var key strings.Builder
+	for _, f := range p.resFields {
 		if owned[f.attr] {
 			continue
 		}
 		if v, ok := body.Get(f.field); ok {
-			b.WriteByte('1')
-			b.WriteString(v.AsString())
+			key.WriteByte('1')
+			key.WriteString(v.AsString())
 		} else {
-			b.WriteByte('0')
+			key.WriteByte('0')
 		}
-		b.WriteByte(0)
+		key.WriteByte(0)
 	}
-	return b.String()
+	return key.String()
 }

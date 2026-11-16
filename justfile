@@ -1,9 +1,11 @@
 # otelcol-custom build commands
 # Requires: Go 1.23+, OCB (OpenTelemetry Collector Builder)
 
-# Recipe files: Windows edge and scrape collector.
+# Recipe files: Windows edge, FreeBSD edge and scrape collector.
 import 'just/windows.just'
+import 'just/freebsd.just'
 import 'just/scrape.just'
+import 'just/edge-image.just'
 
 # OCB and collector versions
 # Two OCB versions are pinned: default uses v0.115.0, edge/gateway/scrape use
@@ -252,6 +254,15 @@ check-docker-stats-api-version:
 test-check-docker-stats-api-version:
     scripts/test-check-docker-stats-api-version.sh
 
+# Fail when a sample config turns annotation discovery on, a receiver_creator names no observer in
+# service.extensions, or a manifest compiles prometheus_simple.
+check-k8s-discovery-config:
+    scripts/check-k8s-discovery-config.sh
+
+# Tests for check-k8s-discovery-config; no network.
+test-check-k8s-discovery-config:
+    scripts/test-check-k8s-discovery-config.sh
+
 # Fail unless every builder-*.yaml pins sentry-go to the version in go.mod.
 check-sentry-go-pin:
     scripts/check-sentry-go-pin.sh
@@ -259,6 +270,23 @@ check-sentry-go-pin:
 # Tests for check-sentry-go-pin; no network.
 test-check-sentry-go-pin:
     scripts/test-check-sentry-go-pin.sh
+
+# Fail unless every local replace in a builder-*.yaml points to a directory with that module's go.mod,
+# and the scrape manifest replaces the vendored CloudWatch and Cloud Monitoring receivers.
+check-local-replaces:
+    scripts/check-local-replaces.sh
+
+# Tests for check-local-replaces; no network.
+test-check-local-replaces:
+    scripts/test-check-local-replaces.sh
+
+# Fail when a sample config holds a literal SNMP community, auth_password or privacy_password.
+check-snmp-secrets:
+    scripts/check-snmp-secrets.sh
+
+# Tests for check-snmp-secrets; no network.
+test-check-snmp-secrets:
+    scripts/test-check-snmp-secrets.sh
 
 # Fail when the binary needs glibc newer than 2.35 or a shared library outside
 # libc.so.6 and ld-linux-x86-64.so.2. A static binary passes with no entries.
@@ -489,9 +517,26 @@ test-custom:
     just test-check-sentry-go-pin
     just check-sentry-go-pin
     @echo ""
+    @echo "Checking the local replaces in the builder manifests..."
+    just test-check-local-replaces
+    just check-local-replaces
+
+    @echo "Checking the SNMP secrets in the sample configs..."
+    just test-check-snmp-secrets
+    just check-snmp-secrets
+    @echo ""
     @echo "Checking the docker_stats api_version in the sample configs..."
     just test-check-docker-stats-api-version
     just check-docker-stats-api-version
+    @echo ""
+    @echo "Checking the FreeBSD edge manifest..."
+    just test-check-edge-freebsd-manifest
+    just check-edge-freebsd-manifest
+    just test-check-gomod-graph
+    just test-freebsd-edge
+    @echo "Checking the pod discovery sample configs..."
+    just test-check-k8s-discovery-config
+    just check-k8s-discovery-config
 
 # Run tests for every nested Go module under processor/, receiver/, stanza/
 # and test/, dynamically discovered rather than hardcoded.
@@ -630,15 +675,17 @@ release-edge: build-edge-linux sentry-release
 # =============================================================================
 
 # Stage edge and gateway binaries under public artifact names, with a checksum manifest
-stage-public-artifacts: build-edge-linux build-edge-windows build-gateway-linux
+stage-public-artifacts: build-edge-linux build-edge-windows build-edge-freebsd build-gateway-linux
     #!/usr/bin/env bash
     set -euo pipefail
     just check-edge-glibc build/edge/otelcol-edge
     just check-edge-static build/edge-static/otelcol-edge
+    just check-edge-freebsd build/edge-freebsd/otelcol-edge || { echo "FreeBSD edge: the check failed, no asset is staged" >&2; exit 1; }
     mkdir -p "{{dist_public_dir}}"
     cp build/edge-static/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64"
     cp build/edge/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-linux-amd64-gpu"
     cp build/edge-windows/otelcol-edge.exe "{{dist_public_dir}}/otelcol-edge-{{version}}-windows-amd64.exe"
+    cp build/edge-freebsd/otelcol-edge "{{dist_public_dir}}/otelcol-edge-{{version}}-freebsd-amd64"
     cp build/gateway/otelcol-gateway "{{dist_public_dir}}/otelcol-gateway-{{version}}-linux-amd64"
     just checksum-public-artifacts
     echo "Staged public artifacts for {{version}}:"
@@ -702,6 +749,10 @@ verify-public-artifacts:
     done
     # The Windows exe cannot run in these linux images: check its build settings and stamp.
     just check-edge-windows "${dir}/otelcol-edge-${ver}-windows-amd64.exe"
+    # The FreeBSD binary cannot run here either: checksum, build settings, stamp and ELF header only.
+    [ -f "${dir}/otelcol-edge-${ver}-freebsd-amd64" ] || { echo "Missing staged binary: ${dir}/otelcol-edge-${ver}-freebsd-amd64 - run stage-public-artifacts first" >&2; exit 1; }
+    (cd "$dir" && grep -F "otelcol-edge-${ver}-freebsd-amd64" SHA256SUMS | sha256sum -c -)
+    just check-edge-freebsd "${dir}/otelcol-edge-${ver}-freebsd-amd64"
 
 # Prove the golang and alpine base-image pins agree everywhere they are
 # consumed, by resolving each digest to its real advertised version rather
@@ -713,7 +764,7 @@ check-base-images-sync:
     status=0
 
     ref_justfile="../../.claude/templates/go-cli-release/justfile.reference"
-    for f in Dockerfile.gateway Dockerfile.scrape Dockerfile.edge-build .github/workflows/release.yml "$ref_justfile"; do
+    for f in Dockerfile.gateway Dockerfile.scrape Dockerfile.edge Dockerfile.edge-build .github/workflows/release.yml "$ref_justfile"; do
         [ -f "$f" ] || { echo "error: expected file not found: $f" >&2; exit 1; }
     done
 
@@ -725,6 +776,7 @@ check-base-images-sync:
     sc_go=$(extract_digest Dockerfile.scrape golang)
     gw_alpine=$(extract_digest Dockerfile.gateway alpine)
     sc_alpine=$(extract_digest Dockerfile.scrape alpine)
+    ed_alpine=$(extract_digest Dockerfile.edge alpine)
     jf_alpine=$(grep -m1 -oE 'alpine@sha256:[0-9a-f]{64}' justfile)
     ref_alpine=$(grep -m1 -oE 'alpine@sha256:[0-9a-f]{64}' "$ref_justfile")
 
@@ -734,8 +786,8 @@ check-base-images-sync:
         status=1
     fi
 
-    echo "alpine pins: Dockerfile.gateway=${gw_alpine} Dockerfile.scrape=${sc_alpine} justfile=${jf_alpine} justfile.reference=${ref_alpine}"
-    for pair in "Dockerfile.scrape:${sc_alpine}" "justfile (alpine_verify_image):${jf_alpine}" "justfile.reference:${ref_alpine}"; do
+    echo "alpine pins: Dockerfile.gateway=${gw_alpine} Dockerfile.scrape=${sc_alpine} Dockerfile.edge=${ed_alpine} justfile=${jf_alpine} justfile.reference=${ref_alpine}"
+    for pair in "Dockerfile.scrape:${sc_alpine}" "Dockerfile.edge:${ed_alpine}" "justfile (alpine_verify_image):${jf_alpine}" "justfile.reference:${ref_alpine}"; do
         site="${pair%%:*}"
         val="${pair#*:}"
         if [ "$val" != "$gw_alpine" ]; then
@@ -863,7 +915,7 @@ verify-release-download:
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
     base="https://github.com/${repo}/releases/download/${tag}"
-    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-edge-{{version}}-linux-amd64-gpu" "otelcol-edge-{{version}}-windows-amd64.exe" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
+    for name in "otelcol-edge-{{version}}-linux-amd64" "otelcol-edge-{{version}}-linux-amd64-gpu" "otelcol-edge-{{version}}-windows-amd64.exe" "otelcol-edge-{{version}}-freebsd-amd64" "otelcol-gateway-{{version}}-linux-amd64" "SHA256SUMS"; do
         echo "Downloading $name anonymously..."
         curl -fsSL -o "$tmp/$name" "$base/$name"
     done

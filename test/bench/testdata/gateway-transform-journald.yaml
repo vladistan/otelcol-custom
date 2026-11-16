@@ -1,0 +1,89 @@
+transform/journald:
+  log_statements:
+    - context: log
+      conditions:
+        - IsMap(log.body)
+      statements:
+        # Host and machine information
+        - set(resource.attributes["host.name"], log.body["_HOSTNAME"]) where log.body["_HOSTNAME"] != nil
+        # Cloud host.id from resource detection must win over machine-id.
+        - set(resource.attributes["host.id"], log.body["_MACHINE_ID"]) where log.body["_MACHINE_ID"] != nil and resource.attributes["host.id"] == nil
+        - set(log.attributes["boot.id"], log.body["_BOOT_ID"]) where log.body["_BOOT_ID"] != nil
+        # Process information
+        # A container log keeps the process pid and command its resource carries.
+        - set(resource.attributes["process.pid"], log.body["_PID"]) where log.body["_PID"] != nil and resource.attributes["container.name"] == nil
+        - set(resource.attributes["process.executable.path"], log.body["_EXE"]) where log.body["_EXE"] != nil
+        - set(resource.attributes["process.command"], log.body["_COMM"]) where log.body["_COMM"] != nil and resource.attributes["container.name"] ==
+          nil
+        - set(resource.attributes["process.command_line"], log.body["_CMDLINE"]) where log.body["_CMDLINE"] != nil
+        # User information
+        - set(resource.attributes["user.id"], log.body["_UID"]) where log.body["_UID"] != nil
+        - set(resource.attributes["user.group.id"], log.body["_GID"]) where log.body["_GID"] != nil
+        # Service and container information; a container log keeps its own service.name and container.id.
+        - set(resource.attributes["service.name"], log.body["_SYSTEMD_UNIT"]) where log.body["_SYSTEMD_UNIT"] != nil and resource.attributes["container.name"]
+          == nil
+        - set(resource.attributes["container.id"], log.body["_SYSTEMD_CGROUP"]) where log.body["_SYSTEMD_CGROUP"] != nil and resource.attributes["container.name"]
+          == nil
+        - set(log.attributes["systemd.slice"], log.body["_SYSTEMD_SLICE"]) where log.body["_SYSTEMD_SLICE"] != nil
+        - set(log.attributes["systemd.invocation_id"], log.body["_SYSTEMD_INVOCATION_ID"]) where log.body["_SYSTEMD_INVOCATION_ID"] != nil
+        # Transport and source information
+        - set(log.attributes["log.source"], log.body["_TRANSPORT"]) where log.body["_TRANSPORT"] != nil
+        # Convert PRIORITY to OTEL severity levels (RFC 3164 syslog)
+        - set(log.severity_number, SEVERITY_NUMBER_FATAL) where log.body["PRIORITY"] != nil and Int(log.body["PRIORITY"]) <= 2
+        - set(log.severity_text, "FATAL") where log.body["PRIORITY"] != nil and Int(log.body["PRIORITY"]) <= 2
+        - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.body["PRIORITY"] == "3"
+        - set(log.severity_text, "ERROR") where log.body["PRIORITY"] == "3"
+        - set(log.severity_number, SEVERITY_NUMBER_WARN) where log.body["PRIORITY"] == "4"
+        - set(log.severity_text, "WARN") where log.body["PRIORITY"] == "4"
+        - set(log.severity_number, SEVERITY_NUMBER_INFO) where log.body["PRIORITY"] == "6"
+        - set(log.severity_text, "INFO") where log.body["PRIORITY"] == "6"
+        - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where log.body["PRIORITY"] == "7"
+        - set(log.severity_text, "DEBUG") where log.body["PRIORITY"] == "7"
+        # Clean up processed journald fields
+        - delete_key(log.body, "_HOSTNAME")
+        - delete_key(log.body, "_MACHINE_ID")
+        - delete_key(log.body, "_BOOT_ID")
+        - delete_key(log.body, "_PID")
+        - delete_key(log.body, "_EXE")
+        - delete_key(log.body, "_COMM")
+        - delete_key(log.body, "_CMDLINE")
+        - delete_key(log.body, "_UID")
+        - delete_key(log.body, "_GID")
+        - delete_key(log.body, "_SYSTEMD_UNIT")
+        - delete_key(log.body, "_SYSTEMD_CGROUP")
+        - delete_key(log.body, "_SYSTEMD_SLICE")
+        - delete_key(log.body, "_SYSTEMD_INVOCATION_ID")
+        - delete_key(log.body, "_TRANSPORT")
+        - delete_key(log.body, "PRIORITY")
+        # Map syslog fields to proper attributes
+        - set(log.attributes["syslog.facility.code"], log.body["SYSLOG_FACILITY"]) where log.body["SYSLOG_FACILITY"] != nil
+        - delete_key(log.body, "SYSLOG_FACILITY") where log.body["SYSLOG_FACILITY"] != nil
+        - set(log.attributes["syslog.appname"], log.body["SYSLOG_IDENTIFIER"]) where log.body["SYSLOG_IDENTIFIER"] != nil
+        - delete_key(log.body, "SYSLOG_IDENTIFIER") where log.body["SYSLOG_IDENTIFIER"] != nil
+        - set(log.attributes["syslog.procid"], log.body["SYSLOG_PID"]) where log.body["SYSLOG_PID"] != nil
+        - delete_key(log.body, "SYSLOG_PID") where log.body["SYSLOG_PID"] != nil
+        # Map MESSAGE field to standard log body fields
+        - set(log.body, log.body["MESSAGE"]) where IsMap(log.body) and log.body["MESSAGE"] != nil
+        - set(log.attributes["message"], log.body["MESSAGE"]) where IsMap(log.body) and log.body["MESSAGE"] != nil
+        - delete_key(log.body, "MESSAGE") where IsMap(log.body) and log.body["MESSAGE"] != nil
+        # Extract capabilities properly (convert hex to readable format)
+        - set(log.attributes["process.capabilities.effective"], log.body["_CAP_EFFECTIVE"]) where IsMap(log.body) and log.body["_CAP_EFFECTIVE"] !=
+          nil
+        - delete_key(log.body, "_CAP_EFFECTIVE") where IsMap(log.body) and log.body["_CAP_EFFECTIVE"] != nil
+        # Clean up SELinux context (set as-is, newlines will be preserved)
+        - set(log.attributes["selinux.context"], log.body["_SELINUX_CONTEXT"]) where IsMap(log.body) and log.body["_SELINUX_CONTEXT"] != nil
+        - delete_key(log.body, "_SELINUX_CONTEXT") where IsMap(log.body) and log.body["_SELINUX_CONTEXT"] != nil
+        # Map runtime scope to container runtime info
+        - set(resource.attributes["container.runtime"], log.body["_RUNTIME_SCOPE"]) where IsMap(log.body) and log.body["_RUNTIME_SCOPE"] != nil
+        - delete_key(log.body, "_RUNTIME_SCOPE") where IsMap(log.body) and log.body["_RUNTIME_SCOPE"] != nil
+        - delete_key(log.body, "_SOURCE_REALTIME_TIMESTAMP") where IsMap(log.body) and log.body["_SOURCE_REALTIME_TIMESTAMP"] != nil
+        # Drop cursor and monotonic timestamp (not needed for observability)
+        - delete_key(log.body, "__CURSOR") where IsMap(log.body) and log.body["__CURSOR"] != nil
+        - delete_key(log.body, "__MONOTONIC_TIMESTAMP") where IsMap(log.body) and log.body["__MONOTONIC_TIMESTAMP"] != nil
+        # Drop stream ID (internal journald field)
+        - delete_key(log.body, "_STREAM_ID") where IsMap(log.body) and log.body["_STREAM_ID"] != nil
+        # Catch-all: Move any remaining fields starting with _ or __ to unknown fields
+        - set(log.attributes["journald.unknown_fields"], log.body) where IsMap(log.body) and log.body != nil
+        - keep_keys(log.attributes["journald.unknown_fields"], ["_*", "__*"]) where IsMap(log.body) and log.attributes["journald.unknown_fields"] !=
+          nil
+        - delete_matching_keys(log.body, "^_.*") where IsMap(log.body) and log.body != nil

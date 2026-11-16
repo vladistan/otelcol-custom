@@ -5,15 +5,8 @@ package zfskstatreceiver
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io"
-	"io/fs"
 	"math"
-	"os"
-	"path/filepath"
-	"slices"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,12 +17,8 @@ import (
 
 const (
 	scopeName = "github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver"
-	// maxKstatFile bounds one read; a pool io file is a few hundred bytes.
-	maxKstatFile = 1 << 20
-	arcKey       = "\x00arcstats"
-	uptimePath   = "/proc/uptime"
-	// maxUptime keeps a corrupt uptime from overflowing the duration.
-	maxUptime = 50 * 365 * 24 * time.Hour
+	// datasetNameField is the objset kstat field that holds the dataset name.
+	datasetNameField = "dataset_name"
 )
 
 // ioPoint maps one io-file field to a data point; attr is empty when the point has no extra attribute.
@@ -38,7 +27,7 @@ type ioPoint struct {
 	scale              float64
 }
 
-// ioMetric is one pool metric built from io-file fields.
+// ioMetric is one metric built from io-file fields.
 type ioMetric struct {
 	name, unit, description string
 	gauge                   bool
@@ -63,6 +52,15 @@ var ioMetrics = []ioMetric{
 	}},
 }
 
+var datasetMetrics = []ioMetric{
+	{"zfs.dataset.io.bytes", "By", "Bytes read from and written to the dataset.", false, []ioPoint{
+		{"nread", "direction", "read", 1}, {"nwritten", "direction", "write", 1},
+	}},
+	{"zfs.dataset.io.operations", "{operation}", "Read and write operations on the dataset.", false, []ioPoint{
+		{"reads", "direction", "read", 1}, {"writes", "direction", "write", 1},
+	}},
+}
+
 // arcMetric is one ARC metric read from the arcstats file by name.
 type arcMetric struct {
 	field, name, unit, description string
@@ -76,48 +74,150 @@ var arcMetrics = []arcMetric{
 }
 
 type poolStats struct {
-	name  string
-	io    map[string]uint64
-	state string
+	name     string
+	io       map[string]uint64
+	state    string
+	datasets []datasetStats
 }
 
-// scraper reads the kstat files; it is used from one goroutine only.
+type datasetStats struct {
+	pool, name string
+	fields     map[string]uint64
+}
+
+// snapshot is what one source read returns.
+type snapshot struct {
+	pools []poolStats
+	arc   map[string]uint64
+}
+
+// kstatSource reads the ZFS statistics from one place.
+type kstatSource interface {
+	// read returns the selected pools and the ARC stats; a host without ZFS gives an empty snapshot.
+	read() (snapshot, error)
+	// bootTime is the host boot, or now when it cannot be read.
+	bootTime(now time.Time) time.Time
+}
+
+// episodes logs a problem once until the same key reads cleanly again.
+type episodes struct {
+	logger *zap.Logger
+	warned map[string]bool
+}
+
+func newEpisodes(logger *zap.Logger) *episodes {
+	return &episodes{logger: logger, warned: map[string]bool{}}
+}
+
+func (e *episodes) warn(key, msg string, fields ...zap.Field) {
+	if e.warned[key] {
+		return
+	}
+	e.warned[key] = true
+	e.logger.Warn(msg, fields...)
+}
+
+func (e *episodes) clear(key string) { delete(e.warned, key) }
+
+// scraper turns source reads into metrics; it is used from one goroutine only.
 type scraper struct {
-	logger  *zap.Logger
 	cfg     *Config
+	src     kstatSource
+	ep      *episodes
+	resets  *resetTracker
 	started time.Time // receiver start
 	start   time.Time // start time of the cumulative sums
-	warned  map[string]bool
-	absent  bool
 }
 
-// newScraper starts the cumulative sums at host boot, or at the receiver start when boot time is unknown.
+// newScraper picks the source named by the config; auto means sysctl on FreeBSD and proc elsewhere.
 func newScraper(logger *zap.Logger, cfg *Config) *scraper {
+	if cfg.resolvedSource() == sourceSysctl {
+		return newScraperWith(logger, cfg, newSysctlSource(logger, cfg, realSysctl()))
+	}
+	return newScraperWith(logger, cfg, newProcSource(logger, cfg))
+}
+
+// newScraperWith starts the cumulative sums at host boot, or at the receiver start when boot time is unknown.
+func newScraperWith(logger *zap.Logger, cfg *Config, src kstatSource) *scraper {
 	now := time.Now()
 	return &scraper{
-		logger:  logger,
-		cfg:     cfg,
-		started: now,
-		start:   bootTime(uptimePath, now, now),
-		warned:  map[string]bool{},
+		cfg: cfg, src: src, ep: newEpisodes(logger), resets: newResetTracker(),
+		started: now, start: src.bootTime(now),
 	}
 }
 
-// bootTime is now minus the uptime in the first field of the file; fallback when it cannot be read.
-func bootTime(path string, now, fallback time.Time) time.Time {
-	body, err := readCapped(path)
-	if err != nil {
-		return fallback
+// resetTracker moves the start time of a cumulative series to the scrape time
+// when its value goes down, which is how a remounted dataset or a re-imported
+// pool shows up. A series absent from a scrape is forgotten.
+type resetTracker struct {
+	last, seen map[string]trackedPoint
+}
+
+type trackedPoint struct {
+	value uint64
+	start pcommon.Timestamp
+}
+
+func newResetTracker() *resetTracker {
+	return &resetTracker{last: map[string]trackedPoint{}, seen: map[string]trackedPoint{}}
+}
+
+// startFor returns the start time of the series with this key.
+func (t *resetTracker) startFor(key string, v uint64, boot, now pcommon.Timestamp) pcommon.Timestamp {
+	start := boot
+	if prev, ok := t.last[key]; ok {
+		start = prev.start
+		if v < prev.value {
+			start = now
+		}
 	}
-	fields := strings.Fields(string(body))
-	if len(fields) == 0 {
-		return fallback
+	t.seen[key] = trackedPoint{v, start}
+	return start
+}
+
+// endScrape drops the series that this scrape did not see.
+func (t *resetTracker) endScrape() {
+	t.last, t.seen = t.seen, map[string]trackedPoint{}
+}
+
+const capKey = "max_datasets"
+
+// capDatasets keeps the first max datasets in sorted order and warns once per episode when it drops some.
+func (s *scraper) capDatasets(pools []poolStats) {
+	limit := s.cfg.MaxDatasets
+	total := 0
+	for _, p := range pools {
+		total += len(p.datasets)
 	}
-	uptime, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil || !(uptime >= 0) || uptime > maxUptime.Seconds() {
-		return fallback
+	if limit <= 0 || total <= limit {
+		s.ep.clear(capKey)
+		return
 	}
-	return now.Add(-time.Duration(uptime * float64(time.Second)))
+	all := make([]datasetStats, 0, total)
+	for _, p := range pools {
+		all = append(all, p.datasets...)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].name != all[j].name {
+			return all[i].name < all[j].name
+		}
+		return all[i].pool < all[j].pool
+	})
+	keep := make(map[[2]string]bool, limit)
+	for _, d := range all[:limit] {
+		keep[[2]string{d.pool, d.name}] = true
+	}
+	for i := range pools {
+		kept := pools[i].datasets[:0:0]
+		for _, d := range pools[i].datasets {
+			if keep[[2]string{d.pool, d.name}] {
+				kept = append(kept, d)
+			}
+		}
+		pools[i].datasets = kept
+	}
+	s.ep.warn(capKey, "ZFS datasets above max_datasets are not reported",
+		zap.Int("datasets", total), zap.Int("max_datasets", limit))
 }
 
 // scrape returns no resource when there is nothing to report, so a host without ZFS sends nothing.
@@ -125,19 +225,9 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	if err := ctx.Err(); err != nil {
 		return pmetric.NewMetrics(), err
 	}
-	names, err := s.poolNames()
+	snap, err := s.src.read()
 	if err != nil {
 		return pmetric.NewMetrics(), err
-	}
-	var pools []poolStats
-	for _, name := range names {
-		if p, ok := s.readPool(name); ok {
-			pools = append(pools, p)
-		}
-	}
-	var arc map[string]uint64
-	if s.cfg.ArcStats {
-		arc = s.readArc()
 	}
 
 	md := pmetric.NewMetrics()
@@ -145,141 +235,55 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	sm.Scope().SetName(scopeName)
 	now := pcommon.NewTimestampFromTime(time.Now())
 	start := pcommon.NewTimestampFromTime(s.start)
-	emitIO(sm, pools, start, now)
-	emitState(sm, pools, now)
-	emitArc(sm, arc, start, now)
+	if s.cfg.Datasets {
+		s.capDatasets(snap.pools)
+	}
+	emitIO(sm, ioMetrics, poolSeries(snap.pools), s.resets, start, now)
+	emitState(sm, snap.pools, now)
+	if s.cfg.Datasets {
+		emitIO(sm, datasetMetrics, datasetSeries(snap.pools), s.resets, start, now)
+	}
+	s.resets.endScrape()
+	emitArc(sm, snap.arc, start, now)
 	if sm.Metrics().Len() == 0 {
 		return pmetric.NewMetrics(), nil
 	}
 	return md, nil
 }
 
-// poolNames lists the selected pool directories; a missing kstat_path is not an error.
-func (s *scraper) poolNames() ([]string, error) {
-	entries, err := os.ReadDir(s.cfg.KstatPath)
-	if errors.Is(err, fs.ErrNotExist) {
-		if !s.absent {
-			s.absent = true
-			s.logger.Info("ZFS kstat path not found, no ZFS metrics until it exists",
-				zap.String("kstat_path", s.cfg.KstatPath))
-		}
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", s.cfg.KstatPath, err)
-	}
-	s.absent = false
-	var names []string
-	for _, e := range entries {
-		name := e.Name()
-		if !e.IsDir() || slices.Contains(s.cfg.ExcludePools, name) {
-			continue
-		}
-		if len(s.cfg.Pools) > 0 && !slices.Contains(s.cfg.Pools, name) {
-			continue
-		}
-		names = append(names, name)
-	}
-	return names, nil
+// series is one set of io fields and the attributes of its data points.
+type series struct {
+	attrs  [][2]string
+	fields map[string]uint64
 }
 
-// readPool reads the io and state files of one pool; the pool is skipped when its io file is missing or bad.
-func (s *scraper) readPool(name string) (poolStats, bool) {
-	dir := filepath.Join(s.cfg.KstatPath, name)
-	fields, err := readIO(filepath.Join(dir, "io"))
-	if errors.Is(err, fs.ErrNotExist) {
-		s.logger.Debug("ZFS pool has no io file, skipping", zap.String("pool", name))
-		return poolStats{}, false
+func poolSeries(pools []poolStats) []series {
+	out := make([]series, 0, len(pools))
+	for _, p := range pools {
+		out = append(out, series{[][2]string{{"zfs.pool", p.name}}, p.io})
 	}
-	if err != nil {
-		s.warnOnce(name, "Skipping ZFS pool with an unreadable io file", zap.String("pool", name), zap.Error(err))
-		return poolStats{}, false
-	}
-	delete(s.warned, name)
-
-	p := poolStats{name: name, io: fields}
-	body, err := readCapped(filepath.Join(dir, "state"))
-	if err != nil {
-		s.logger.Debug("ZFS pool state not readable", zap.String("pool", name), zap.Error(err))
-		return p, true
-	}
-	p.state = strings.TrimSpace(string(body))
-	return p, true
+	return out
 }
 
-// readArc returns the numeric rows of the arcstats file; nil when it cannot be read.
-func (s *scraper) readArc() map[string]uint64 {
-	body, err := readCapped(filepath.Join(s.cfg.KstatPath, "arcstats"))
-	if errors.Is(err, fs.ErrNotExist) {
-		s.logger.Debug("ZFS arcstats file not found")
-		return nil
-	}
-	if err != nil {
-		s.warnOnce(arcKey, "Skipping ZFS ARC metrics, arcstats not readable", zap.Error(err))
-		return nil
-	}
-	delete(s.warned, arcKey)
-
-	stats := map[string]uint64{}
-	lines := strings.Split(string(body), "\n")
-	for _, line := range lines[min(2, len(lines)):] {
-		f := strings.Fields(line)
-		if len(f) != 3 {
-			continue
-		}
-		if v, err := strconv.ParseUint(f[2], 10, 64); err == nil {
-			stats[f[0]] = v
+func datasetSeries(pools []poolStats) []series {
+	var out []series
+	for _, p := range pools {
+		for _, d := range p.datasets {
+			out = append(out, series{[][2]string{{"zfs.pool", d.pool}, {"zfs.dataset", d.name}}, d.fields})
 		}
 	}
-	return stats
+	return out
 }
 
-// warnOnce logs a problem once until the same key reads cleanly again.
-func (s *scraper) warnOnce(key, msg string, fields ...zap.Field) {
-	if s.warned[key] {
-		return
+// seriesKey names one data point series: the metric, its attributes and the point's own attribute.
+func seriesKey(metric string, attrs [][2]string, pt ioPoint) string {
+	var b strings.Builder
+	b.WriteString(metric)
+	for _, a := range attrs {
+		b.WriteString("\x00" + a[0] + "=" + a[1])
 	}
-	s.warned[key] = true
-	s.logger.Warn(msg, fields...)
-}
-
-func readCapped(path string) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return io.ReadAll(io.LimitReader(f, maxKstatFile))
-}
-
-func readIO(path string) (map[string]uint64, error) {
-	body, err := readCapped(path)
-	if err != nil {
-		return nil, err
-	}
-	return parseIO(string(body))
-}
-
-// parseIO reads an io kstat: a header line, a line of field names and a line of values.
-// Fields are matched by name, so a column added by a ZFS release does not shift the rest.
-func parseIO(text string) (map[string]uint64, error) {
-	lines := strings.Split(strings.TrimSpace(text), "\n")
-	if len(lines) < 3 {
-		return nil, errors.New("io file has fewer than three lines")
-	}
-	names, values := strings.Fields(lines[1]), strings.Fields(lines[2])
-	if len(names) == 0 || len(values) < len(names) {
-		return nil, fmt.Errorf("io file has %d names and %d values", len(names), len(values))
-	}
-	fields := make(map[string]uint64, len(names))
-	for i, name := range names {
-		v, err := strconv.ParseUint(values[i], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("io field %s: %w", name, err)
-		}
-		fields[name] = v
-	}
-	return fields, nil
+	b.WriteString("\x00" + pt.attr + "=" + pt.value + "\x00" + pt.field)
+	return b.String()
 }
 
 func newMetric(sm pmetric.ScopeMetrics, name, unit, description string, gauge bool) pmetric.NumberDataPointSlice {
@@ -305,13 +309,13 @@ func setValue(dp pmetric.NumberDataPoint, v uint64, scale float64) {
 	dp.SetIntValue(int64(min(v, math.MaxInt64)))
 }
 
-func emitIO(sm pmetric.ScopeMetrics, pools []poolStats, start, now pcommon.Timestamp) {
-	for _, m := range ioMetrics {
+func emitIO(sm pmetric.ScopeMetrics, metrics []ioMetric, all []series, tr *resetTracker, boot, now pcommon.Timestamp) {
+	for _, m := range metrics {
 		var dps pmetric.NumberDataPointSlice
 		created := false
-		for _, p := range pools {
+		for _, s := range all {
 			for _, pt := range m.points {
-				v, ok := p.io[pt.field]
+				v, ok := s.fields[pt.field]
 				if !ok {
 					continue
 				}
@@ -319,12 +323,14 @@ func emitIO(sm pmetric.ScopeMetrics, pools []poolStats, start, now pcommon.Times
 					dps, created = newMetric(sm, m.name, m.unit, m.description, m.gauge), true
 				}
 				dp := dps.AppendEmpty()
-				dp.Attributes().PutStr("zfs.pool", p.name)
+				for _, a := range s.attrs {
+					dp.Attributes().PutStr(a[0], a[1])
+				}
 				if pt.attr != "" {
 					dp.Attributes().PutStr(pt.attr, pt.value)
 				}
 				if !m.gauge {
-					dp.SetStartTimestamp(start)
+					dp.SetStartTimestamp(tr.startFor(seriesKey(m.name, s.attrs, pt), v, boot, now))
 				}
 				dp.SetTimestamp(now)
 				setValue(dp, v, pt.scale)

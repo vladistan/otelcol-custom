@@ -67,12 +67,18 @@ the default values (three resources, `some` and `full`, two values).
 
 ### ZFS pools and ARC — `receiver/zfskstatreceiver`
 
-Reads the OpenZFS kstat files under `kstat_path` (default `/proc/spl/kstat/zfs`)
-every `collection_interval` (default `60s`). The file `io` of each pool directory is
-parsed by field name. Pool metrics carry the attribute `zfs.pool`. Cumulative
-sums start at host boot (from `/proc/uptime`), or at the time the receiver
-started when the uptime cannot be read; the kstat counters themselves run from
-the module load or the pool import, so the first value is not zero.
+Reads the OpenZFS kstats every `collection_interval` (default `60s`). With
+`source: proc` (the default on Linux) it reads the files under `kstat_path` (default
+`/proc/spl/kstat/zfs`); the file `io` of each pool directory is parsed by field name.
+OpenZFS 2.1 and later have no pool-level I/O counters and no `io` file; `zfs.pool.io.*`
+appears only where the legacy `io` file exists (OpenZFS 2.0 and older). A pool without
+it still gives `zfs.pool.state` and, with `datasets`, the dataset metrics.
+With `source: sysctl` (the default on FreeBSD) it reads the `kstat.zfs` sysctl tree.
+`source: auto` picks by operating system. Pool metrics carry the attribute `zfs.pool`.
+Cumulative sums start at host boot (from `/proc/uptime`, or `kern.boottime` on
+FreeBSD), or at the time the receiver started when the boot time cannot be read; the
+kstat counters themselves run from the module load or the pool import, so the first
+value is not zero.
 
 | Metric | Type | Unit | Attributes | Source |
 |---|---|---|---|---|
@@ -82,6 +88,8 @@ the module load or the pool import, so the first value is not zero.
 | `zfs.pool.io.run.busy.time` | monotonic sum | `s` | `zfs.pool` | `rtime`, nanoseconds converted |
 | `zfs.pool.io.queue.length` | gauge | `{operation}` | `zfs.pool`, `queue` (`wait`, `run`) | `wcnt`, `rcnt` |
 | `zfs.pool.state` | gauge, always 1 | `1` | `zfs.pool`, `state` (for example `ONLINE`, `DEGRADED`) | pool `state` file |
+| `zfs.dataset.io.bytes` | monotonic sum | `By` | `zfs.pool`, `zfs.dataset`, `direction` | `objset-*` `nread`, `nwritten`; only with `datasets: true` |
+| `zfs.dataset.io.operations` | monotonic sum | `{operation}` | `zfs.pool`, `zfs.dataset`, `direction` | `objset-*` `reads`, `writes`; only with `datasets: true` |
 | `zfs.arc.size` | gauge | `By` | none | `arcstats` `size` |
 | `zfs.arc.hits` | monotonic sum | `{hit}` | none | `arcstats` `hits` |
 | `zfs.arc.misses` | monotonic sum | `{miss}` | none | `arcstats` `misses` |
@@ -97,11 +105,164 @@ When a pool changes from `ONLINE` to `DEGRADED` the `ONLINE` series stops and a
 `DEGRADED` series starts, so an alert rule should test for `state != ONLINE` or
 for a missing `ONLINE` series, not for a value of 0.
 
-The three `zfs.arc.*` metrics are on while `arcstats` is `true` (the default). A host
-without ZFS has no `kstat_path`: the receiver starts, logs one info line, sends
-nothing and looks again at each interval. A pool whose `io` file is empty, short or
-not numeric is skipped with one warning until it reads cleanly again. Linux edge
-builds only; see the [README](../README.md#zfs-pool-and-arc-metrics).
+The three `zfs.arc.*` metrics are on while `arcstats` is `true` (the default). The two
+`zfs.dataset.io.*` metrics are off until `datasets` is `true`; they read the
+`objset-*` kstat of each dataset on both sources, matching fields by name, and add
+one series per dataset and direction. FreeBSD has no per-pool `io` kstat, so the
+`sysctl` source emits no `zfs.pool.io.*` metrics and logs no warning for it; it
+still emits `zfs.pool.state`, the ARC metrics and, with `datasets`, the dataset
+metrics. A host without ZFS has no `kstat_path` (or no `kstat.zfs` sysctl): the
+receiver starts, logs one info line, sends nothing and looks again at each interval.
+A sysctl error other than not found logs one warning until a read succeeds again.
+`max_datasets` (default 100, 0 for no cap) keeps the first datasets in sorted order and
+logs one warning until the count fits again. A dataset name may hold spaces on both
+sources. The dataset and pool counters restart at the scrape time when a value goes
+down, which is how a remounted dataset or a re-imported pool appears; other sums
+start at host boot. A pool whose `io` file is empty, short or
+not numeric is skipped with one warning until it reads cleanly again. See the [README](../README.md#zfs-pool-and-arc-metrics).
+
+### Proxmox VE — `receiver/pvereceiver`
+
+Reads a Proxmox VE cluster through its HTTP API. It has two scrapers, each switched by its own
+`enabled` key and each with its own API token. The `resources` scraper reads `/cluster/resources`,
+`/cluster/status` and `/version` every `collection_interval` (default `60s`, one request at a time,
+`timeout` 10 s) and covers every node, guest and storage of the cluster (entries of type `sdn` and `pool` are skipped), so enable it on **one node
+per cluster**. The `guests` scraper asks the QEMU guest agent of each running guest on **its own
+node** (`node`, default the local host name) every 15 minutes with a start offset, one request at a
+time with a 5 s timeout, and enable it on every node. All names start with `pve.`.
+
+Attributes on every `resources` point: `pve.resource.type` (`node`, `qemu`, `lxc`, `storage`),
+`pve.resource.id` (for example `qemu/100`) and `pve.node`.
+
+| Metric | Type | Unit | Extra attributes |
+|---|---|---|---|
+| `pve.resource.up` | gauge | `1` | `status` (the raw status: `running`, `stopped`, `online`, `offline`, `available`, `unknown`); 1 for `running`, `online`, `available` |
+| `pve.resource.cpu.utilization` | gauge | `1` | none |
+| `pve.resource.cpu.limit` | gauge | `{cpu}` | none |
+| `pve.resource.memory.usage`, `pve.resource.memory.limit` | gauge | `By` | none |
+| `pve.resource.disk.usage`, `pve.resource.disk.limit` | gauge | `By` | none |
+| `pve.resource.uptime` | gauge | `s` | none |
+| `pve.resource.network.io` | monotonic sum | `By` | `network.io.direction` (`receive`, `transmit`) |
+| `pve.resource.disk.io` | monotonic sum | `By` | `disk.io.direction` (`read`, `write`) |
+| `pve.storage.shared` | gauge | `1` | none |
+| `pve.guest.info` | gauge, always 1 | `1` | `name`, `type`, `tags`, `template` |
+| `pve.storage.info` | gauge, always 1 | `1` | `storage`, `content`, `plugintype` |
+| `pve.node.info` | gauge, always 1 | `1` | `name`, `nodeid`, `level` |
+| `pve.version.info` | gauge, always 1 | `1` | `version`, `release`, `repoid` |
+| `pve.resource.ha.state` | gauge, always 1 | `1` | `state`; only for guests the HA manager owns |
+
+The sums start at the guest start (now minus the uptime) when the answer has an uptime. A node that is
+down makes PVE report its guests with the status `unknown`: they give `pve.resource.up` of 0 with
+`status=unknown` and no other point, and the data of the other nodes is unchanged.
+
+Four calls are off by default and made only when their key under `resources` is `true`:
+
+| Key | Call | Metric | Attributes |
+|---|---|---|---|
+| `subscription` | `/nodes/{node}/subscription`, online nodes | `pve.subscription.status` (gauge 1) | `pve.node`, `status`, `level` |
+| `replication` | `/cluster/replication` | `pve.replication.job` (gauge 1) | `id`, `guest`, `source`, `target` |
+| `backup_info` | `/cluster/backup-info/not-backed-up` | `pve.guest.not_backed_up` (gauge 1) | `pve.vmid`, `name`, `type` |
+| `guest_config` | `/nodes/{node}/{type}/{id}/config`, one call per guest | `pve.guest.onboot` (gauge) | `pve.vmid`, `pve.node`, `type` |
+
+The `guests` scraper skips guests that are not running. After a failed agent call it leaves that guest
+alone for the collection interval, then twice as long after each further failure, never longer than 24
+hours. A guest whose agent is not running (HTTP 500 "QEMU guest agent is not running") is a normal
+state: it is recorded once as `agent=unavailable` and checked again at its backoff. Containers have no
+agent; their addresses come from `/nodes/{node}/lxc/{id}/interfaces`.
+
+| Signal | Name | Type, unit | Attributes |
+|---|---|---|---|
+| metric | `pve.guest.filesystem.usage` | gauge, `By` | `pve.vmid`, `pve.node`, `mountpoint`, `fstype`, `device` |
+| metric | `pve.guest.filesystem.size` | gauge, `By` | same |
+| log | `pve guest fact` | change event | `pve.vmid`, `pve.node`, `pve.fact` (`os`, `hostname`, `addresses`, `agent`), `pve.fact.value` |
+
+A fact record is written when a value first appears or changes; a sweep that finds nothing new writes
+none. `addresses` is a sorted, comma-joined list without loopback and link-local addresses, which change with a bridge or a container. A fact is counted as delivered only when the logs pipeline took it; a failed send, or a receiver with no logs pipeline, makes the next sweep write it again. A guest that fails (not "agent not running") logs one WARN when it enters backoff.
+
+Series count for the `resources` scraper: `13G + 13N + 5S` for G guests, N nodes and S storages, plus
+the info gauges. The `guests` scraper adds two series per mount of each running guest with an agent.
+Each guest restart changes no series; a new or removed guest id adds or ends a set. Linux edge builds
+only; see the [README](../README.md#proxmox-ve-metrics).
+
+### Hardware sensors — `receiver/hwmonreceiver`
+
+Reads `hwmon_path` (default `/sys/class/hwmon`) and the thermal zones in the sibling
+directory `thermal` every `collection_interval` (default `60s`), and on FreeBSD the
+CPU and ACPI temperature sysctls. All metrics are gauges with the attributes `hw.id`,
+`hw.name` and `hw.parent`; the names follow the `hw.*` semantic conventions.
+
+| Metric | Type | Unit | Extra attribute | Source |
+|---|---|---|---|---|
+| `hw.temperature` | gauge, double | `Cel` | none | `temp<N>_input` (millidegrees divided by 1000), thermal zone `temp` |
+| `hw.temperature.limit` | gauge, double | `Cel` | `hw.limit_type` | `temp<N>_max` (`max`), `_crit` (`critical`), `_min` (`low.degraded`), `_lcrit` (`low.critical`) |
+| `hw.fan.speed` | gauge, integer | `rpm` | none | `fan<N>_input` |
+| `hw.voltage` | gauge, double | `V` | none | `in<N>_input` (millivolts divided by 1000) |
+
+`hw.parent` is the chip name (`coretemp`, `nvme`, `nct6775`) or the thermal zone type
+(`acpitz`). `hw.name` is the sensor label, or the file stem (`temp2`) when there is
+no label file. `hw.id` is the chip name and the file stem, for example
+`coretemp/temp3`, and stays the same across scrapes. Two chips with one name, such
+as two NVMe drives, get the hardware address of their device after an `@`, for
+example `nvme@0000:01:00.0/temp1` (the PCI function; for a platform device its
+directory name, such as `coretemp@coretemp.1/temp1`). The address stays with the
+drive when the kernel numbers the `nvme` or `hwmon` devices differently at the next
+boot. A chip with no device link falls back to its `hwmon<N>` directory, which is not
+stable across boots. Adding a second chip of a name changes the `hw.id` of the first
+one. A thermal zone has the id `thermal/thermal_zone<N>`; a zone whose type is also
+the name of a hwmon chip that gave a reading (the kernel registers one chip per zone
+with `CONFIG_THERMAL_HWMON`; hyphens in the type become underscores) is not read
+again, so the sensor is reported once. The `include` and `exclude` globs match
+`<hw.parent>:<hw.name>`, for example `nvme:Composite`.
+
+`hw.temperature` is a double, not the integer of the semantic conventions, so the
+millidegree precision of sysfs is kept. The `limits` key adds one
+`hw.temperature.limit` series per limit file that exists. A limit of -273.15 °C or
+below (NVMe drives report that for a limit they do not have) is a placeholder and gives
+no series. The `cpu_cores` key (off by
+default) adds the `Core <N>` sensors of the `coretemp` chip, one per physical core.
+
+Series count, from the kernel hwmon ABI and not measured on a fleet host: a
+`coretemp` chip gives 1 package series, plus 1 per core with `cpu_cores`; an NVMe
+drive gives 1 to 3 temperatures; a SATA disk with `drivetemp` gives 1; an
+`nct6775`-type board chip gives up to about 10 fans and voltages. With `limits` each
+temperature adds up to 4 series. A dual-socket 8-core host is about 10 to 15 series
+with the defaults, about 30 to 40 with `cpu_cores`, and up to about 100 with both and
+all limits. A VM has few or none.
+
+On FreeBSD `hw.id` is `cpu<N>` (with `cpu_cores: true`) or `acpi_tz<N>`, `hw.parent` is
+`cpu` or `acpi`, and the sysctl values are tenths of a kelvin. The ACPI zones are
+always read, whatever `thermal_zones` says. `_CRT` gives `critical`, `_HOT` gives
+`high.degraded` and `_PSV` gives `throttled`; a trip point the zone does not have
+gives no series. FreeBSD has no fan or voltage metric. A host with no sensor: the
+receiver starts, logs one info line, sends nothing and looks again at each interval.
+A hwmon directory that exists but cannot be listed (a permission error) is a warning,
+once per episode, not "no sensors".
+Linux and static Linux edge builds; see the [README](../README.md#hardware-temperature-fan-and-voltage-sensors).
+
+### iSCSI sessions — `receiver/iscsireceiver`
+
+Reads `sysfs_path` (default `/sys/class`) every `collection_interval` (default `60s`):
+the directories `iscsi_session/session<N>` and `iscsi_connection/connection<N>:<M>`.
+A connection belongs to the session with the same number. The receiver opens only
+`targetname`, `tpgt` and `state` of a session and `persistent_address`,
+`persistent_port` and `state` of a connection.
+
+| Metric | Type | Unit | Attributes |
+|---|---|---|---|
+| `iscsi.session.state` | gauge, always 1 | `1` | `state` (`LOGGED_IN`, `FAILED`, `FREE`), `iscsi.target`, `iscsi.portal`, `iscsi.tpgt` |
+| `iscsi.session.count` | gauge | `{session}` | none |
+| `iscsi.connection.state` | gauge, always 1 | `1` | `state`, `iscsi.target`, `iscsi.portal` |
+
+`iscsi.portal` is `address:port`, with an IPv6 address in brackets. A session with no
+connection has an empty portal. Two sessions with the same target, portal and portal
+group tag (for example two sessions to one portal through different network
+interfaces) have the same attributes, so a batch holds two points for one series; the
+receiver does not read `initiatorname` or `ifacename` to tell them apart. The `iscsi.*` prefix, not `hw.iscsi.*`, keeps the
+names out of the namespace the semantic conventions own. The state metrics are info
+gauges like `zfs.pool.state`: a changed state ends one series and starts another,
+so an alert rule should test for `state != LOGGED_IN` or a missing `LOGGED_IN` series.
+A host with no session: the receiver starts, logs one info line, sends nothing and
+looks again at each interval. Linux edge builds only.
 
 ### Normalized/denormalized load — `processor/normalizedloadprocessor`
 
@@ -196,6 +357,16 @@ metric passes through at the scrape interval now.
 
 With all groups plain at 60s/60s the output matches the baseline build: 47
 metric names, same types and counts.
+
+### Journald — `processor/journaldprocessor`
+
+| Metric | Type | Description |
+|---|---|---|
+| `otelcol_journald_resources_per_batch` | histogram, `{resource}` | resources in each batch the processor passes on; buckets 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000 |
+
+The count grows when `map_extended` and `split_resources` are on, because records that
+differ in `_EXE`, `_CMDLINE`, `_UID`, `_GID` or `_SYSTEMD_CGROUP` get their own resource.
+The processor sets no cap; a rising count is the early sign of a memory problem.
 
 ### Identity fill — `processor/identityfillprocessor`
 

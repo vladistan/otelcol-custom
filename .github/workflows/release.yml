@@ -65,6 +65,8 @@ jobs:
             exit 1
           fi
           echo "tag $actual matches VERSION file"
+      - name: "FreeBSD edge: vet the custom modules (a failure here stops the release)"
+        run: just vet-edge-freebsd
       - name: Stage public artifacts
         run: just stage-public-artifacts
       - name: Create/update the GitHub Release and upload assets
@@ -96,6 +98,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: just docker-push-scrape-ghcr
+      # The edge image holds the static edge binary staged above, so it is
+      # the release asset itself. It publishes only once the repository
+      # variable PUBLISH_EDGE is 'true'. Until then these steps skip.
+      - name: Build the public edge image
+        if: vars.PUBLISH_EDGE == 'true'
+        run: just docker-build-edge-ghcr
+      - name: Verify the edge image version and components
+        if: vars.PUBLISH_EDGE == 'true'
+        run: just verify-ghcr-edge-image
+      - name: Push the public edge image to GHCR
+        if: vars.PUBLISH_EDGE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just docker-push-edge-ghcr
 
 # No anonymous-pull check here: GHCR packages are created PRIVATE by
 # default; making a package public is a manual step done once after the first

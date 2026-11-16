@@ -4,7 +4,8 @@
 # ADDED when a component is added to the Windows edge (winlogprocessor,
 # windowhistprocessor, gpureceiver, fswatchreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
 # component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus,
-# docker_stats, k8sattributes, ethtool, zfskstat).
+# docker_stats, k8sattributes, ethtool, pve, zfskstat, k8s_observer, receiver_creator, the six
+# application receivers, hwmon, iscsi).
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -24,11 +25,23 @@ readonly REMOVED=(
 	"$CONTRIB/receiver/journaldreceiver"
 	"$CONTRIB/receiver/prometheusreceiver"
 	"$CONTRIB/receiver/dockerstatsreceiver"
+	"$CONTRIB/receiver/snmpreceiver"
+	"$CONTRIB/receiver/netflowreceiver"
 	"$CONTRIB/processor/k8sattributesprocessor"
+	"$CONTRIB/extension/observer/k8sobserver"
+	"$CONTRIB/receiver/receivercreator"
+	"$CONTRIB/receiver/redisreceiver"
+	"$CONTRIB/receiver/postgresqlreceiver"
+	"$CONTRIB/receiver/mysqlreceiver"
+	"$CONTRIB/receiver/mongodbreceiver"
+	"$CONTRIB/receiver/rabbitmqreceiver"
+	"$CONTRIB/receiver/nginxreceiver"
 	"$LOCAL/receiver/psireceiver"
 	"replace:$LOCAL/receiver/psireceiver"
 	"$LOCAL/receiver/ethtoolreceiver"
 	"replace:$LOCAL/receiver/ethtoolreceiver"
+	"$LOCAL/receiver/pvereceiver"
+	"replace:$LOCAL/receiver/pvereceiver"
 	"$LOCAL/processor/containernameprocessor"
 	"replace:$LOCAL/processor/containernameprocessor"
 	"$LOCAL/receiver/openvpnstatusreceiver"
@@ -39,6 +52,10 @@ readonly REMOVED=(
 	"replace:$LOCAL/processor/processlifetimeprocessor"
 	"$LOCAL/receiver/zfskstatreceiver"
 	"replace:$LOCAL/receiver/zfskstatreceiver"
+	"$LOCAL/receiver/hwmonreceiver"
+	"replace:$LOCAL/receiver/hwmonreceiver"
+	"$LOCAL/receiver/iscsireceiver"
+	"replace:$LOCAL/receiver/iscsireceiver"
 )
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"

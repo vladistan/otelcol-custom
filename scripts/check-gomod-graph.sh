@@ -5,8 +5,8 @@
 # is never read.
 #
 # Usage: check-gomod-graph.sh [--update] [--gomod FILE] [MANIFEST...]
-#   MANIFEST  edge, edge-static, gateway, scrape, edge-windows or local
-#             (default: all but edge-windows)
+#   MANIFEST  edge, edge-static, gateway, scrape, edge-windows, edge-freebsd or local
+#             (default: all but edge-windows and edge-freebsd)
 #   --update  rewrite the baseline from the generated go.mod
 #   --gomod   read FILE instead of generating (one manifest only)
 # Env: OCB_VERSION, e.g. 0.164.0, required unless --gomod is given.
@@ -15,7 +15,7 @@
 # "local" compares every go.mod under processor/, receiver/, stanza/ and
 # test/ with the baselines: a collector, contrib or aws-sdk-go-v2 pin must
 # equal a version some baseline carries.
-# edge-windows has no baseline of its own: it is compared with edge-static
+# edge-windows and edge-freebsd have no baseline of their own: each is compared with edge-static
 # on the modules both have, so added and removed receivers are allowed.
 # Exit: 0 no version change, 1 a version changed, 2 usage error or a failed
 # command.
@@ -72,7 +72,7 @@ print_changed_versions() {
 
 check_one() {
 	local name="$1" gomod="$2" baseline="$BASELINES/$1.txt" found_file changes diff_status=0
-	[ "$name" = edge-windows ] && baseline="$BASELINES/edge-static.txt"
+	[ "$name" = edge-windows ] || [ "$name" = edge-freebsd ] && baseline="$BASELINES/edge-static.txt"
 	if [ -z "$gomod" ]; then
 		gomod="$(generate "$name")" || exit 2
 	fi
@@ -80,14 +80,14 @@ check_one() {
 	extract "$gomod" >"$found_file" || die "cannot read versions from $gomod"
 	[ -s "$found_file" ] || die "no matching modules in $gomod"
 	if [ "$should_update" = true ]; then
-		[ "$name" != edge-windows ] || die "edge-windows has no baseline to update"
+		[ "$name" != edge-windows ] && [ "$name" != edge-freebsd ] || die "$name has no baseline to update"
 		mkdir -p "$BASELINES" || die "cannot create $BASELINES"
 		cp "$found_file" "$baseline" || die "cannot write $baseline"
 		echo "updated: $baseline ($(wc -l <"$baseline" | tr -d ' ') modules)"
 		return 0
 	fi
 	[ -f "$baseline" ] || die "baseline $baseline does not exist"
-	if [ "$name" = edge-windows ]; then
+	if [ "$name" = edge-windows ] || [ "$name" = edge-freebsd ]; then
 		changes="$(print_changed_versions "$baseline" "$found_file")" || die "cannot compare $name"
 	else
 		changes="$(diff "$baseline" "$found_file")" || diff_status=$?
@@ -142,7 +142,7 @@ while [ $# -gt 0 ]; do
 		shift
 		;;
 	-*) die "unknown option $1" ;;
-	edge | edge-static | gateway | scrape | edge-windows | local) manifests+=("$1") ;;
+	edge | edge-static | gateway | scrape | edge-windows | edge-freebsd | local) manifests+=("$1") ;;
 	*) die "unknown manifest $1" ;;
 	esac
 	shift

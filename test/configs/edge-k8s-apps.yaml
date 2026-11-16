@@ -1,0 +1,103 @@
+# Linux edge as a Kubernetes DaemonSet: one rule for each application receiver the edge compiles in.
+#
+# Validate: K8S_NODE_NAME=node-a REDIS_PASSWORD=x POSTGRES_USER=x POSTGRES_PASSWORD=x MYSQL_USER=x \
+#   MYSQL_PASSWORD=x MONGODB_USER=x MONGODB_PASSWORD=x RABBITMQ_USER=x RABBITMQ_PASSWORD=x \
+#   otelcol-edge validate --config test/configs/edge-k8s-apps.yaml
+# The creator does not check a template when it loads: a typo in a rule shows only when a matching pod
+# appears, as an Error in the log. The tests in test/k8sdiscovery check every template below.
+#
+# Credentials come from environment variables here; mount a Secret as environment variables in the
+# DaemonSet. A ${file:/path} reference reads a mounted Secret file instead. No password is written
+# in this file.
+#
+# Each rule matches a pod through the label app.kubernetes.io/name and its declared container port.
+# A port the pod spec does not declare gives no endpoint, so the rule never fires for it.
+
+extensions:
+  k8s_observer:
+    auth_type: serviceAccount
+    node: ${env:K8S_NODE_NAME}
+    observe_pods: true
+
+receivers:
+  receiver_creator/apps:
+    watch_observers: [k8s_observer]
+    receivers:
+      redis:
+        rule: type == "port" && port == 6379 && pod.labels["app.kubernetes.io/name"] == "redis"
+        config:
+          endpoint: '`endpoint`'
+          collection_interval: 60s
+          password: ${env:REDIS_PASSWORD}
+      postgresql:
+        rule: type == "port" && port == 5432 && pod.labels["app.kubernetes.io/name"] == "postgresql"
+        config:
+          endpoint: '`endpoint`'
+          collection_interval: 60s
+          username: ${env:POSTGRES_USER}
+          password: ${env:POSTGRES_PASSWORD}
+          tls:
+            insecure: true
+      mysql:
+        rule: type == "port" && port == 3306 && pod.labels["app.kubernetes.io/name"] == "mysql"
+        config:
+          endpoint: '`endpoint`'
+          collection_interval: 60s
+          username: ${env:MYSQL_USER}
+          password: ${env:MYSQL_PASSWORD}
+      mongodb:
+        rule: type == "port" && port == 27017 && pod.labels["app.kubernetes.io/name"] == "mongodb"
+        config:
+          hosts:
+            - endpoint: '`endpoint`'
+          collection_interval: 60s
+          username: ${env:MONGODB_USER}
+          password: ${env:MONGODB_PASSWORD}
+          tls:
+            insecure: true
+      rabbitmq:
+        rule: type == "port" && port == 15672 && pod.labels["app.kubernetes.io/name"] == "rabbitmq"
+        config:
+          endpoint: 'http://`endpoint`'
+          collection_interval: 60s
+          username: ${env:RABBITMQ_USER}
+          password: ${env:RABBITMQ_PASSWORD}
+      nginx:
+        rule: type == "port" && (port == 80 || port == 8080) && pod.labels["app.kubernetes.io/name"] == "nginx"
+        config:
+          endpoint: 'http://`endpoint`/status'
+          collection_interval: 60s
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.namespace.name
+        - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+  batch:
+    timeout: 10s
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [k8s_observer]
+  pipelines:
+    metrics:
+      receivers: [receiver_creator/apps]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [debug]

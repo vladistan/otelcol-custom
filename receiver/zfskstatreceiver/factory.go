@@ -31,6 +31,8 @@ func createDefaultConfig() component.Config {
 		CollectionInterval: 60 * time.Second,
 		KstatPath:          "/proc/spl/kstat/zfs",
 		ArcStats:           true,
+		MaxDatasets:        100,
+		Source:             sourceAuto,
 	}
 }
 

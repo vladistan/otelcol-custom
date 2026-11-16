@@ -23,7 +23,7 @@ import (
 // optionalReceiverTypes are the receivers whose failed Start is logged and skipped, so the collector keeps
 // running. Every other receiver, journald and host_metrics included, stays fail-hard: its failure stops the
 // collector. The list is code, not config, so a deployment cannot make a core receiver optional by accident.
-var optionalReceiverTypes = []string{"docker_stats", "tcp_check"}
+var optionalReceiverTypes = []string{"docker_stats", "tcp_check", "netflow"}
 
 // withOptionalReceivers wraps a factories function so the listed receivers do not stop the collector when
 // they fail to start.

@@ -371,10 +371,10 @@ func TestScrapeNonNumericIoValueIsSkippedWithAWarning(t *testing.T) {
 	assert.Len(t, warnings(logs), 1)
 }
 
-func TestScrapePoolWithoutAnIoFileIsSkippedQuietly(t *testing.T) {
+func TestScrapePoolWithoutAnIoFileKeepsItsStateAndGivesNoIoPoints(t *testing.T) {
 	root := writeTree(t, map[string]string{
-		"gone/state": "ONLINE\n",
-		"tank/io":    ioHeader + "nread nwritten\n1 2\n",
+		"new/state": "ONLINE\n",
+		"tank/io":   ioHeader + "nread nwritten\n1 2\n",
 	})
 	cfg := hostConfig()
 	cfg.KstatPath = root
@@ -383,8 +383,50 @@ func TestScrapePoolWithoutAnIoFileIsSkippedQuietly(t *testing.T) {
 	md := scrapeOnce(t, s)
 
 	bytes := findMetric(t, md, "zfs.pool.io.bytes")
-	assert.Equal(t, 2, dataPoints(bytes).Len())
+	assert.Equal(t, 2, dataPoints(bytes).Len(), "only tank has io fields")
+	pointFor(t, findMetric(t, md, "zfs.pool.state"), map[string]string{"zfs.pool": "new", "state": "ONLINE"})
 	assert.Empty(t, warnings(logs))
+}
+
+// openzfs21Tree is the layout of a pool on OpenZFS 2.1: no io file.
+func openzfs21Tree() map[string]string {
+	return map[string]string{
+		"Z12/state":         "ONLINE\n",
+		"Z12/iostats":       "12 1 0x01 18 4896 1 1\nname type data\ntrim_extents_written 4 0\n",
+		"Z12/dmu_tx_assign": "9 1 0x01 32 1 1 1\nname type data\n1 ns 4 5\n",
+		"Z12/txgs":          "txg birth state ndirty nread nwritten reads writes otime qtime wtime stime\n",
+		"Z12/objset-0x36":   "30 1 0x01 7 2160 1 1\nname type data\ndataset_name 7 Z12/data\nnread 4 10\nnwritten 4 20\nreads 4 1\nwrites 4 2\n",
+		"arcstats":          "13 1 0x01 5 1 1 1\nname type data\nsize 4 100\nhits 4 7\nmisses 4 3\n",
+	}
+}
+
+func TestScrapeOpenZFS21PoolEmitsStateAndNoIoMetricsWithoutWarnings(t *testing.T) {
+	cfg := hostConfig()
+	cfg.KstatPath = writeTree(t, openzfs21Tree())
+	s, logs := newTestScraper(cfg)
+
+	md := scrapeOnce(t, s)
+
+	names := metricNames(md)
+	assert.Contains(t, names, "zfs.pool.state")
+	assert.Contains(t, names, "zfs.arc.size")
+	for _, n := range names {
+		assert.NotContains(t, n, "zfs.pool.io.", "2.1 has no pool io counters")
+	}
+	assert.Empty(t, warnings(logs))
+}
+
+func TestScrapeOpenZFS21PoolReadsItsDatasetsWhenAsked(t *testing.T) {
+	cfg := hostConfig()
+	cfg.KstatPath = writeTree(t, openzfs21Tree())
+	cfg.Datasets = true
+	s, _ := newTestScraper(cfg)
+
+	md := scrapeOnce(t, s)
+
+	bytes := findMetric(t, md, "zfs.dataset.io.bytes")
+	got := pointFor(t, bytes, map[string]string{"zfs.pool": "Z12", "zfs.dataset": "Z12/data", "direction": "write"})
+	assert.Equal(t, int64(20), got.IntValue())
 }
 
 func TestScrapeIgnoresFilesBesideThePoolDirectories(t *testing.T) {

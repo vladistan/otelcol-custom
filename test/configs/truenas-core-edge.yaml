@@ -1,0 +1,111 @@
+# FreeBSD edge sample for a TrueNAS CORE host (FreeBSD 13.1, ZFS).
+# Every component here runs on FreeBSD. journald, psi, ethtool, docker_stats
+# and k8s_attributes are not in the FreeBSD build.
+# Placeholder gateway host; set the real endpoint before use.
+
+extensions:
+  file_storage:
+    directory: /var/db/otelcol-edge/storage
+    create_directory: true
+  health_check:
+    endpoint: 127.0.0.1:13133
+receivers:
+  host_metrics:
+    collection_interval: 60s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.time:
+            attributes: [cpu, state]
+          system.cpu.utilization:
+            enabled: true
+            attributes: [cpu, state]
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      paging:
+      load:
+      # CAM passthrough devices of the HBA, not disks.
+      disk:
+        exclude:
+          match_type: strict
+          devices: [pass0, pass1, pass2, pass3, pass4, pass5]
+      network:
+        exclude:
+          match_type: regexp
+          interfaces: ["pflog0.*"]
+        metrics:
+          # Needs lsof, which the host does not ship.
+          system.network.connections:
+            enabled: false
+  host_metrics/filesystem:
+    collection_interval: 15m
+    scrapers:
+      filesystem:
+        exclude_fs_types:
+          match_type: strict
+          fs_types: [devfs, fdescfs, nullfs, tmpfs]
+  # ZFS pool state and ARC through sysctl; FreeBSD 13.1 has no per-pool io kstat.
+  zfskstat:
+    collection_interval: 60s
+    source: sysctl
+  # Syslog lines arrive raw, as the body; add operators to parse them.
+  filelog/messages:
+    include: [/var/log/messages]
+    start_at: end
+    storage: file_storage
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  resource_detection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+  resource/host:
+    attributes:
+      - key: deployment.environment
+        value: production
+        action: insert
+      - key: service.name
+        value: otelcol-edge
+        action: insert
+  resourceversion:
+    role: edge
+  normalizedload:
+    cpu_count: 0
+exporters:
+  otlp_http:
+    endpoint: http://otel-main.example.invalid:4318
+    compression: gzip
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 0s
+    sending_queue:
+      enabled: true
+      storage: file_storage
+      sizer: bytes
+      queue_size: 1073741824
+service:
+  extensions: [file_storage, health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [host_metrics, host_metrics/filesystem, zfskstat]
+      processors: [memory_limiter, normalizedload, resource_detection, resource/host, resourceversion]
+      exporters: [otlp_http]
+    logs:
+      receivers: [filelog/messages]
+      processors: [memory_limiter, resource_detection, resource/host, resourceversion]
+      exporters: [otlp_http]

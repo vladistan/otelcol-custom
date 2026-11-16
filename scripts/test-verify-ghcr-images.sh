@@ -67,6 +67,20 @@ expect_exit_code "both images report the version" 0 \
 	env DOCKER="$SCRATCH/docker" STUB_VERSION=0.3.1 "$VERIFY" 0.3.1 "$GATEWAY" "$SCRAPE"
 expect_output "pass output names the image" "PASS: $SCRAPE"
 
+readonly EDGE="ghcr.io/example/otelcol-edge:v0.3.1"
+
+expect_exit_code "the edge image is verified with the others" 0 \
+	env DOCKER="$SCRATCH/docker" STUB_VERSION=0.3.1 "$VERIFY" 0.3.1 "$GATEWAY" "$SCRAPE" "$EDGE"
+expect_output "pass output names the edge image" "PASS: $EDGE"
+
+expect_exit_code "the edge image alone is verified" 0 \
+	env DOCKER="$SCRATCH/docker" STUB_VERSION=0.3.1 "$VERIFY" 0.3.1 "$EDGE"
+
+expect_exit_code "a silent edge image fails and the others still pass" 1 \
+	env DOCKER="$SCRATCH/docker" STUB_VERSION=0.3.1 STUB_SILENT="$EDGE" "$VERIFY" 0.3.1 "$GATEWAY" "$EDGE"
+expect_output "the edge failure is reported" "FAIL: $EDGE --version output lacks 0.3.1"
+expect_output "the gateway still passes" "PASS: $GATEWAY"
+
 expect_exit_code "an image with another version fails" 1 \
 	env DOCKER="$SCRATCH/docker" STUB_VERSION=0.2.0 "$VERIFY" 0.3.1 "$GATEWAY" "$SCRAPE"
 expect_output "failure output names the image" "FAIL: $GATEWAY"

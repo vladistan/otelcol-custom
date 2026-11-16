@@ -36,3 +36,40 @@ Raw output: k8sevent-raw.txt, same method and host.
   Batch: 1000 records cycling the nine bodies in processor/k8seventprocessor/testdata/
   k8sobjects-bodies.json (events and pods, all watch types). The OTTL maximum is an
   outlier run; the k8sevent range sits below the OTTL minimum.
+
+journaldprocessor with map_extended vs the gateway transform/journald block
+Raw output: journald-extended-raw.txt, same method and host (n=6 per row, 200 iterations).
+
+  mix     impl              median   range         ratio   verdict
+  single  ottl              15735    15008-20828   1.00
+  single  journald_extended 3097     2408-3866     0.20    pass (journald_extended faster)
+  mixed   ottl              23776    21890-23860   1.00
+  mixed   journald_extended 6255     6141-6531     0.26    pass (journald_extended faster)
+
+  Batch: 1000 records of 20 fields (the five base, the twelve extended, PRIORITY, MESSAGE
+  and CODE_FILE). single is one unit; mixed cycles five units, so the processor emits five
+  resources, each with its own _EXE and _UID. The OTTL block is the one deployed on the
+  gateway, in test/bench/testdata/gateway-transform-journald.yaml. The processor runs with
+  keep_fields off, as the gateway would run it.
+
+journaldprocessor with map_extended after the extras (container.runtime, selinux.context,
+process.capabilities.effective, body clean-up, journald.unknown_fields), n=10 per row.
+Raw output: journald-extended-raw.txt, appended under a "# After the parity extras" line.
+
+  mix        impl              median   range         ratio   verdict
+  single     ottl              17442    15300-23279   1.00
+  single     journald_extended 5703     5451-5825     0.33    pass (journald_extended faster)
+  mixed      ottl              23833    23366-24246   1.00
+  mixed      journald_extended 7361     6211-7734     0.31    pass (journald_extended faster)
+  leftovers  ottl              19531    14791-23844   1.00
+  leftovers  journald_extended 9187     5349-9383     0.47    pass (journald_extended faster)
+
+  leftovers = mixed plus four keys that no mapping reads (_AUDIT_SESSION, _AUDIT_LOGINUID,
+  _SYSTEMD_USER_SLICE, _SYSTEMD_OWNER_UID). The processor moves them into journald.unknown_fields;
+  the block writes nothing for them on a record with a MESSAGE. They add about 1800 ns per
+  record to the processor (median 9187 against 7361 for mixed) and 146 bytes to the output of
+  a 532 byte record. On the leftovers row the OTTL minimum (14791) sits above the processor
+  maximum (9383), so the two ranges do not overlap.
+  This run is slower than the one above for both implementations on the same host; single
+  went from 3097 to 5703 for the processor. The host had no load control, so the size of
+  the increase from the extras alone is not established.

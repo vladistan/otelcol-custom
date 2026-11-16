@@ -1,0 +1,158 @@
+# Pod discovery on the Linux edge
+
+The Linux edge and the static Linux edge can start receivers for the pods of their own node. It is for a DaemonSet: each collector lists the pods on its node and starts a receiver for every pod that a rule matches. The gateway, the scrape collector and the Windows edge do not carry these components.
+
+| Component | Type | Role |
+|---|---|---|
+| `k8s_observer` | extension | Lists the pods of one node and reports them as endpoints. |
+| `receiver_creator` | receiver | Starts a receiver for each endpoint that one of its rules matches, and stops it when the endpoint goes. |
+
+Both are contrib components at v0.164.1. The reference configs are `test/configs/edge-k8s-discovery.yaml` (scrape annotated pods) and `test/configs/edge-k8s-apps.yaml` (one rule for each application receiver).
+
+## What the edge compiles in
+
+| Receiver | Type | Reads |
+|---|---|---|
+| `prometheus` | receiver | Metrics a pod serves in the Prometheus text format. |
+| `redis` | receiver | Redis `INFO`. |
+| `postgresql` | receiver | PostgreSQL statistics. |
+| `mysql` | receiver | MySQL status and InnoDB statistics. |
+| `mongodb` | receiver | MongoDB server status. |
+| `rabbitmq` | receiver | The RabbitMQ management API. |
+| `nginx` | receiver | The nginx `stub_status` page. |
+
+`memcached` and `kafka_metrics` are not compiled in. `prometheus_simple` is not either: pods are scraped with the full `prometheus` receiver and a templated scrape config. A rule that names a type the build lacks logs `unable to lookup factory` at Error when a pod matches, and the collector keeps running.
+
+## Rules
+
+A rule starts a receiver when its expression is true for an endpoint. One rule starts the `prometheus` receiver for pods that carry the scrape annotation:
+
+```yaml
+receivers:
+  receiver_creator/pods:
+    watch_observers: [k8s_observer]
+    receivers:
+      prometheus:
+        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true" && labels["app.kubernetes.io/component"] != "opentelemetry-collector"
+        config:
+          config:
+            scrape_configs:
+              - job_name: pod
+                scrape_interval: 60s
+                metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
+                static_configs:
+                  - targets: ['`joinHostPort(endpoint, "prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : "9090")`']
+```
+
+`watch_observers` names the observer, and the observer must be listed in `service.extensions`. The rule leaves out the collector's own pod through the label the DaemonSet puts on it. A guard (`just check-k8s-discovery-config`) fails a sample config where `receiver_creator` has no `watch_observers`, where the observer is missing from `service.extensions`, or where a `discovery` block turns on annotation discovery.
+
+Rule variables for a `pod` endpoint are `name`, `namespace`, `uid`, `labels` and `annotations`. A `port` endpoint adds `port`, `name`, `protocol` and the pod's values as `pod.labels`, `pod.name` and so on.
+
+### Application receivers
+
+`edge-k8s-apps.yaml` holds one rule for each application receiver. A rule matches a `port` endpoint by its number and by the pod label `app.kubernetes.io/name`:
+
+```yaml
+redis:
+  rule: type == "port" && port == 6379 && pod.labels["app.kubernetes.io/name"] == "redis"
+  config:
+    endpoint: '`endpoint`'
+    collection_interval: 60s
+    password: ${env:REDIS_PASSWORD}
+```
+
+The five other rules follow the same shape in `test/configs/edge-k8s-apps.yaml`, each with the port in the table below and the endpoint expression the receiver needs (`http://` and `/status` around it for `nginx`, `http://` for `rabbitmq`, a `hosts` list for `mongodb`).
+
+Credentials never go in the file. Give them to the DaemonSet as environment variables from a Secret, or reference a mounted Secret file with `${file:/path}`. The collector replaces `${env:...}` when it loads the config; the backtick expressions are replaced for each endpoint.
+
+The receivers differ in what they need:
+
+| Receiver | Port | Needs |
+|---|---|---|
+| `redis` | 6379 | A password if the server sets one. |
+| `postgresql` | 5432 | A user with `pg_monitor`; `tls.insecure: true` in the sample, to match a server without TLS. |
+| `mysql` | 3306 | A user with `PROCESS` and `REPLICATION CLIENT`. |
+| `mongodb` | 27017 | A monitoring user; `tls.insecure: true` in the sample. |
+| `rabbitmq` | 15672 | The management plugin and a monitoring user. |
+| `nginx` | 80 or 8080 | `stub_status` enabled at `/status`. |
+
+## Pod labels on the metrics
+
+The creator puts `k8s.pod.uid`, `k8s.pod.name` and `k8s.namespace.name` on the resource of everything a started receiver produces. Pod labels and annotations are not added. Run `k8s_attributes` after the creator, associated on `k8s.pod.uid`, to add them:
+
+```yaml
+processors:
+  k8s_attributes:
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+```
+
+## Settings the DaemonSet needs
+
+- `K8S_NODE_NAME` from the downward API (`spec.nodeName`). The observer config sets `node: ${env:K8S_NODE_NAME}`, so it lists only the pods of that node. Without it every collector would list every pod in the cluster and scrape them all.
+- A service account that can `get`, `list` and `watch` pods:
+
+```yaml
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+```
+
+`k8s_attributes` needs the same grant and also reads namespaces and nodes. With `namespaces: [a, b]` in the observer config, a namespaced `Role` and `RoleBinding` is enough for the observer; the nodes still need a cluster role.
+
+## Which pods make endpoints
+
+Only Running pods make endpoints. A pod yields one `pod` endpoint at its IP, one `pod.container` endpoint for each running container, and one `port` endpoint for each container port the pod spec declares. A port the spec does not declare gives no endpoint, so an application rule never fires for it. A pod that is not Running, or has no IP yet, gives nothing.
+
+The observer compares the endpoint set every second. A change to a pod restarts the receivers started for it.
+
+## What goes wrong
+
+| Case | Result | Stops the collector? |
+|---|---|---|
+| A `rule` that does not parse | Config load error | Yes, at start |
+| `watch_observers` names an extension that is not configured | `receiver_creator` fails to start | Yes |
+| `k8s_observer` cannot build a client (`serviceAccount` outside a cluster) | Extension fails to start | Yes |
+| `k8s_observer` with every `observe_*` set to false (`observe_pods` is true by default) | Config validation error | Yes |
+| RBAC missing for pods | The informer logs forbidden errors and retries; no endpoints | No |
+| A template whose receiver config is invalid | One Error in the log when a matching pod appears; not found by `validate` | No |
+| A template whose receiver fails to start | `failed to start receiver` at Error; no retry until the endpoint changes | No |
+| The target refuses the connection or rejects the login (wrong password, no listener) | The receiver starts; one scrape error is logged each interval | No |
+| A receiver type the build lacks | `unable to lookup factory` at Error | No |
+| A rule that fails to evaluate | Logged; the next rule runs | No |
+| A pod that is not Running, or a port the spec does not declare | No endpoint | No |
+
+A receiver started by the creator fails soft: its failure is logged and the collector keeps running. The six application receivers connect lazily: they start even when the target refuses connections or rejects the credentials, and each interval logs one scrape error until the target answers. Bad credentials therefore show as scrape errors, not as a failed start, and the repository tests all six against a refused port. A typo in a template shows only when a matching pod appears, so the repository tests every template in `test/configs/edge-k8s-apps.yaml` against its receiver's config, and runs the Prometheus template through a fake observer.
+
+## Annotation discovery stays off
+
+`receiver_creator` can also start receivers from pod annotations (`discovery.enabled: true`). The reference configs leave it off, and the guard fails a sample config that turns it on. With it on, anyone who can edit a pod annotation can start any compiled-in receiver and point its config at any address the collector can reach. An invalid annotation also stops the other pods found in the same second from getting a receiver. Rules in the config start receivers; annotations only select pods for the rule.
+
+## Cardinality
+
+- Every pod a rule matches gets its own receiver, and its own scrape manager for `prometheus`. The count per node is the number of matching pods, so keep rules narrow.
+- The generated id of a started receiver carries the endpoint and the pod uid. The receiver self-metrics (`otelcol_receiver_*`) and logs therefore gain one `receiver` label value for each pod, and a new one after each pod restart.
+- A recreated pod gets a new `k8s.pod.uid`, and a new `k8s.pod.name` unless a StatefulSet owns it: the old series stop and new ones start. A container restart keeps both. Do not use the pod name as a metric label.
+- Each scraped target adds the Prometheus automatic series (`up`, `scrape_duration_seconds`, `scrape_samples_scraped` and others).
+
+## Binary size
+
+Cost on the static Linux edge, each step added to the one before. Sizes are bytes of the `otelcol-edge` binary built from OCB v0.164.0 sources.
+
+| Step | Size | Added |
+|---|---|---|
+| The static edge without these components | 173,678,752 | |
+| `k8s_observer` and `receiver_creator` | 173,920,416 | 241,664 |
+| `redis` | 182,407,328 | 8,486,912 |
+| `postgresql` | 184,189,088 | 1,781,760 |
+| `mysql` | 185,458,848 | 1,269,760 |
+| `mongodb` | 189,444,256 | 3,985,408 |
+| `rabbitmq` | 189,931,680 | 487,424 |
+| `nginx` | 189,980,832 | 49,152 |
+
+The eight together add 16,302,080 bytes (9.4%) in this series of builds. The release container build of the same manifests gives 178,106,530 bytes without them and 194,687,138 with all eight, which is 16,580,608 bytes more (9.3%).
+
+The first rows of the table come from a host Go toolchain build (`CGO_ENABLED=0`, `-s -w`, linux/amd64), so they compare with each other and not byte for byte with the release container figures. The order matters: `redis` is the first receiver to bring client libraries for managed services (its cloud authentication), and the receivers after it share them, so each of those costs less than it would alone. The observer and the creator stay under the 0.5 MB limit on their own (`client-go` was already in through `k8s_attributes`).

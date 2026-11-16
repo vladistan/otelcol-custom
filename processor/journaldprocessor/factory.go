@@ -37,9 +37,17 @@ func createDefaultConfig() component.Config {
 
 func createLogsProcessor(
 	_ context.Context,
-	_ processor.Settings,
+	set processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
-	return &journaldProcessor{config: cfg.(*Config), next: nextConsumer}, nil
+	resources, err := newResourcesPerBatch(set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	conf := cfg.(*Config)
+	if conf.MapExtended && !conf.SplitResources {
+		set.Logger.Warn("map_extended without split_resources: records of different units that share a resource get the resource attributes of one record")
+	}
+	return newJournaldProcessor(conf, nextConsumer, resources), nil
 }

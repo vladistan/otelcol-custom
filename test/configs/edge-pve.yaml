@@ -1,0 +1,43 @@
+# Linux edge on a Proxmox VE node: cluster resources and guest agent facts.
+#
+# Validate: PVE_RESOURCES_TOKEN=x PVE_GUESTS_TOKEN=y otelcol-edge validate --config test/configs/edge-pve.yaml
+#
+# Enable `resources` on ONE node of the cluster (it reads the whole cluster) and `guests` on EVERY node.
+# Roles: PVEAuditor on / for the resources token; VM.Audit plus VM.Monitor (PVE 8) or VM.GuestAgent.Audit
+# (PVE 9) on /vms for the guests token. The token secrets come from the environment, never from this file.
+
+receivers:
+  pve:
+    base_urls:
+      - https://pve1.example.com:8006
+    ca_file: /etc/otelcol/pve-ca.pem
+    resources:
+      enabled: true
+      token_id: otel@pve!resources
+      token_secret: ${env:PVE_RESOURCES_TOKEN}
+      collection_interval: 60s
+    guests:
+      enabled: true
+      token_id: otel@pve!guests
+      token_secret: ${env:PVE_GUESTS_TOKEN}
+      node: pve1
+      collection_interval: 15m
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    metrics:
+      receivers: [pve]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    logs:
+      receivers: [pve]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

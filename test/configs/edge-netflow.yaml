@@ -1,0 +1,49 @@
+# Linux edge receiving NetFlow v5, v9 and IPFIX records with the contrib netflow receiver.
+#
+# Validate: NETFLOW_BIND_ADDRESS=10.0.0.5 otelcol-edge validate --config test/configs/edge-netflow.yaml
+# NETFLOW_BIND_ADDRESS must be set to one address of the host. An unset variable gives an empty hostname,
+# which does not bind the one address the advice below asks for.
+#
+# Bind ONE address and allow only the exporting device in the firewall: NetFlow has no authentication, so
+# any host that can reach the port can send records. One log record is made per flow; read the rate before
+# choosing a sampling rate or a retention (see docs/snmp-netflow.md). Port 2055 needs no privilege.
+
+receivers:
+  netflow:
+    scheme: netflow
+    hostname: ${env:NETFLOW_BIND_ADDRESS}
+    port: 2055
+    sockets: 2
+    workers: 4
+    queue_size: 5000
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  # Fields most flow analysis does not use; delete them before export to cut the size of each record.
+  attributes/cut:
+    actions:
+      - {key: flow.ip_ttl, action: delete}
+      - {key: flow.ip_tos, action: delete}
+      - {key: flow.ip_flags, action: delete}
+      - {key: flow.fragment_id, action: delete}
+      - {key: flow.fragment_offset, action: delete}
+      - {key: flow.ipv6_flow_label, action: delete}
+      - {key: flow.icmp_type, action: delete}
+      - {key: flow.icmp_code, action: delete}
+exporters:
+  otlp_http/gateway:
+    endpoint: https://gateway.example.com:4318
+    sending_queue:
+      enabled: true
+      batch:
+        flush_timeout: 5s
+        min_size: 1000
+        max_size: 5000
+service:
+  pipelines:
+    logs:
+      receivers: [netflow]
+      processors: [memory_limiter, attributes/cut]
+      exporters: [otlp_http/gateway]

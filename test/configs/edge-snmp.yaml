@@ -1,0 +1,147 @@
+# Linux edge polling SNMP devices with the contrib snmp receiver: one instance per device.
+#
+# Validate with the environment set (values only need to be present):
+#   SNMP_FIREWALL_HOST=10.0.0.1 SNMP_FIREWALL_AUTH_PASSWORD=a SNMP_FIREWALL_PRIV_PASSWORD=b \
+#   SNMP_QNAP_HOST=10.0.0.2 SNMP_QNAP_COMMUNITY=c SNMP_SWITCH_HOST=10.0.0.3 SNMP_SWITCH_COMMUNITY=d \
+#   otelcol-edge validate --config test/configs/edge-snmp.yaml
+#
+# Secrets come from the environment, never from this file; scripts/check-snmp-secrets.sh fails the
+# build when community, auth_password or privacy_password holds a literal value.
+
+receivers:
+  # SNMPv3 with authentication and privacy: SHA and AES.
+  snmp/firewall:
+    collection_interval: 60s
+    endpoint: udp://${env:SNMP_FIREWALL_HOST}:161
+    version: v3
+    user: otel
+    security_level: auth_priv
+    auth_type: SHA
+    auth_password: ${env:SNMP_FIREWALL_AUTH_PASSWORD}
+    privacy_type: AES
+    privacy_password: ${env:SNMP_FIREWALL_PRIV_PASSWORD}
+    attributes:
+      interface:
+        oid: "1.3.6.1.2.1.31.1.1.1.1" # IF-MIB ifName
+    metrics:
+      snmp.interface.in.bytes:
+        unit: By
+        description: Octets received, IF-MIB ifHCInOctets
+        sum:
+          aggregation: cumulative
+          monotonic: true
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.6"
+            attributes:
+              - name: interface
+      snmp.interface.out.bytes:
+        unit: By
+        description: Octets sent, IF-MIB ifHCOutOctets
+        sum:
+          aggregation: cumulative
+          monotonic: true
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.10"
+            attributes:
+              - name: interface
+  # QNAP NAS: numeric sensors and the iSCSI target side.
+  # UNVERIFIED: the enterprise OIDs below come from third-party MIB pages for the QNAP NAS-MIB (enterprise
+  # arc 1.3.6.1.4.1.24681) and were not polled on a device. The sources disagree on some iSCSI paths, and
+  # QNAP states that SNMP storage data comes from volumes, not from pools or LUNs. Confirm every OID with
+  # the MIB of the device (snmptranslate) before use. Entries marked PLACEHOLDER are column numbers still
+  # to be confirmed.
+  snmp/qnap:
+    collection_interval: 60s
+    endpoint: udp://${env:SNMP_QNAP_HOST}:161
+    version: v2c
+    community: ${env:SNMP_QNAP_COMMUNITY}
+    attributes:
+      lun:
+        oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.6" # NAS-MIB iSCSI LUN name column
+      target:
+        oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.11.2.1.2" # PLACEHOLDER: iSCSI target name column
+    metrics:
+      qnap.system.temperature:
+        unit: Cel
+        description: System temperature
+        gauge:
+          value_type: int
+        scalar_oids:
+          - oid: "1.3.6.1.4.1.24681.1.2.6.0" # PLACEHOLDER: systemTemperature
+      qnap.iscsi.target.status:
+        unit: "1"
+        description: iSCSI target status code
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.11.2.1.5" # PLACEHOLDER: target status column
+            attributes:
+              - name: target
+      qnap.iscsi.target.connections:
+        unit: "{connection}"
+        description: Connections to the iSCSI target
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.11.2.1.6" # PLACEHOLDER: target connection count column
+            attributes:
+              - name: target
+      qnap.iscsi.lun.capacity:
+        unit: By
+        description: LUN capacity
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.7" # PLACEHOLDER: LUN capacity column
+            attributes:
+              - name: lun
+      qnap.iscsi.lun.usage:
+        unit: By
+        description: LUN space in use
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.8" # PLACEHOLDER: LUN used column
+            attributes:
+              - name: lun
+  # LLDP neighbours of a switch: a numeric column of lldpRemTable (the time mark) labelled with the string
+  # columns of the same row. The index of lldpRemTable is timemark.localport.index; that the receiver joins
+  # the string columns to the numeric one on that index is UNVERIFIED until a device is polled.
+  snmp/switch:
+    collection_interval: 300s
+    endpoint: udp://${env:SNMP_SWITCH_HOST}:161
+    version: v2c
+    community: ${env:SNMP_SWITCH_COMMUNITY}
+    attributes:
+      remote_system_name:
+        oid: "1.0.8802.1.1.2.1.4.1.1.9" # LLDP-MIB lldpRemSysName
+      remote_port_id:
+        oid: "1.0.8802.1.1.2.1.4.1.1.7" # LLDP-MIB lldpRemPortId
+    metrics:
+      snmp.lldp.neighbor.time_mark:
+        unit: "1"
+        description: One data point per LLDP neighbour, labelled with its system name and port
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.0.8802.1.1.2.1.4.1.1.1" # LLDP-MIB lldpRemTimeMark
+            attributes:
+              - name: remote_system_name
+              - name: remote_port_id
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    metrics:
+      receivers: [snmp/firewall, snmp/qnap, snmp/switch]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

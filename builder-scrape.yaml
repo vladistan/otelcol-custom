@@ -1,7 +1,7 @@
 # Narrowed otelcol-scrape manifest for cloud source scraping. The local
-# modules are auth0receiver, sourcetagprocessor and identityfillprocessor. CloudWatch metrics come from the metrics block of
-# awscloudwatchreceiver; Cloud Monitoring metrics come from
-# googlecloudmonitoringreceiver.
+# modules are auth0receiver, cloudwatchmetricsreceiver, sourcetagprocessor and identityfillprocessor. CloudWatch metrics come
+# from cloudwatchmetricsreceiver; awscloudwatchreceiver reads CloudWatch logs; Cloud Monitoring metrics come from
+# googlecloudmonitoringreceiver, a vendored copy with an aggregation block.
 dist:
   name: otelcol-scrape
   description: Cloud source scraping collector (AWS, GCP, Azure)
@@ -13,7 +13,10 @@ replaces:
   # compiles before the entrypoint is copied in; unpinned it takes the newest release.
   - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
   - github.com/vladistan/otelcol-custom/receiver/auth0receiver => ../../receiver/auth0receiver
+  - github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver => ../../receiver/cloudwatchmetricsreceiver
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
+  # yamllint disable-line rule:line-length
+  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver => ../../receiver/googlecloudmonitoringreceiver
   - github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor
   - github.com/vladistan/otelcol-custom/processor/identityfillprocessor => ../../processor/identityfillprocessor
 extensions:
@@ -26,8 +29,10 @@ extensions:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.164.1
 receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.164.1
-  # logs and metrics (metrics.queries)
+  # CloudWatch Logs
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.164.1
+  # CloudWatch metrics: accounts, regions and tiers in one instance
+  - gomod: github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver v0.0.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.164.1
   # metrics: Cloud Run metrics, one project per receiver instance
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v0.164.1

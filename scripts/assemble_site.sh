@@ -194,7 +194,7 @@ HTML
 <pre>curl -fsSLO &lt;url-of-binary&gt;
 curl -fsSLO &lt;url-of-SHA256SUMS&gt;
 sha256sum -c SHA256SUMS --ignore-missing
-chmod +x otelcol-edge-*-linux-amd64   # or otelcol-gateway-*-linux-amd64</pre>
+chmod +x otelcol-edge-*-linux-amd64   # or otelcol-edge-*-freebsd-amd64, otelcol-gateway-*-linux-amd64</pre>
 </section>
 HTML
 

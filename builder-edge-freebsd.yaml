@@ -1,0 +1,111 @@
+# FreeBSD edge: builder-edge-static.yaml without the components that do not
+# run on FreeBSD or have no target there (journald, psi, ethtool, docker_stats,
+# k8s_attributes, pve, snmp, netflow, the pod discovery and application
+# receivers, iscsi). hwmon stays and reads temperatures through sysctl.
+# scripts/check-edge-freebsd-manifest.sh enforces the difference.
+dist:
+  name: otelcol-edge
+  description: Lean edge collector for FreeBSD hosts
+  output_path: ./build/edge-freebsd
+  # dist is generated only; the entrypoint with Sentry init is injected and compiled afterwards
+  skip_compilation: true
+# =============================================================================
+# Replaces - Local module overrides for custom components
+# =============================================================================
+replaces:
+  # Pin sentry-go to the version cmd/otelcol-custom compiles against. The builder
+  # compiles before the entrypoint is copied in; unpinned it takes the newest release.
+  - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
+  # Custom components from this repository (paths relative to build/edge/ directory)
+  - github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver => ../../receiver/openvpnstatusreceiver
+  - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
+  - github.com/vladistan/otelcol-custom/processor/resourceversionprocessor => ../../processor/resourceversionprocessor
+  - github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
+  # Custom stanza operators (for log processing pipelines)
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/arraytostring => ../../stanza/operator/transformer/arraytostring
+  - github.com/vladistan/otelcol-custom/stanza/operator/transformer/ansistrip => ../../stanza/operator/transformer/ansistrip
+  - github.com/vladistan/otelcol-custom/processor/windowhistprocessor => ../../processor/windowhistprocessor
+  - github.com/vladistan/otelcol-custom/processor/containernameprocessor => ../../processor/containernameprocessor
+  - github.com/vladistan/otelcol-custom/processor/kthreadprocessor => ../../processor/kthreadprocessor
+  - github.com/vladistan/otelcol-custom/processor/processlifetimeprocessor => ../../processor/processlifetimeprocessor
+  - github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver => ../../receiver/zfskstatreceiver
+  - github.com/vladistan/otelcol-custom/receiver/hwmonreceiver => ../../receiver/hwmonreceiver
+# =============================================================================
+# Extensions - Minimal set for edge deployments
+# =============================================================================
+extensions:
+  # Health check endpoint for monitoring and systemd
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.164.1
+  # Debug endpoints (/debug/tracez, /debug/pipelinez)
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.164.0
+  # Persistent queue storage for sending_queue resilience (survives restarts)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.164.1
+# =============================================================================
+# Receivers - Edge-specific sources only
+# =============================================================================
+receivers:
+  # --- Logs ---
+  # File-based logs (application logs, Docker container logs)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.164.1
+  # --- Metrics ---
+  # Host metrics (CPU, memory, disk, network, load, paging, filesystem)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
+  # TCP connectivity probe (IPv4 and bracketed IPv6 targets)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
+  # Scrape Prometheus exporters on the host (node_exporter and similar)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.164.1
+  # --- Custom (local) ---
+  # OpenVPN status file: one log record per connected client
+  - gomod: github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver v0.0.0
+  # ZFS pool state, ARC and dataset metrics from /proc/spl/kstat/zfs or sysctl
+  - gomod: github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver v0.0.0
+  # Temperature sensors (hw.*) from sysctl on FreeBSD
+  - gomod: github.com/vladistan/otelcol-custom/receiver/hwmonreceiver v0.0.0
+# =============================================================================
+# Processors - Minimal processing for edge
+# =============================================================================
+processors:
+  # --- Core ---
+  # Batch telemetry for network efficiency
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.164.0
+  # Prevent OOM conditions
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.164.0
+  # --- Resource ---
+  # Auto-detect host info (hostname, OS, etc.)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.164.1
+  # Add/modify resource attributes (for resource/host config)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.164.1
+  # --- Transform ---
+  # OTTL-based metric/log transformations (for CPU % normalization, etc.)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
+  # OTTL-based filtering (drop low-resource process metrics)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.164.1
+  # Modify log/metric attributes (upsert, delete, extract, convert, hash)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
+  # --- Custom (local) ---
+  # Normalized load average (load / CPU count)
+  - gomod: github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor v0.0.0
+  # Resource version (adds collector.{role}.version to resources)
+  - gomod: github.com/vladistan/otelcol-custom/processor/resourceversionprocessor v0.0.0
+  # Log recombine (multiline log combination without noisy errors)
+  - gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
+  # Window histograms (summarizes sampled metrics into histograms per send window)
+  - gomod: github.com/vladistan/otelcol-custom/processor/windowhistprocessor v0.0.0
+  # Container name (sets service.name from container.name on Docker journald logs)
+  - gomod: github.com/vladistan/otelcol-custom/processor/containernameprocessor v0.0.0
+  # Kernel threads (one aggregate per host in place of per-pid process metrics)
+  - gomod: github.com/vladistan/otelcol-custom/processor/kthreadprocessor v0.0.0
+  # Process lifetime (CPU time and disk bytes over process age)
+  - gomod: github.com/vladistan/otelcol-custom/processor/processlifetimeprocessor v0.0.0
+# =============================================================================
+# Exporters - Forward to gateway only
+# =============================================================================
+exporters:
+  # OTLP gRPC (edge → gateway via gRPC)
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.164.0
+  # OTLP HTTP (edge → gateway via HTTP/protobuf)
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.164.0
+  # File exporter for local metrics validation
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
+  # Debug output for troubleshooting
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.164.0

@@ -28,7 +28,7 @@ pin the right version for each.
 
 ## Installation
 
-Prebuilt `edge` binaries (Linux and Windows), a `gateway` binary and a gateway
+Prebuilt `edge` binaries (Linux, Windows and FreeBSD), a `gateway` binary and a gateway
 container image are published for each release — no Go toolchain required.
 
 ### Binary download (edge/gateway, linux/amd64)
@@ -49,6 +49,14 @@ service under `LocalSystem`, so review that choice for your hosts. See
 [Windows edge collector](docs/windows-edge.md)
 for the metrics, the event-log defaults and the sample config
 (`test/configs/windows-edge.yaml`).
+
+### FreeBSD edge (freebsd/amd64)
+
+The release also carries `otelcol-edge-<version>-freebsd-amd64`, a static binary
+listed in the same `SHA256SUMS`. Download it the same way as the Linux edge, then
+see [FreeBSD edge collector](docs/freebsd-edge.md) for the install path, the rc.d
+service and the sample config (`test/configs/truenas-core-edge.yaml`). The release
+checks do not start it, so run `otelcol-edge validate` on the host first.
 
 Releases and assets are also browsable at
 https://github.com/vladistan/otelcol-custom/releases.
@@ -82,7 +90,10 @@ inside the builder stage - `docker build -f Dockerfile.gateway .` (or
 ## Components
 
 ### Standard (from otelcol-contrib)
-- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12), docker_stats (Linux edge builds from 0.3.14)
+- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12), docker_stats (Linux edge builds from 0.3.14), snmp and netflow (Linux edge builds from 0.3.15)
+
+- **Receivers**: otlp, host_metrics, journald, tcp_check (edge builds from 0.3.11), prometheus (Linux edge builds from 0.3.12), docker_stats (Linux edge builds from 0.3.14), receiver_creator with the k8s_observer extension and the redis,
+  postgresql, mysql, mongodb, rabbitmq and nginx receivers (Linux edge builds from 0.3.15)
 - **Processors**: batch, memory_limiter
 - **Exporters**: otlp_grpc, debug
 
@@ -113,13 +124,14 @@ build/edge/otelcol-edge` runs it against local IPv4 and IPv6 listeners.
 
 ### Optional receivers
 
-A receiver that fails to start normally stops the collector. Two receivers are
-optional: `docker_stats` and `tcp_check`. If one of them fails to start, for
-example because Docker is not running yet, the collector keeps running without
-it. The list is fixed in the code and cannot be changed in the configuration.
-Every other receiver, `journald` and `hostmetrics` included, still stops the
-collector on a failed start. A configuration that cannot build the receiver at
-all is still rejected at startup.
+A receiver that fails to start normally stops the collector. Three receivers are
+optional: `docker_stats`, `tcp_check` and `netflow`. If one of them fails to
+start, for example because Docker is not running yet or the flow port is already
+in use, the collector keeps running without it. The list is fixed in the code
+and cannot be changed in the configuration. Every other receiver, `journald` and
+`hostmetrics` included, still stops the collector on a failed start. A
+configuration that cannot build the receiver at all is still rejected at
+startup.
 
 What you see when an optional receiver is skipped:
 
@@ -139,6 +151,57 @@ The collector retries the start in the background after 30 s, then after 60 s,
 120 s and so on up to every 5 minutes. A WARN is logged on the first failure and
 on every tenth failure after it. When a start succeeds the collector logs an
 INFO line and the status returns to OK. The retry stops at shutdown.
+
+### Proxmox VE metrics
+
+The `pve` receiver is in the Linux and static Linux edge builds. It reads a Proxmox VE cluster through
+the HTTP API with two scrapers; the metric names and attributes are in
+[Metrics and runtime environment](docs/otel-metrics.md#proxmox-ve--receiverpvereceiver). It runs no
+external command.
+
+```yaml
+receivers:
+  pve:
+    base_urls: [https://pve1:8006, https://pve2:8006]
+    ca_file: /etc/otelcol/pve-ca.pem
+    resources:                      # one node per cluster
+      enabled: true
+      token_id: otel@pve!resources
+      token_secret: ${env:PVE_RESOURCES_TOKEN}
+    guests:                         # every node, its own guests only
+      enabled: true
+      token_id: otel@pve!guests
+      token_secret: ${env:PVE_GUESTS_TOKEN}
+      node: pve1
+```
+
+- `base_urls` is a list. A connect or TLS failure moves on to the next address; for `resources` so does a 5xx
+  answer or a request timeout. For `guests` a timeout is the answer: a stuck guest costs one timeout, not one
+  per address. Certificates are verified. Put the cluster CA in `ca_file`; `insecure_skip_verify: true` is an
+  explicit opt-in and logs one WARN at start.
+- `resources` needs a token with the `PVEAuditor` role on `/`. `guests` needs a token whose role holds
+  `VM.Audit` and the agent privilege on `/vms`: `VM.Monitor` on PVE 8 and earlier, `VM.GuestAgent.Audit`
+  on PVE 9. `PVEAuditor` does not carry `VM.Monitor`, so on PVE 8 `guests` needs a custom role. From the
+  PVE manual, unverified: `pveum role add OtelGuestAgent --privs "VM.Audit VM.Monitor"`, then
+  `pveum acl modify /vms --tokens 'otel@pve!guests' --roles OtelGuestAgent`, and a token created with
+  privilege separation. PVE shows the secret once; keep it in an environment variable or a file, not in
+  the config text.
+- The token secret never appears in a log line, an error or a config dump.
+- `Start` makes no network call. With the API down the collector starts and each interval logs one
+  error. A 401 or 403 logs one WARN per interval; a 403 on an agent call names the missing privilege.
+- The `guests` scraper polls every 15 minutes by default because the facts change rarely and the agent
+  calls take PVE API worker time. It runs one request at a time, skips guests that are not running and
+  backs off a guest that fails.
+- The metrics and the `pve guest fact` change-event logs come from the same receiver; wire it into a
+  metrics pipeline and a logs pipeline.
+
+### SNMP and NetFlow
+
+The Linux and static Linux edge builds include the contrib `snmp` and `netflow` receivers (both alpha).
+`snmp` polls one device per instance, by OID; `netflow` turns NetFlow, IPFIX and sFlow records into logs,
+one record per flow. See [SNMP and NetFlow on the Linux edge](docs/snmp-netflow.md) for the keys, the
+unverified QNAP iSCSI and LLDP OIDs, how to measure flow volume, and the advice to bind one address because
+NetFlow has no authentication. Samples: `test/configs/edge-snmp.yaml` and `test/configs/edge-netflow.yaml`.
 
 ### Prometheus scraping on edge hosts
 
@@ -310,6 +373,107 @@ resource, comparing only the fields of attributes the resource does not own, and
 not split at all when the resource owns all five. With it off, the last record read
 sets the attributes the resource does not own.
 
+#### Extended mapping
+
+Three more keys, all off by default, so a config without them gives the output of 0.3.14.
+
+```yaml
+processors:
+  journald:
+    set_resource: true
+    split_resources: true
+    map_severity: true
+    body_from_message: true
+    keep_fields: false
+    map_extended: true
+    skip_when_resource_has: [container.name]
+    drop_unmapped_underscore: true
+```
+
+`map_extended` maps fifteen more journal fields. Six go to resource attributes and
+follow the same no-overwrite rule as the first five, with `split_resources` on and off:
+
+| Journal field | Resource attribute |
+|---|---|
+| `_EXE` | `process.executable.path` |
+| `_CMDLINE` | `process.command_line` |
+| `_UID` | `user.id` |
+| `_GID` | `user.group.id` |
+| `_SYSTEMD_CGROUP` | `container.id` (the cgroup path, as given) |
+| `_RUNTIME_SCOPE` | `container.runtime` |
+
+Nine go to log attributes, set on each record:
+
+| Journal field | Log attribute |
+|---|---|
+| `_BOOT_ID` | `boot.id` |
+| `_SYSTEMD_SLICE` | `systemd.slice` |
+| `_SYSTEMD_INVOCATION_ID` | `systemd.invocation_id` |
+| `_TRANSPORT` | `log.source` |
+| `SYSLOG_FACILITY` | `syslog.facility.code` |
+| `SYSLOG_IDENTIFIER` | `syslog.appname` |
+| `SYSLOG_PID` | `syslog.procid` |
+| `_SELINUX_CONTEXT` | `selinux.context` (newlines kept) |
+| `_CAP_EFFECTIVE` | `process.capabilities.effective` |
+
+All values are strings, as the journal gives them. A field a record lacks sets nothing.
+The mapped fields no longer appear under `journald.fields` when `keep_fields` is on.
+`map_extended` needs `set_resource`, and logs a warning at start when `split_resources`
+is off: records of different units that share a resource then get the resource attributes
+of one record.
+
+With `map_extended` the processor also cleans what is left of a map body and of
+`journald.fields`:
+
+- `PRIORITY`, `SYSLOG_FACILITY`, `SYSLOG_IDENTIFIER` and `SYSLOG_PID` are removed from a map
+  body that stays a map, after the severity and the attributes were read from them.
+- Each other key that starts with `_` and that no mapping read moves into the log attribute
+  `journald.unknown_fields`, a map. It is absent when no such key is left. The keys leave
+  `journald.fields` and the body.
+- `_SOURCE_REALTIME_TIMESTAMP`, `__CURSOR`, `__MONOTONIC_TIMESTAMP` and `_STREAM_ID` are
+  dropped from the body, `journald.fields` and `journald.unknown_fields`.
+
+The mapped `_` keys such as `_HOSTNAME` stay in a map body unless `drop_unmapped_underscore`
+is on.
+
+##### Differences from the `transform` block it replaces
+
+A `transform` block that maps the same fields behaves differently in five ways:
+
+- It writes `container.runtime`, `selinux.context` and `process.capabilities.effective` only
+  for a record without `MESSAGE`; the block turns the body into a string first, and its later
+  statements then do not run. The processor sets all three on every record that has the field.
+- It writes `journald.unknown_fields` as an empty map, and only on a record without `MESSAGE`.
+  The processor writes the keys that were left over, on every record that has any, with or
+  without `MESSAGE`. Real journal records carry several such keys (`_AUDIT_SESSION`,
+  `_AUDIT_LOGINUID`, `_SYSTEMD_USER_SLICE` and others), so after the swap most rows gain this
+  attribute. Four leftover keys add 146 bytes to a record that is 532 bytes in the block's output,
+  and about 1.8 microseconds to the processor's time per record on the benchmark, which still
+  runs at about half the time of the block on that fixture.
+- It overwrites the resource attributes `process.executable.path`, `process.command_line`,
+  `user.id`, `user.group.id`, `container.id` and `container.runtime`; the processor sets them
+  only when the resource lacks them, an empty string counting as missing. A resource that
+  carries one of them from a detector keeps its value.
+- It sets `host.name`, `process.pid`, `process.command` and `service.name` on every record
+  (the last three unless the resource has `container.name`). The processor keeps a non-empty
+  value that the resource already has.
+- It leaves the severity unset for `PRIORITY` 5 (notice). The processor gives `INFO`.
+
+The five resource fields differ per process, so with `split_resources` on the processor
+makes one resource for each distinct combination in a batch. It sets no cap on that
+number. The histogram `otelcol_journald_resources_per_batch` shows how many resources
+each batch has; watch it, and the memory of the collector, after turning `map_extended` on.
+
+`skip_when_resource_has` lists resource attributes. A resource that carries any of them,
+with a non-empty value, gets none of `process.pid`, `process.command`, `service.name` and
+`container.id` from the journal. With `container.name` listed, a container's logs keep the
+resource the edge gave them and do not take the Docker daemon's pid, command and unit. The
+default is an empty list.
+
+`drop_unmapped_underscore` removes every key that starts with `_` from a map body that has
+no `MESSAGE`; such a body is otherwise passed on whole. The mapping and `keep_fields` read
+the fields first, so only the body is stripped.
+
 ### Kernel threads in process metrics
 
 The `kthread` processor is in the Linux and static Linux edge builds. The process
@@ -412,21 +576,24 @@ and `kthread` sums them into one aggregate ratio per host.
 
 ### ZFS pool and ARC metrics
 
-The `zfskstat` receiver is in the Linux and static Linux edge builds. It reads the
-OpenZFS kstat files in process, with no external command and no privilege beyond
-read access. Per pool it reports I/O bytes and operations by direction, the time the
-wait and run queues were busy (in seconds, not a latency), queue lengths and the pool
-state; it also reports the ARC size, hits and misses. The metric names, types and units are in
-`docs/otel-metrics.md`.
+The `zfskstat` receiver reads the OpenZFS kstats in process, with no external
+command and no privilege beyond read access. Per pool it reports I/O bytes and
+operations by direction, the time the wait and run queues were busy (in seconds, not a
+latency), queue lengths and the pool state; it also reports the ARC size, hits and
+misses. With `datasets: true` it adds I/O bytes and operations per dataset. The metric
+names, types and units are in `docs/otel-metrics.md`.
 
 ```yaml
 receivers:
   zfskstat:
     collection_interval: 60s              # default
-    kstat_path: /proc/spl/kstat/zfs       # default
+    source: auto                          # auto | proc | sysctl; auto is sysctl on FreeBSD, proc elsewhere
+    kstat_path: /proc/spl/kstat/zfs       # default; proc source only
     pools: []                             # empty means every pool
     exclude_pools: []
     arcstats: true                        # default
+    datasets: false                       # default; true adds zfs.dataset.io.*
+    max_datasets: 100                     # default; datasets above it are dropped in sorted order, 0 is no cap
 
 service:
   pipelines:
@@ -434,13 +601,91 @@ service:
       receivers: [host_metrics, zfskstat]
 ```
 
-On a host without the ZFS module the path does not exist. The receiver starts, logs
-one info line and sends nothing, then looks again at each interval, so a module
-loaded later is picked up. In a container, mount the host `/proc/spl` and point
-`kstat_path` at it. Counters restart from zero when a pool is imported again. The
-sums start at host boot, read from `/proc/uptime`, or at the time the collector
-started when that file cannot be read. Per-dataset counters are not read.
+The `proc` source reads the files under `kstat_path`. The `sysctl` source reads the
+`kstat.zfs` sysctl tree and ignores `kstat_path`. FreeBSD 13 has no per-pool `io`
+kstat, so the `sysctl` source reports no `zfs.pool.io.*` metrics there; the pool state,
+the ARC metrics and the dataset metrics remain. OpenZFS 2.1 and later have no
+pool-level I/O counters on any system: `zfs.pool.io.*` appears only where the legacy
+`io` file exists (OpenZFS 2.0 and older), and a pool without it still reports
+`zfs.pool.state`, the ARC metrics and, with `datasets`, the dataset metrics. Transaction
+group metrics for these hosts come in a later release. On a host without ZFS the path or the
+sysctl tree does not exist. The receiver starts, logs one info line and sends nothing,
+then looks again at each interval, so a module loaded later is picked up. A sysctl
+error other than not found logs one warning until a read succeeds again. In a
+container, mount the host `/proc/spl` and point `kstat_path` at it. Counters restart
+from zero when a pool is imported again. The sums start at host boot, read from
+`/proc/uptime` (`kern.boottime` on FreeBSD), or at the time the collector started when
+that cannot be read.
 The Windows edge, the gateway and the scrape collector do not include the receiver.
+
+### Hardware temperature, fan and voltage sensors
+
+The `hwmon` receiver is in the Linux and static Linux edge builds. It reports the
+sensors of the host with the `hw.*` names of the OpenTelemetry semantic conventions
+(`hw.temperature`, `hw.temperature.limit`, `hw.fan.speed`, `hw.voltage`). It reads
+`/sys/class/hwmon` and the thermal zones in `/sys/class/thermal` in process, with no
+external command and no privilege beyond read access. Names, units and attributes are
+in `docs/otel-metrics.md`.
+
+```yaml
+receivers:
+  hwmon:
+    collection_interval: 60s          # default, at least 1s
+    hwmon_path: /sys/class/hwmon      # default; thermal zones are read from ../thermal
+    include: []                       # globs on "chip:label"; empty means every sensor
+    exclude: []
+    limits: true                      # default: max, crit, min and lcrit of each temperature
+    fans: true                        # default
+    voltages: true                    # default
+    thermal_zones: true               # default
+    cpu_cores: false                  # default: no per-core CPU temperatures
+
+service:
+  pipelines:
+    metrics:
+      receivers: [host_metrics, hwmon]
+```
+
+Per-core CPU temperatures (the `Core <N>` sensors of the `coretemp` chip) are off by
+default because they are most of the series; the package sensor stays. Set
+`cpu_cores: true` for them. A sensor that returns an error, as a sleeping device does,
+is skipped with a debug line and the others are still sent. A VM usually has few or no
+sensors: with none the receiver starts, logs one info line and sends nothing, and looks
+again at each interval. In a container, mount the host `/sys` and point `hwmon_path` at
+`<mount>/class/hwmon`.
+
+On FreeBSD the receiver reads the sysctls `dev.cpu.<N>.temperature` (only with
+`cpu_cores: true`) and `hw.acpi.thermal.tz<N>.temperature` with its `_CRT`, `_HOT` and
+`_PSV` trip points, and sends no fan or voltage series. The Windows edge, the gateway
+and the scrape collector do not include the receiver.
+
+### iSCSI initiator sessions
+
+The `iscsi` receiver is in the Linux and static Linux edge builds. It reports the iSCSI
+sessions of an initiator host from `/sys/class/iscsi_session` and
+`/sys/class/iscsi_connection`: a session gauge per session (with its state, target,
+portal and portal group tag), a count and a gauge per connection. It opens only the
+files `targetname`, `tpgt`, `state`, `persistent_address` and `persistent_port` and never
+a credential file such as `password`.
+
+```yaml
+receivers:
+  iscsi:
+    collection_interval: 60s          # default
+    sysfs_path: /sys/class            # default
+
+service:
+  pipelines:
+    metrics:
+      receivers: [iscsi]
+```
+
+A host with no iSCSI sessions has no session directory: the receiver starts, logs one
+info line and sends nothing, and looks again at each interval. A session that is
+`FAILED` or `FREE` is reported through the `state` attribute, so an alert rule should
+test `state != "LOGGED_IN"` or a missing `LOGGED_IN` series. The Windows edge, the
+gateway and the scrape collector do not include the receiver, and the receiver cannot
+be created off Linux.
 
 ### OpenVPN client traffic
 
@@ -462,6 +707,27 @@ the port. The receiver emits the signal of each pipeline it is in, so a 0.3.13 c
 in a logs pipeline keeps emitting log records, and a metrics pipeline gets the metrics.
 The `output` key (`metrics`, `logs` or `both`) restricts it. Use status version 2 or 3
 for metrics. See `docs/openvpnstatus.md`.
+
+### Pod discovery on the Linux edge
+
+The Linux and static Linux edge builds can start receivers for the pods of their own
+node, for a DaemonSet. `k8s_observer` lists the pods of one node, and `receiver_creator`
+starts a receiver for each pod that a rule in the config matches. One rule scrapes
+pods that carry `prometheus.io/scrape: "true"` with the `prometheus` receiver; the
+reference config is `test/configs/edge-k8s-discovery.yaml`. The edge also compiles in
+the `redis`, `postgresql`, `mysql`, `mongodb`, `rabbitmq` and `nginx` receivers for
+rules on those pods (`test/configs/edge-k8s-apps.yaml`), with credentials from
+environment variables or a mounted file. `memcached` and `kafka_metrics` are not in
+the build.
+
+Annotation discovery stays off: only rules in the config start receivers, and a guard
+fails a sample config that turns it on. The creator puts `k8s.pod.uid`, `k8s.pod.name`
+and `k8s.namespace.name` on what the receivers produce; `k8s_attributes` after the
+creator adds labels and annotations. Each matching pod gets its own receiver, and a
+new `receiver` label value on the receiver self-metrics after every pod restart. A
+receiver that fails to start is logged and the collector keeps running. The gateway,
+the scrape collector and the Windows edge are unchanged. See `docs/k8s-discovery.md`
+for the RBAC, the failure table and the size of each receiver.
 
 ### Custom (in-tree)
 
@@ -486,10 +752,16 @@ from 0.3.1 and join the manifests in later releases.
 **Receivers** (`receiver/`): `ciscologreceiver` (root module, parses Cisco device
 logs), `psireceiver` (own module, Pressure Stall Information metrics from
 `/proc/pressure/`), `ethtoolreceiver` (own module, AWS ENA allowance counters by ioctl,
+Linux edge only), `pvereceiver` (own module, Proxmox VE cluster resources and guest agent facts,
 Linux edge only), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
 `fswatchreceiver` (own module, one log record per new file, Windows edge only),
+`zfskstatreceiver` (own module, ZFS pool I/O, pool state, ARC and dataset metrics, Linux and FreeBSD edge),
+
 `zfskstatreceiver` (own module, ZFS pool I/O, pool state and ARC metrics, Linux edge only),
+`hwmonreceiver` (own module, temperature, fan and voltage sensors, Linux edge; FreeBSD by build tag),
+`iscsireceiver` (own module, iSCSI initiator sessions from sysfs, Linux edge only),
 `openvpnstatusreceiver` (own module, OpenVPN client traffic from the status file, Linux edge only),
+`cloudwatchmetricsreceiver` (own module, CloudWatch metrics for many accounts, regions and tiers, scrape image only),
 `auth0receiver` (own module, Auth0 events from SQS; in the tree from 0.3.1 and
 joins the scrape build in a later release)
 
@@ -517,9 +789,13 @@ distribution emits and the runtime environment variables it reads.
 ## Documentation
 
 - [Windows edge collector](docs/windows-edge.md)
+- [FreeBSD edge collector](docs/freebsd-edge.md)
 - [Metrics and runtime environment](docs/otel-metrics.md)
 - [otel-cluster on the gateway image](docs/k8s-cluster.md)
 - [Scrape collector](docs/scrape-collector.md)
+- [SNMP and NetFlow on the Linux edge](docs/snmp-netflow.md)
+
+- [Docker logs and metrics on journald-driver hosts](docs/docker-multiline.md)
 
 ## Notes on Project Conventions
 
