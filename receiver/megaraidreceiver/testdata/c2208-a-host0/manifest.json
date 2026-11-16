@@ -1,0 +1,167 @@
+{
+  "commands": [
+    {
+      "bytes": 2048,
+      "file": "ctrl_getinfo.bin",
+      "name": "ctrl_getinfo",
+      "opcode": "0x01010000",
+      "status": 0
+    },
+    {
+      "bytes": 64,
+      "file": "ctrl_get_props.bin",
+      "name": "ctrl_get_props",
+      "opcode": "0x01020100",
+      "status": 0
+    },
+    {
+      "bytes": 16,
+      "file": "pr_get_status.bin",
+      "name": "pr_get_status",
+      "opcode": "0x01070100",
+      "status": 0
+    },
+    {
+      "bytes": 208,
+      "file": "pr_get_properties.bin",
+      "name": "pr_get_properties",
+      "opcode": "0x01070200",
+      "status": 0
+    },
+    {
+      "bytes": 5768,
+      "file": "pd_get_list.bin",
+      "name": "pd_get_list",
+      "opcode": "0x02010000",
+      "status": 0
+    },
+    {
+      "bytes": 5768,
+      "file": "pd_list_query.bin",
+      "mailbox": "050000000000000000000000",
+      "name": "pd_list_query",
+      "opcode": "0x02010100",
+      "status": 0
+    },
+    {
+      "bytes": 1032,
+      "file": "ld_get_list.bin",
+      "name": "ld_get_list",
+      "opcode": "0x03010000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "ld_list_query.bin",
+      "name": "ld_list_query",
+      "opcode": "0x03010100",
+      "status": 0
+    },
+    {
+      "bytes": 1120,
+      "file": "cfg_read.bin",
+      "name": "cfg_read",
+      "opcode": "0x04010000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_8.bin",
+      "mailbox": "080000000000000000000000",
+      "name": "pd_get_info_8",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_9.bin",
+      "mailbox": "090000000000000000000000",
+      "name": "pd_get_info_9",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_10.bin",
+      "mailbox": "0a0000000000000000000000",
+      "name": "pd_get_info_10",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_11.bin",
+      "mailbox": "0b0000000000000000000000",
+      "name": "pd_get_info_11",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_252.bin",
+      "mailbox": "fc0000000000000000000000",
+      "name": "pd_get_info_252",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_0.bin",
+      "name": "ld_get_info_0",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_0.bin",
+      "name": "ld_get_prop_0",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_1.bin",
+      "mailbox": "010000000000000000000000",
+      "name": "ld_get_info_1",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_1.bin",
+      "mailbox": "010000000000000000000000",
+      "name": "ld_get_prop_1",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 20,
+      "file": "event_get_info.bin",
+      "name": "event_get_info",
+      "opcode": "0x01040100",
+      "status": 0
+    },
+    {
+      "bytes": 25608,
+      "file": "event_get.bin",
+      "mailbox": "466a0100ffff00fe00000000",
+      "name": "event_get",
+      "opcode": "0x01040300",
+      "status": 0
+    }
+  ],
+  "device": "/dev/megaraid_sas_ioctl_node",
+  "host_no": 0,
+  "label": "c2208-a",
+  "pci": "0000:06:00.0",
+  "rescrubbed": true,
+  "scrubbed": true,
+  "skipped": [
+    {
+      "name": "bbu",
+      "reason": "no battery reported by the controller; no battery command is sent"
+    }
+  ],
+  "tool": "megaraid-capture",
+  "version": "0.1.0"
+}

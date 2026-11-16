@@ -165,14 +165,15 @@ build-edge-image:
 # Build the edge collector for Linux with cgo, inside the build container.
 # The repo is mounted at its host path so embedded source paths match the host
 # (Sentry source context). -buildvcs=false: a worktree's .git points outside
-# the mount, so VCS stamping would fail.
+# the mount and a runner's checkout is not owned by the container user, so VCS
+# stamping would fail. GOFLAGS carries it into the OCB compile step too.
 build-edge-linux: build-edge-image
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Building otelcol-edge {{version}} for linux/amd64 (cgo)..."
     mkdir -p build/edge
     {{docker_bin}} run --rm -i --platform linux/amd64 \
-        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache \
+        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e GOFLAGS=-buildvcs=false \
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=1
@@ -198,7 +199,7 @@ build-edge-static-linux: build-edge-image
     echo "Building static otelcol-edge {{version}} for linux/amd64..."
     mkdir -p build/edge-static
     {{docker_bin}} run --rm -i --platform linux/amd64 \
-        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache \
+        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e GOFLAGS=-buildvcs=false \
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0
@@ -245,6 +246,15 @@ check-edge-windows-manifest:
 # Tests for check-edge-windows-manifest; no network.
 test-check-edge-windows-manifest:
     scripts/test-check-edge-windows-manifest.sh
+
+# Fail unless the ipmi sample objects hold one replica, the BMC credentials from a Secret
+# and a network policy with UDP 623 egress to one subnet.
+check-ipmi-deployment:
+    scripts/check-ipmi-deployment.sh
+
+# Tests for check-ipmi-deployment; no network.
+test-check-ipmi-deployment:
+    scripts/test-check-ipmi-deployment.sh
 
 # Fail unless every sample config with a docker_stats block sets api_version to an empty string.
 check-docker-stats-api-version:
@@ -537,6 +547,23 @@ test-custom:
     @echo "Checking the pod discovery sample configs..."
     just test-check-k8s-discovery-config
     just check-k8s-discovery-config
+    @echo "Testing the MegaRAID capture tool..."
+    just test-megaraid-capture
+
+# Tests of the MegaRAID capture tool (cmd/megaraid-capture, its own module).
+test-megaraid-capture:
+    cd cmd/megaraid-capture && go vet ./... && GOOS=linux GOARCH=amd64 go vet ./... && go test -race -count=1 ./...
+
+# Static Linux builds of the MegaRAID capture tool for lab hosts, in build/megaraid-capture/.
+# Copy one to the host and run it as root: ./megaraid-capture-linux-amd64 -out /tmp/mr-capture -label LABEL
+build-megaraid-capture:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p build/megaraid-capture
+    for arch in amd64 arm64; do
+        (cd cmd/megaraid-capture && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "../../build/megaraid-capture/megaraid-capture-linux-$arch" .)
+    done
+    ls -l build/megaraid-capture
 
 # Run tests for every nested Go module under processor/, receiver/, stanza/
 # and test/, dynamically discovered rather than hardcoded.

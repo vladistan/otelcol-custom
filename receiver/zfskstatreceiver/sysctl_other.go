@@ -19,5 +19,6 @@ func realSysctl() sysctlFns {
 		getUint64: func(string) (uint64, error) { return 0, syscall.ENOENT },
 		getString: func(string) (string, error) { return "", syscall.ENOENT },
 		bootTime:  func() (time.Time, error) { return time.Time{}, syscall.ENOENT },
+		getfsstat: func() ([]mount, error) { return nil, syscall.ENOENT },
 	}
 }

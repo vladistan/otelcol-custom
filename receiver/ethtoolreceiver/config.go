@@ -6,6 +6,7 @@ package ethtoolreceiver
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -20,12 +21,46 @@ type Config struct {
 	// Interfaces limits the read to these names; empty means every interface
 	// with a matching driver.
 	Interfaces []string `mapstructure:"interfaces"`
+	// Statistics selects driver statistics by name for network.interface.statistic.
+	// With no entry the receiver emits no such series.
+	Statistics []Statistic `mapstructure:"statistics"`
+	// MaxStatistics caps the network.interface.statistic series of one scrape.
+	MaxStatistics int `mapstructure:"max_statistics"`
 }
+
+// Statistic is one entry of the statistics list.
+type Statistic struct {
+	// Match is a regular expression tested against the full statistic name.
+	Match string `mapstructure:"match"`
+	// Type is sum for a counter or gauge for a value that moves both ways.
+	Type string `mapstructure:"type"`
+}
+
+// Statistic types.
+const (
+	typeSum   = "sum"
+	typeGauge = "gauge"
+)
 
 var _ component.Config = (*Config)(nil)
 
-// Validate rejects an interval under one second and empty driver or interface names.
+// Validate rejects an interval under one second, empty driver or interface names,
+// a statistics entry with a bad pattern or type, and a non-positive cap.
 func (cfg *Config) Validate() error {
+	if cfg.MaxStatistics <= 0 {
+		return errors.New("max_statistics must be positive")
+	}
+	for i, st := range cfg.Statistics {
+		if _, err := regexp.Compile(st.Match); err != nil {
+			return fmt.Errorf("statistics[%d].match: %w", i, err)
+		}
+		if st.Match == "" {
+			return fmt.Errorf("statistics[%d].match is empty", i)
+		}
+		if st.Type != typeSum && st.Type != typeGauge {
+			return fmt.Errorf("statistics[%d].type must be %q or %q, got %q", i, typeSum, typeGauge, st.Type)
+		}
+	}
 	if cfg.CollectionInterval <= 0 {
 		return errors.New("collection_interval must be positive")
 	}

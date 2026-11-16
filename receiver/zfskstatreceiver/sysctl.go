@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 )
 
 // objsetFields are the numeric objset fields the dataset metrics use.
-var objsetFields = []string{"nread", "nwritten", "reads", "writes"}
+var objsetFields = []string{"nread", "nwritten", "reads", "writes", "nunlinks"}
 
 // sysctlFns holds the system calls the sysctl source makes, so tests can replace them.
 // Each returns an error matching syscall.ENOENT when the name or OID does not exist.
@@ -35,6 +36,14 @@ type sysctlFns struct {
 	getUint64 func(name string) (uint64, error)
 	getString func(name string) (string, error)
 	bootTime  func() (time.Time, error)
+	// getfsstat lists the mounted file systems; nil, or an error matching ENOENT, means there is no list.
+	getfsstat func() ([]mount, error)
+}
+
+// mount is one entry of the mounted file system list, with its statfs sizes in blocks.
+type mount struct {
+	from, fsType                   string
+	blockSize, blocks, free, avail uint64
 }
 
 // sysctlSource reads the kstat.zfs sysctl tree.
@@ -45,6 +54,9 @@ type sysctlSource struct {
 	ep     *episodes
 	absent bool
 	failed bool
+
+	mounts     []mount // read once per scrape, when the first pool needs it
+	mountsRead bool
 }
 
 func newSysctlSource(logger *zap.Logger, cfg *Config, fns sysctlFns) *sysctlSource {
@@ -70,6 +82,7 @@ func (s *sysctlSource) fail(name string, err error) {
 // read never returns an error: a failed sysctl is a warning and the metrics that could be read are kept.
 func (s *sysctlSource) read() (snapshot, error) {
 	s.failed = false
+	s.mounts, s.mountsRead = nil, false
 	snap := s.readTree()
 	if !s.failed {
 		s.ep.clear(sysctlKey)
@@ -159,6 +172,10 @@ func (s *sysctlSource) readPools(names []string) []poolStats {
 		if s.cfg.Datasets {
 			p.datasets = s.readDatasets(pool, names)
 		}
+		if s.cfg.Txg {
+			p.txg = s.readTxg(pool, names)
+		}
+		p.space = s.readSpace(pool)
 		pools = append(pools, p)
 	}
 	return pools
@@ -190,7 +207,7 @@ func (s *sysctlSource) readDatasets(pool string, names []string) []datasetStats 
 			continue
 		}
 		name, ok := s.string(base + datasetNameField)
-		if !ok || name == "" {
+		if !ok || name == "" || !s.cfg.datasetSelected(name) {
 			continue
 		}
 		fields := map[string]uint64{}
@@ -205,6 +222,64 @@ func (s *sysctlSource) readDatasets(pool string, names []string) []datasetStats 
 		out = append(out, datasetStats{pool: pool, name: name, fields: fields})
 	}
 	return out
+}
+
+// readTxg reads the txgs kstat of a pool when the tree has one; nil, with one info line per pool, when it has no closed row.
+func (s *sysctlSource) readTxg(pool string, names []string) *txgRow {
+	key := "txg\x00" + pool
+	name := poolPrefix + pool + ".misc.txgs"
+	if !slices.Contains(names, name) {
+		s.ep.once(zapcore.InfoLevel, key, "ZFS pool has no txgs sysctl, so no txg metrics", zap.String("pool", pool))
+		return nil
+	}
+	body, ok := s.string(name)
+	if !ok {
+		return nil
+	}
+	row, found := parseTxgs(body)
+	if !found {
+		s.ep.once(zapcore.InfoLevel, key, "ZFS pool txgs has no closed transaction group, so no txg metrics", zap.String("pool", pool))
+		return nil
+	}
+	s.ep.clear(key)
+	return &row
+}
+
+// readSpace returns the statfs sizes of the mount of the pool's root dataset: the zfs entry whose source name is the pool.
+func (s *sysctlSource) readSpace(pool string) *spaceStats {
+	if !s.mountsRead {
+		s.mountsRead = true
+		s.mounts = s.listMounts()
+	}
+	key := "space\x00" + pool
+	for _, m := range s.mounts {
+		if m.fsType == "zfs" && m.from == pool {
+			s.ep.clear(key)
+			return &spaceStats{
+				used:      (m.blocks - min(m.free, m.blocks)) * m.blockSize,
+				available: m.avail * m.blockSize,
+			}
+		}
+	}
+	if len(s.mounts) > 0 {
+		s.ep.once(zapcore.DebugLevel, key, "ZFS pool root dataset is not mounted, so no space metrics", zap.String("pool", pool))
+	}
+	return nil
+}
+
+func (s *sysctlSource) listMounts() []mount {
+	if s.fns.getfsstat == nil {
+		return nil
+	}
+	mounts, err := s.fns.getfsstat()
+	if notFound(err) {
+		return nil
+	}
+	if err != nil {
+		s.fail("getfsstat", err)
+		return nil
+	}
+	return mounts
 }
 
 // uint64 and string read one sysctl; ok is false for a vanished name and for an error, which is recorded.

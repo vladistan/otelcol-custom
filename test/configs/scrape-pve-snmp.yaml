@@ -1,0 +1,80 @@
+# Scrape pod polling Proxmox VE nodes and SNMP devices from one place.
+#
+# Validate with the environment set (values only need to be present):
+#   PVE_RESOURCES_TOKEN=x PVE_GUESTS_TOKEN=y SNMP_SWITCH_HOST=10.0.0.3 SNMP_SWITCH_COMMUNITY=c \
+#   otelcol-scrape validate --config test/configs/scrape-pve-snmp.yaml
+#
+# Secrets come from the environment, never from this file; scripts/check-snmp-secrets.sh fails the build
+# when community, auth_password or privacy_password holds a literal value.
+#
+# pve: the guest scraper reads the node named in guests.node and nothing else. When guests.node is empty it
+# takes the short host name of the machine the collector runs on, which in a pod is the pod name and no PVE
+# node, so a scrape pod must set guests.node on every instance. Use one instance per node. Each instance
+# may point base_urls at any cluster member: a request for /nodes/<node>/... is forwarded by the member that
+# answers it. Enable `resources` on ONE instance only (it reads the whole cluster).
+
+receivers:
+  pve/pve12:
+    base_urls:
+      - https://pve12.example.com:8006
+    ca_file: /etc/otelcol/pve-ca.pem
+    resources:
+      enabled: true
+      token_id: otel@pve!resources
+      token_secret: ${env:PVE_RESOURCES_TOKEN}
+      collection_interval: 60s
+    guests:
+      enabled: true
+      token_id: otel@pve!guests
+      token_secret: ${env:PVE_GUESTS_TOKEN}
+      node: pve12
+      collection_interval: 15m
+  pve/pve13:
+    base_urls:
+      - https://pve13.example.com:8006
+    ca_file: /etc/otelcol/pve-ca.pem
+    guests:
+      enabled: true
+      token_id: otel@pve!guests
+      token_secret: ${env:PVE_GUESTS_TOKEN}
+      node: pve13
+      collection_interval: 15m
+  snmp/switch:
+    collection_interval: 300s
+    endpoint: udp://${env:SNMP_SWITCH_HOST}:161
+    version: v2c
+    community: ${env:SNMP_SWITCH_COMMUNITY}
+    attributes:
+      interface:
+        oid: "1.3.6.1.2.1.31.1.1.1.1" # IF-MIB ifName
+    metrics:
+      snmp.interface.in.bytes:
+        unit: By
+        description: Octets received, IF-MIB ifHCInOctets
+        sum:
+          aggregation: cumulative
+          monotonic: true
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.6"
+            attributes:
+              - name: interface
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    metrics:
+      receivers: [pve/pve12, pve/pve13, snmp/switch]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    logs:
+      receivers: [pve/pve12, pve/pve13]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

@@ -1,0 +1,52 @@
+// Copyright 2026 V-Lad
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+// denyTable names every other opcode of mfireg.h. None is ever sent: each one changes the array,
+// the drives, the battery, the firmware or the availability of the controller, or blocks inside
+// the driver while it holds the per-controller semaphore. The allow-list is what stops a frame;
+// this table documents what the list keeps out, and a test checks that it is complete.
+var denyTable = map[uint32]string{
+	0x0100e100: "CTRL_MFI_HOST_MEM_ALLOC",
+	0x010e0201: "CTRL_MFC_DEFAULTS_GET",
+	0x010e0202: "CTRL_MFC_DEFAULTS_SET",
+	0x01101000: "CTRL_FLUSHCACHE",
+	0x01020200: "CTRL_SET_PROPS",
+	0x01050000: "CTRL_SHUTDOWN",
+	0x01040500: "CTRL_EVENT_WAIT",
+	0x01070300: "PR_SET_PROPERTIES",
+	0x01070400: "PR_START",
+	0x01070500: "PR_STOP",
+	0x01080201: "TIME_SECS_GET",
+	0x010f0100: "FLASH_FW_OPEN",
+	0x010f0200: "FLASH_FW_DOWNLOAD",
+	0x010f0300: "FLASH_FW_FLASH",
+	0x010f0400: "FLASH_FW_CLOSE",
+	0x02030100: "PD_STATE_SET",
+	0x02040100: "PD_REBUILD_START",
+	0x02040200: "PD_REBUILD_ABORT",
+	0x02050100: "PD_CLEAR_START",
+	0x02050200: "PD_CLEAR_ABORT",
+	0x02070100: "PD_LOCATE_START",
+	0x02070200: "PD_LOCATE_STOP",
+	0x0300e101: "LD_MAP_GET_INFO",
+	0x0300e102: "LD_SYNC",
+	0x03040000: "LD_SET_PROP",
+	0x03060100: "LD_INIT_START",
+	0x03090000: "LD_DELETE",
+	0x04020000: "CFG_ADD",
+	0x04030000: "CFG_CLEAR",
+	0x04040000: "CFG_MAKE_SPARE",
+	0x04050000: "CFG_REMOVE_SPARE",
+	0x04060100: "CFG_FOREIGN_SCAN",
+	0x04060200: "CFG_FOREIGN_DISPLAY",
+	0x04060300: "CFG_FOREIGN_PREVIEW",
+	0x04060400: "CFG_FOREIGN_IMPORT",
+	0x04060500: "CFG_FOREIGN_CLEAR",
+	0x05040000: "BBU_START_LEARN",
+	0x05050200: "BBU_SET_PROP",
+	0x08000000: "CLUSTER",
+	0x08010100: "CLUSTER_RESET_ALL",
+	0x08010200: "CLUSTER_RESET_LD",
+}

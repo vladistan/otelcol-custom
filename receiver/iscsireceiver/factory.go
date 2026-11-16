@@ -35,6 +35,8 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		CollectionInterval: time.Minute,
 		SysfsPath:          "/sys/class",
+		LUNs:               true,
+		MaxLUNs:            defaultMaxLUNs,
 	}
 }
 

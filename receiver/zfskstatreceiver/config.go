@@ -6,6 +6,7 @@ package zfskstatreceiver
 import (
 	"errors"
 	"fmt"
+	"path"
 	"runtime"
 	"slices"
 	"time"
@@ -27,8 +28,14 @@ type Config struct {
 	ArcStats bool `mapstructure:"arcstats"`
 	// Datasets turns the per-dataset I/O metrics on or off.
 	Datasets bool `mapstructure:"datasets"`
+	// DatasetInclude lists globs on <pool>/<dataset>; empty means every dataset. Applies with datasets.
+	DatasetInclude []string `mapstructure:"dataset_include"`
+	// DatasetExclude lists globs on <pool>/<dataset> that remove datasets the include list let through.
+	DatasetExclude []string `mapstructure:"dataset_exclude"`
 	// MaxDatasets caps the datasets read per scrape, in sorted order; 0 means no cap.
 	MaxDatasets int `mapstructure:"max_datasets"`
+	// Txg turns the zfs.pool.txg.* metrics on or off.
+	Txg bool `mapstructure:"txg"`
 	// Source is auto, proc or sysctl; auto means sysctl on FreeBSD and proc elsewhere.
 	// KstatPath applies to the proc source only.
 	Source string `mapstructure:"source"`
@@ -61,7 +68,26 @@ func (cfg *Config) selected(pool string) bool {
 	return len(cfg.Pools) == 0 || slices.Contains(cfg.Pools, pool)
 }
 
-// Validate checks the interval, the path and the pool names.
+// datasetSelected reports whether the include and exclude globs let the dataset through.
+// A bad pattern never matches; Validate rejects it at load.
+func (cfg *Config) datasetSelected(dataset string) bool {
+	for _, pattern := range cfg.DatasetExclude {
+		if ok, _ := path.Match(pattern, dataset); ok {
+			return false
+		}
+	}
+	if len(cfg.DatasetInclude) == 0 {
+		return true
+	}
+	for _, pattern := range cfg.DatasetInclude {
+		if ok, _ := path.Match(pattern, dataset); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// Validate checks the interval, the path, the pool names and the dataset globs.
 func (cfg *Config) Validate() error {
 	if cfg.CollectionInterval <= 0 {
 		return errors.New("collection_interval must be positive")
@@ -76,6 +102,13 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxDatasets < 0 {
 		return errors.New("max_datasets must not be negative")
+	}
+	for name, patterns := range map[string][]string{"dataset_include": cfg.DatasetInclude, "dataset_exclude": cfg.DatasetExclude} {
+		for i, pattern := range patterns {
+			if _, err := path.Match(pattern, ""); err != nil {
+				return fmt.Errorf("%s entry %d: %w", name, i, err)
+			}
+		}
 	}
 	if cfg.KstatPath == "" && cfg.resolvedSource() == sourceProc {
 		return errors.New("kstat_path must be set")

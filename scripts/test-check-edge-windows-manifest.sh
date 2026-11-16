@@ -193,6 +193,21 @@ expect_exit_code "ethtoolreceiver on the Windows edge fails" 1 \
 	"$CHECK" "$SCRATCH/windows-with-ethtool.yaml" "$STATIC"
 expect_output "the Windows ethtool is named" "ethtoolreceiver"
 
+# The smart receiver and the two modules it imports are Linux only.
+for name in smartreceiver smartdecode hwschema; do
+	grep -v "$name" "$STATIC" >"$SCRATCH/static-no-$name.yaml"
+	expect_exit_code "$name no longer removed from static fails" 1 \
+		"$CHECK" "$WINDOWS" "$SCRATCH/static-no-$name.yaml"
+	expect_output "the missing $name removal is named" "expected removal is missing: .*$name"
+done
+
+cp "$WINDOWS" "$SCRATCH/windows-with-smart.yaml"
+sed -i.bak '/^receivers:/a\
+  - gomod: github.com/vladistan/otelcol-custom/receiver/smartreceiver v0.0.0' "$SCRATCH/windows-with-smart.yaml"
+expect_exit_code "smartreceiver on the Windows edge fails" 1 \
+	"$CHECK" "$SCRATCH/windows-with-smart.yaml" "$STATIC"
+expect_output "the Windows smart receiver is named" "smartreceiver"
+
 grep -v "pvereceiver" "$STATIC" >"$SCRATCH/static-no-pve.yaml"
 expect_exit_code "pvereceiver no longer removed from static fails" 1 \
 	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-pve.yaml"
@@ -249,14 +264,20 @@ else
 	echo "PASS: builder-edge.yaml lists zfskstatreceiver"
 fi
 
-for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml; do
+for other in builder-config.yaml builder-gateway.yaml; do
 	if grep -q "pvereceiver" "$ROOT/$other"; then
-		echo "FAIL: $other lists pvereceiver; only the Linux edge manifests may"
+		echo "FAIL: $other lists pvereceiver; only the Linux edge and scrape manifests may"
 		failures=$((failures + 1))
 	else
 		echo "PASS: $other has no pvereceiver entry"
 	fi
 done
+if grep -q "otelcol-custom/receiver/pvereceiver v0.0.0" "$ROOT/builder-scrape.yaml"; then
+	echo "PASS: builder-scrape.yaml lists pvereceiver"
+else
+	echo "FAIL: builder-scrape.yaml does not list pvereceiver"
+	failures=$((failures + 1))
+fi
 
 for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml; do
 	if grep -q "zfskstat" "$ROOT/$other"; then
@@ -341,6 +362,45 @@ check_linux_edge_only() {
 
 check_linux_edge_only hwmon
 check_linux_edge_only iscsi
+check_linux_edge_only idrac
+
+# hwschema is the library idrac builds on: its replace line is in the Linux edge manifests and not on Windows.
+for linux in builder-edge.yaml builder-edge-static.yaml; do
+	if grep -q "receiver/hwschema => ../../receiver/hwschema" "$ROOT/$linux"; then
+		echo "PASS: $linux replaces hwschema"
+	else
+		echo "FAIL: $linux does not replace hwschema"
+		failures=$((failures + 1))
+	fi
+done
+grep -v "receiver/hwschema" "$STATIC" >"$SCRATCH/static-no-hwschema.yaml"
+expect_exit_code "hwschema no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-hwschema.yaml"
+expect_output "the missing hwschema removal is named" "expected removal is missing: .*hwschema"
+
+# The ipmi receiver is in the scrape manifest only, with go-ipmi pinned.
+if grep -q "otelcol-custom/receiver/ipmireceiver v0.0.0" "$ROOT/builder-scrape.yaml"; then
+	echo "PASS: builder-scrape.yaml lists ipmireceiver"
+else
+	echo "FAIL: builder-scrape.yaml does not list ipmireceiver"
+	failures=$((failures + 1))
+fi
+if grep -q "github.com/bougou/go-ipmi => github.com/bougou/go-ipmi v0.9.2" "$ROOT/builder-scrape.yaml"; then
+	echo "PASS: builder-scrape.yaml pins go-ipmi v0.9.2"
+else
+	echo "FAIL: builder-scrape.yaml does not pin go-ipmi v0.9.2"
+	failures=$((failures + 1))
+fi
+for other in builder-config.yaml builder-gateway.yaml builder-edge.yaml builder-edge-static.yaml builder-edge-windows.yaml; do
+	if grep -q "ipmireceiver" "$ROOT/$other"; then
+		echo "FAIL: $other lists ipmireceiver; only the scrape manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no ipmireceiver entry"
+	fi
+done
+
+check_linux_edge_only megaraid
 
 expect_exit_code "a missing manifest is a usage error" 2 "$CHECK" "$SCRATCH/absent.yaml"
 expect_output "usage error names the file" "absent.yaml"

@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/stretchr/testify v1.12.1
+	github.com/vladistan/otelcol-custom/receiver/hwschema v0.0.0
 	go.opentelemetry.io/collector/component v1.70.0
 	go.opentelemetry.io/collector/component/componenttest v0.164.0
 	go.opentelemetry.io/collector/confmap v1.70.0
@@ -55,3 +56,5 @@ require (
 	google.golang.org/grpc v1.84.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+replace github.com/vladistan/otelcol-custom/receiver/hwschema => ../hwschema

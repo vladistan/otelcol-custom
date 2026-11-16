@@ -5,7 +5,7 @@
 # windowhistprocessor, gpureceiver, fswatchreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
 # component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus,
 # docker_stats, k8sattributes, ethtool, pve, zfskstat, k8s_observer, receiver_creator, the six
-# application receivers, hwmon, iscsi).
+# application receivers, hwmon, iscsi, smart with its decoder and schema modules).
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -56,6 +56,14 @@ readonly REMOVED=(
 	"replace:$LOCAL/receiver/hwmonreceiver"
 	"$LOCAL/receiver/iscsireceiver"
 	"replace:$LOCAL/receiver/iscsireceiver"
+	"$LOCAL/receiver/smartreceiver"
+	"replace:$LOCAL/receiver/smartreceiver"
+	"replace:$LOCAL/receiver/smartdecode"
+	"$LOCAL/receiver/idracreceiver"
+	"replace:$LOCAL/receiver/idracreceiver"
+	"$LOCAL/receiver/megaraidreceiver"
+	"replace:$LOCAL/receiver/megaraidreceiver"
+	"replace:$LOCAL/receiver/hwschema"
 )
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"

@@ -56,14 +56,14 @@ grep -v "filelogreceiver" "$FREEBSD" >"$SCRATCH/missing.yaml"
 expect_exit_code "a component missing from the FreeBSD manifest fails" 1 "$CHECK" "$SCRATCH/missing.yaml" "$STATIC"
 expect_output "the removed filelog is named" "unexpected removal: .*filelogreceiver"
 
-for name in journaldreceiver dockerstatsreceiver k8sattributesprocessor psireceiver ethtoolreceiver pvereceiver snmpreceiver netflowreceiver receivercreator mongodbreceiver mysqlreceiver nginxreceiver postgresqlreceiver rabbitmqreceiver redisreceiver iscsireceiver; do
+for name in journaldreceiver dockerstatsreceiver k8sattributesprocessor psireceiver ethtoolreceiver pvereceiver snmpreceiver netflowreceiver receivercreator mongodbreceiver mysqlreceiver nginxreceiver postgresqlreceiver rabbitmqreceiver redisreceiver iscsireceiver smartreceiver idracreceiver megaraidreceiver; do
 	cp "$FREEBSD" "$SCRATCH/with-$name.yaml"
 	case "$name" in
 	*processor) section=processors ;;
 	*) section=receivers ;;
 	esac
 	case "$name" in
-	pvereceiver | psireceiver | ethtoolreceiver | iscsireceiver)
+	pvereceiver | psireceiver | ethtoolreceiver | iscsireceiver | smartreceiver | idracreceiver | megaraidreceiver)
 		module="github.com/vladistan/otelcol-custom/${section%s}/$name v0.0.0"
 		;;
 	*)
@@ -79,6 +79,11 @@ for name in journaldreceiver dockerstatsreceiver k8sattributesprocessor psirecei
 	expect_exit_code "$name no longer in static fails" 1 "$CHECK" "$FREEBSD" "$SCRATCH/static-no-$name.yaml"
 	expect_output "the lost removal of $name is named" "expected removal is missing: .*$name"
 done
+
+# hwschema is the library idrac builds on: its replace line leaves with idrac.
+grep -v "receiver/hwschema" "$STATIC" >"$SCRATCH/static-no-hwschema.yaml"
+expect_exit_code "hwschema no longer removed from static fails" 1 "$CHECK" "$FREEBSD" "$SCRATCH/static-no-hwschema.yaml"
+expect_output "the missing hwschema removal is named" "expected removal is missing: .*hwschema"
 
 grep -v "hwmonreceiver" "$FREEBSD" >"$SCRATCH/no-hwmon.yaml"
 expect_exit_code "a FreeBSD manifest without hwmon fails" 1 "$CHECK" "$SCRATCH/no-hwmon.yaml" "$STATIC"

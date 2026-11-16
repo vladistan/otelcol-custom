@@ -1,0 +1,122 @@
+# Sample Kubernetes objects for the ipmi receiver: one replica of the scrape image with only that receiver, the BMC
+# credentials from a Secret, and a network policy that lets the pod send UDP 623 to the BMC subnet and nothing else
+# but DNS and the downstream collector. The Secret is not in this file: it is filled from a parameter store by an
+# ExternalSecret (below), so no credential is in the repository.
+#
+# Replace the image tag, the namespace, the BMC subnet and the parameter paths. Mount scrape-ipmi.yaml as the
+# ConfigMap `scrape-ipmi-config` (key config.yaml).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: bmc-credentials
+  namespace: monitoring
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: parameter-store
+  target:
+    name: bmc-credentials
+  data:
+    - secretKey: username # pragma: allowlist secret
+      remoteRef:
+        key: /example/bmc/username
+    - secretKey: password # pragma: allowlist secret
+      remoteRef:
+        key: /example/bmc/password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otelcol-scrape-ipmi
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: otelcol-scrape-ipmi
+  template:
+    metadata:
+      labels:
+        app: otelcol-scrape-ipmi
+    spec:
+      containers:
+        - name: otelcol-scrape
+          image: ghcr.io/vladistan/otelcol-scrape:v0.3.16
+          args: ["--config", "/etc/otel/config.yaml"]
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: IPMI_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-credentials
+                  key: username
+            - name: IPMI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bmc-credentials
+                  key: password
+            - name: OTEL_MAIN_OTLP_ENDPOINT
+              value: http://otel-main.monitoring.svc:4318
+          ports:
+            - containerPort: 13133
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              memory: 192Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: scrape-ipmi-config
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otelcol-scrape-ipmi
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: otelcol-scrape-ipmi
+  policyTypes:
+    - Egress
+  egress:
+    # The lab BMC subnet, IPMI only.
+    - to:
+        - ipBlock:
+            cidr: 192.0.2.0/24
+      ports:
+        - protocol: UDP
+          port: 623
+    # DNS.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The downstream collector.
+    - to:
+        - podSelector:
+            matchLabels:
+              app: otel-main
+      ports:
+        - protocol: TCP
+          port: 4318

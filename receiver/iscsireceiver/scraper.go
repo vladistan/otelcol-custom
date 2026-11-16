@@ -5,6 +5,7 @@ package iscsireceiver
 
 import (
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -25,6 +26,15 @@ type scraper struct {
 
 	noSessionsLogged bool
 	errorLogged      bool
+
+	// luns is nil when the LUN series are off.
+	luns         lunSource
+	maxLUNs      int
+	lunTimeout   time.Duration // zero means defaultLUNTimeout
+	lunBusy      atomic.Bool   // a scan of the LUNs is still running
+	lunErrLogged bool
+	capLogged    bool
+	lunWarned    map[string]bool
 }
 
 func newScraper(logger *zap.Logger, src sessionSource) *scraper {
@@ -81,6 +91,10 @@ func (s *scraper) scrape(now time.Time) pmetric.Metrics {
 	cdp := count.DataPoints().AppendEmpty()
 	cdp.SetTimestamp(ts)
 	cdp.SetIntValue(int64(len(sessions)))
+
+	if s.luns != nil {
+		s.addLUNs(sm, ts, sessions)
+	}
 
 	if conns.DataPoints().Len() == 0 {
 		removeMetric(sm, "iscsi.connection.state")

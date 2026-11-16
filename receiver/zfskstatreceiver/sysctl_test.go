@@ -41,6 +41,8 @@ type fakeSysctl struct {
 	nextErr   error
 	nameErr   error
 	bootErr   error
+	mounts    []mount
+	mountsErr error
 }
 
 func newFakeSysctl() *fakeSysctl {
@@ -129,6 +131,9 @@ func (f *fakeSysctl) fns() sysctlFns {
 			return v, nil
 		},
 		bootTime: func() (time.Time, error) { return fakeBoot, f.bootErr },
+		getfsstat: func() ([]mount, error) {
+			return f.mounts, f.mountsErr
+		},
 	}
 }
 
@@ -512,14 +517,15 @@ func TestSysctlWithoutKstatZfsSendsNothingAndLogsOneInfoLine(t *testing.T) {
 
 	assert.Equal(t, 0, first.ResourceMetrics().Len())
 	assert.Equal(t, 0, second.ResourceMetrics().Len())
-	assert.Equal(t, 1, logs.FilterLevelExact(zapcore.InfoLevel).Len())
+	assert.Equal(t, 1, logs.FilterMessageSnippet("kstat.zfs not found").Len())
 	assert.Empty(t, warnings(logs))
+	assert.Equal(t, 1, logs.FilterLevelExact(zapcore.InfoLevel).Len(), "the default config logs no other info line")
 
 	f.absent = false
 	assert.Contains(t, metricNames(scrapeOnce(t, s)), "zfs.pool.state", "ZFS loaded later is picked up")
 	f.absent = true
 	scrapeOnce(t, s)
-	assert.Equal(t, 2, logs.FilterLevelExact(zapcore.InfoLevel).Len(), "a new absence logs again")
+	assert.Equal(t, 2, logs.FilterMessageSnippet("kstat.zfs not found").Len(), "a new absence logs again")
 }
 
 func TestReceiverStartsAndSendsNothingWithoutKstatZfs(t *testing.T) {

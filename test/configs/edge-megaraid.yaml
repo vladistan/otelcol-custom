@@ -1,0 +1,50 @@
+# Linux edge reading the MegaRAID controllers of its own host.
+#
+# Run as root (the megaraid_sas ioctl node needs file access to the node and CAP_SYS_ADMIN):
+#   otelcol-edge --config test/configs/edge-megaraid.yaml
+# Validate: otelcol-edge validate --config test/configs/edge-megaraid.yaml
+#
+# Only read-only commands are sent to the controller. Other tools that use the node (megacli,
+# storcli, smartctl -d megaraid) queue behind a scrape for at most 5 s per call. The tests that
+# back the receiver ran on buffers built from the driver headers; check the first scrape against
+# the vendor tool once on each host.
+
+extensions:
+  file_storage/megaraid:
+    directory: /var/lib/otelcol/megaraid # keeps the last event read from each controller
+    create_directory: true
+  health_check:
+    endpoint: 127.0.0.1:13133
+receivers:
+  megaraid:
+    collection_interval: 60s
+    smart: false # true reads SATA drives through the controller, once every smart_interval
+    smart_interval: 15m
+    create_node: false # true makes /dev/megaraid_sas_ioctl_node when it is missing (CAP_MKNOD)
+    events:
+      enabled: true
+      storage: file_storage/megaraid
+      min_class: info # debug, progress, info, warning, critical, fatal or dead
+      max_per_scrape: 200
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  batch:
+    timeout: 10s
+exporters:
+  # Replace with otlp_grpc towards the gateway.
+  debug:
+    verbosity: basic
+service:
+  extensions: [health_check, file_storage/megaraid]
+  pipelines:
+    metrics:
+      receivers: [megaraid]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    logs:
+      receivers: [megaraid]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

@@ -1,0 +1,46 @@
+# Linux edge reading the Dell iDRAC of its own host through Redfish.
+#
+# Run: otelcol-edge --config test/configs/edge-idrac.yaml
+# Validate: IDRAC_USERNAME=ro otelcol-edge validate --config test/configs/edge-idrac.yaml
+#
+# Account: a read-only iDRAC role with the Login and ReadOnly privileges only; no Configure, Control or
+# Clear privilege. The password is read from a file (mode 0600) and the user name from the environment; neither
+# is written in this file. ca_file pins the iDRAC certificate authority: a certificate that does not verify gives
+# hw.bmc.up 0 with reason tls, and the receiver never retries without verification.
+
+receivers:
+  idrac:
+    collection_interval: 60s
+    max_concurrent: 8 # targets read at once
+    targets:
+      - name: db-1 # host.name of the resource: the host this iDRAC manages
+        address: https://192.0.2.5
+        username: ${env:IDRAC_USERNAME}
+        password: ${file:/etc/otelcol/idrac.password}
+        ca_file: /etc/otelcol/idrac-ca.pem
+        insecure_skip_verify: false # default; an explicit opt-in only
+        # Default: all of system, thermal, power, storage, memory, processors and bmc.
+        resources: [system, thermal, power, storage, memory, processors, bmc]
+        request_timeout: 10s # one request
+        scrape_timeout: 30s # the whole read
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  batch:
+    timeout: 10s
+exporters:
+  # Replace with otlp_grpc towards the gateway.
+  debug:
+    verbosity: basic
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [idrac]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

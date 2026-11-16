@@ -150,6 +150,33 @@ func TestOnlyTheConfiguredNodeIsCalled(t *testing.T) {
 	}
 }
 
+// A central poller runs one instance per node against one endpoint: the node in the path comes from
+// guests.node, never from the address of the API that answers.
+func TestTwoNodesThroughOneEndpointEachReadOnlyTheirOwnPath(t *testing.T) {
+	f := newFakePVE(t, false)
+	for _, node := range []string{"pve12", "pve13"} {
+		f.ok("/api2/json/nodes/"+node+"/qemu", `{"data":[{"vmid":100,"name":"web","status":"running"}]}`)
+		f.ok("/api2/json/nodes/"+node+"/lxc", `{"data":[]}`)
+		for _, call := range []string{"get-osinfo", "get-host-name", "network-get-interfaces", "get-fsinfo"} {
+			f.ok("/api2/json/nodes/"+node+"/qemu/100/agent/"+call, agentBody(`[]`))
+		}
+	}
+	for _, node := range []string{"pve12", "pve13"} {
+		h := newGuests(t, f, func(c *Config) { c.Guests.Node = node })
+		h.s.node = node
+
+		_, recs := sweep(t, h, t0)
+
+		for _, r := range recs {
+			assert.Equal(t, node, r["pve.node"])
+		}
+		assert.Equal(t, 1, f.countOf("/api2/json/nodes/"+node+"/qemu"))
+	}
+	for _, hit := range f.hitList() {
+		assert.True(t, strings.HasPrefix(hit, "/api2/json/nodes/pve12/") || strings.HasPrefix(hit, "/api2/json/nodes/pve13/"), hit)
+	}
+}
+
 func TestFirstSweepGivesOneRecordPerFactAndAChangedAddressGivesOneMore(t *testing.T) {
 	f := guestsFake(t)
 	h := newGuests(t, f, nil)

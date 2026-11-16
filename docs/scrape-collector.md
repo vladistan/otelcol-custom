@@ -264,6 +264,112 @@ cloudwatchmetrics:
 - `p50` and other percentile statistics are not available for every metric. When a metric returns data for the other statistics but none for a percentile, no point is emitted, nothing is logged as an error, and one info line per metric name is logged for the run.
 - `GetMetricData` is billed per metric requested, and a tier's request count is its series times its scrapes a day. Watch the CloudWatch usage in the bill after the first day.
 
+### BMC sensors over IPMI
+
+The `ipmi` receiver reads temperatures, fans, voltages, power supply and chassis intrusion states from baseboard
+management controllers (BMCs) over IPMI, with the `hw.*` names of the OpenTelemetry semantic conventions. It is in the
+scrape image only and is meant for a Deployment of its own: the lab BMC network, the shared BMC account and the risk of
+locking that account out should not sit in the pod that holds cloud credentials. `test/configs/scrape-ipmi.yaml` runs
+the receiver alone and `test/configs/scrape-ipmi-deployment.yaml` has the Deployment, an ExternalSecret that fills the
+credentials from a parameter store, and a network policy with UDP 623 egress to one subnet. No credential is in the
+repository; `just check-ipmi-deployment` fails on a plain Secret object or a literal credential.
+
+```yaml
+ipmi:
+  collection_interval: 60s
+  max_concurrent: 8        # BMCs read at once
+  exchange_timeout: 3s     # one request and its answer; one retry follows a timeout
+  scrape_timeout: 20s      # the whole read of one BMC
+  bmcs:
+    - name: bmc-01         # becomes host.name
+      address: 192.0.2.11  # host or host:port, port 623 by default
+      username: ${env:IPMI_USERNAME}
+      password: ${env:IPMI_PASSWORD}
+      vendor: supermicro   # supermicro or dell
+      cipher_suite: 3      # required for IPMI 2.0; never probed
+      ipmi_version: "2.0"  # 2.0 (default), 1.5 or auto
+      privilege_level: user      # user (default), operator or administrator
+      dcmi_power: false          # default
+      power_interval: 5m         # default
+```
+
+| Metric | Unit | Source |
+|---|---|---|
+| `hw.temperature` | `Cel` | Temperature sensors |
+| `hw.temperature.limit` | `Cel` | The SDR upper critical (`critical`) and upper non-critical (`high.degraded`) thresholds |
+| `hw.fan.speed` | `rpm` | Fan sensors that read in RPM |
+| `hw.voltage` | `V` | Voltage sensors |
+| `hw.status` | `1` | Power supply status sensors (`hw.type` `power_supply`) and the chassis intrusion sensor (`enclosure`, name `chassis intrusion`); one point per `hw.state`, 1 for the current state |
+| `hw.host.power` | `W` | DCMI power, only with `dcmi_power: true` |
+| `hw.bmc.up` | `1` | 1 when the scrape worked; 0 with a `reason` (`timeout`, `auth`, `refused`, `backoff`) when not |
+| `hw.bmc.scrape.duration` | `s` | Time of the scrape |
+
+Every resource has `host.name` (the BMC `name`), `hw.vendor`, `server.address` (the BMC address without the port),
+`hw.bmc.protocol` (`ipmi`) and `hw.firmware_version` from the device ID. The collector's own telemetry has the counter
+`otelcol_hw_bmc_auth_failures`, by `bmc`.
+
+How a scrape runs:
+
+- One goroutine per BMC, at most `max_concurrent` reading at once. The first scrape of each BMC starts after an offset
+  taken from a hash of its name, so the boards are not hit in the same second.
+- Each scrape opens one session, reads and closes it. No keepalive runs, so no session is left on a board that has few
+  session slots.
+- The SDR is read once per BMC and cached. It is read again when the repository timestamp changes and every 6 hours.
+  Each scrape calls Get Sensor Reading for the selected sensors only. A sensor with no reading, one marked not present
+  and a sensor type outside the table give no point and no error.
+- The session uses `privilege_level`; sensors and the SDR need only `user`, and a higher value logs one warning at
+  start. The cipher suite is the one set per BMC. The receiver never tries other suites: each try is one more failed
+  login on an account the boards share.
+- `ipmi_version: 1.5` and `auto` use IPMI 1.5 session authentication, which has no session integrity check. Use them
+  for old boards only; `2.0` with a cipher suite is the default. The login-failure back-off covers IPMI 2.0 only:
+  with 1.5 a wrong user name or password is answered with a completion code, not recognised as a login failure, so
+  the receiver tries again at every interval and counts no authentication failure (not tested on a real board).
+  Check the account before you use 1.5 on a shared board.
+- The receiver sends no chassis, power, user or configuration command, and its own requests are reads. The go-ipmi
+  library itself sends the session setup and close commands (Set Session Privilege Level, Close Session) as part of
+  connecting, and those are the only other commands on the wire.
+- DCMI power needs an administrator session on the lab boards (it is denied at user and operator level). With
+  `dcmi_power: true` the receiver opens one administrator session per `power_interval`, makes one power read and closes
+  the session at once. Off by default. `power_interval` must be at least 1m. An account that cannot open an administrator session stops the power reads at
+  the first refusal and does not count as a failed login.
+
+| Case | Result |
+|---|---|
+| Wrong password, wrong user name, or a role the account may not have | `hw.bmc.up` 0, reason `auth` (go-ipmi reports the failure as text, and the receiver matches the text); the BMC is not contacted for 15 minutes, then 30, doubling to 6 hours; after three failures in a row it stays stopped until restart; the counter `otelcol_hw_bmc_auth_failures` grows |
+| BMC slow or hung | The read stops at `scrape_timeout`, the session is closed, `hw.bmc.up` 0, reason `timeout`; the other BMCs are not delayed |
+| Connection refused or another error | `hw.bmc.up` 0, reason `refused`; tried again at the next interval |
+| A BMC in back-off or stopped | `hw.bmc.up` 0, reason `backoff`, with no contact |
+| Failed scrape | Only `hw.bmc.up` 0 and `hw.bmc.scrape.duration` are sent: no value of an earlier scrape is sent again |
+| DCMI power: invalid command | The BMC has no DCMI power; the receiver does not ask again until restart |
+| DCMI power: `0xD2` (initializing) | Tried again at the next `power_interval` |
+| DCMI power: `0xD4` (insufficient privilege), or a role refusal when the administrator session opens | One warning that the account is not an administrator; power reads stop until restart; a role refusal is not counted as a failed login |
+
+Alert rules: `hw.bmc.up` equal to 0 for 15 minutes, and no `hw.bmc.up` series at all for three collection intervals (a
+wedged receiver stops sending `up` too). The Deployment's health check and the collector's receiver metrics cover the
+process.
+
+### Proxmox VE and SNMP pollers
+
+The scrape image also holds the `pve` and `snmp` receivers, so one scrape pod can poll Proxmox VE nodes and SNMP
+devices over the network; the edge builds keep them too. Both run in the pod that already reads CloudTrail and
+Lambda. A pod reaches the lab only if its network policy allows it: TCP 8006 to the PVE nodes and UDP 161 to the
+devices. `netflow` stays in the edge builds only: it listens on a UDP port for exporters, which the scrape pod
+does not expose. A sample with both is `test/configs/scrape-pve-snmp.yaml`.
+
+**`pve`.** Run one instance per node, such as `pve/pve12`, and set `guests.node` on every instance. The guest
+scraper reads `/nodes/<guests.node>/...` and nothing else. When `guests.node` is empty it takes the short host name
+of the machine the collector runs on, which in a pod is the pod name and no PVE node: every call then fails with
+an error from PVE and no guest series appear. Each instance logs one info line at start with the node it chose
+(`node`, and `source`: `guests.node` or `host name`). The node name never comes from `base_urls`. Point `base_urls` at that
+node, or at any other member of its cluster: PVE answers a request for `/nodes/<other>/...` on a member by
+forwarding it to the node named in the path, so one endpoint can serve the guests of several nodes, at the cost of
+one more hop. That forwarding is PVE behaviour that this receiver relies on and that was not run against a cluster
+here. A token is cluster-wide, so one guests token serves every instance. Enable `resources` on one instance only:
+it reads the whole cluster, and a second instance doubles the series.
+
+**`snmp`.** One instance per device, as on the edge. Secrets (`community`, `auth_password`, `privacy_password`)
+come from `${env:NAME}`; `scripts/check-snmp-secrets.sh` fails the build when a sample holds a literal value.
+
 ### Cloud Run metrics
 
 The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metrics/gcp` pipeline. It is alpha.

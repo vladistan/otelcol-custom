@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -122,6 +123,9 @@ func (p *procSource) readPool(name string) (poolStats, bool) {
 	if p.cfg.Datasets {
 		pool.datasets = p.readDatasets(name, dir)
 	}
+	if p.cfg.Txg {
+		pool.txg = p.readTxg(name, dir)
+	}
 	body, err := readCapped(filepath.Join(dir, "state"))
 	if err != nil {
 		p.logger.Debug("ZFS pool state not readable", zap.String("pool", name), zap.Error(err))
@@ -129,6 +133,83 @@ func (p *procSource) readPool(name string) (poolStats, bool) {
 	}
 	pool.state = strings.TrimSpace(string(body))
 	return pool, true
+}
+
+// readTxg returns the newest closed row of the txgs file; nil, with one info line per pool, when there is none.
+func (p *procSource) readTxg(pool, dir string) *txgRow {
+	key := "txg\x00" + pool
+	body, err := readCapped(filepath.Join(dir, "txgs"))
+	if err != nil {
+		p.ep.once(zapcore.InfoLevel, key, "ZFS pool has no readable txgs file, so no txg metrics", zap.String("pool", pool), zap.Error(err))
+		return nil
+	}
+	row, ok := parseTxgs(string(body))
+	if !ok {
+		p.ep.once(zapcore.InfoLevel, key, "ZFS pool txgs has no closed transaction group, so no txg metrics; zfs_txg_history may be 0", zap.String("pool", pool))
+		return nil
+	}
+	p.ep.clear(key)
+	return &row
+}
+
+// txgClosed is the state letter of a committed transaction group.
+const txgClosed = "C"
+
+// parseTxgs reads a txgs kstat: kstat header lines, a line of column names that starts with
+// txg, then one row per transaction group. It returns the closed row with the highest txg.
+// Columns are matched by name; the sync time is in nanoseconds.
+func parseTxgs(text string) (txgRow, bool) {
+	var cols map[string]int
+	var best txgRow
+	var bestTxg uint64
+	found := false
+	for _, line := range strings.Split(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		if cols == nil {
+			if f[0] == "txg" {
+				cols = make(map[string]int, len(f))
+				for i, n := range f {
+					cols[n] = i
+				}
+			}
+			continue
+		}
+		row, txg, ok := txgFromFields(cols, f)
+		if ok && (!found || txg > bestTxg) {
+			best, bestTxg, found = row, txg, true
+		}
+	}
+	return best, found
+}
+
+// txgFromFields returns the row when it is closed and its numbers parse.
+func txgFromFields(cols map[string]int, f []string) (txgRow, uint64, bool) {
+	get := func(name string) (string, bool) {
+		i, ok := cols[name]
+		if !ok || i >= len(f) {
+			return "", false
+		}
+		return f[i], true
+	}
+	if state, ok := get("state"); !ok || state != txgClosed {
+		return txgRow{}, 0, false
+	}
+	var nums [4]uint64
+	for i, name := range []string{"txg", "ndirty", "nwritten", "stime"} {
+		v, ok := get(name)
+		if !ok {
+			return txgRow{}, 0, false
+		}
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return txgRow{}, 0, false
+		}
+		nums[i] = n
+	}
+	return txgRow{dirty: nums[1], written: nums[2], syncNanos: nums[3]}, nums[0], true
 }
 
 // readDatasets reads the objset-* files of a pool; a file that vanishes is skipped quietly.
@@ -153,7 +234,7 @@ func (p *procSource) readDatasets(pool, dir string) []datasetStats {
 			continue
 		}
 		p.ep.clear(path)
-		if name, fields, ok := parseObjset(string(body)); ok {
+		if name, fields, ok := parseObjset(string(body)); ok && p.cfg.datasetSelected(name) {
 			out = append(out, datasetStats{pool: pool, name: name, fields: fields})
 		}
 	}

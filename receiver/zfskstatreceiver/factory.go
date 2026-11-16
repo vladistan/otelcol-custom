@@ -32,6 +32,7 @@ func createDefaultConfig() component.Config {
 		KstatPath:          "/proc/spl/kstat/zfs",
 		ArcStats:           true,
 		MaxDatasets:        100,
+		Txg:                true,
 		Source:             sourceAuto,
 	}
 }

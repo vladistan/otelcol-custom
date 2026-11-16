@@ -42,6 +42,17 @@ expect_output() {
 	fi
 }
 
+# expect_output_absent NAME PATTERN : the last command output does not contain PATTERN.
+expect_output_absent() {
+	if grep -q -- "$2" "$SCRATCH/out"; then
+		echo "FAIL: $1 (unexpected match for $2)"
+		sed 's/^/    /' "$SCRATCH/out"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $1"
+	fi
+}
+
 # scratch_tree DIR : the committed manifests and the go.mod of every module directory they point to.
 scratch_tree() {
 	mkdir -p "$1"
@@ -68,6 +79,23 @@ scratch_tree "$SCRATCH/no-aws"
 grep -v "awscloudwatchreceiver =>" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-aws/builder-scrape.yaml"
 expect_exit_code "a scrape manifest without the CloudWatch replace fails" 1 "$CHECK" "$SCRATCH/no-aws"
 expect_output "the missing CloudWatch replace names the module" "awscloudwatchreceiver"
+
+scratch_tree "$SCRATCH/no-pve-replace"
+grep -v "pvereceiver =>" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-pve-replace/builder-scrape.yaml"
+expect_exit_code "a scrape manifest without the pve replace fails" 1 "$CHECK" "$SCRATCH/no-pve-replace"
+expect_output "the missing pve replace is named as a replace" "does not replace .*pvereceiver"
+expect_output_absent "the pve receiver line is still found" "does not list the receiver .*pvereceiver"
+
+scratch_tree "$SCRATCH/no-pve"
+grep -v "gomod: .*pvereceiver" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-pve/builder-scrape.yaml"
+expect_exit_code "a scrape manifest without the pve receiver entry fails" 1 "$CHECK" "$SCRATCH/no-pve"
+expect_output "the missing pve entry is named as a receiver" "does not list the receiver .*pvereceiver"
+expect_output_absent "the pve replace is still found" "does not replace .*pvereceiver"
+
+scratch_tree "$SCRATCH/no-snmp"
+grep -v "snmpreceiver" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-snmp/builder-scrape.yaml"
+expect_exit_code "a scrape manifest without the snmp receiver fails" 1 "$CHECK" "$SCRATCH/no-snmp"
+expect_output "the missing snmp entry names the receiver" "snmpreceiver"
 
 scratch_tree "$SCRATCH/gone"
 rm -rf "$SCRATCH/gone/receiver/googlecloudmonitoringreceiver"

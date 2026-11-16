@@ -316,6 +316,78 @@ func TestAnEmptyGuestsNodeWithAnUnknownHostNameIsRefused(t *testing.T) {
 	assert.Contains(t, err.Error(), "guests.node")
 }
 
+func guestsOnlyConfig(f *fakePVE, node string) *Config {
+	cfg := validConfig()
+	cfg.BaseURLs = []string{f.url()}
+	cfg.Resources.Enabled = false
+	cfg.Guests = GuestsConfig{ScraperConfig: ScraperConfig{
+		Enabled: true, TokenID: "otel@pve!guests", TokenSecret: "s",
+		CollectionInterval: time.Hour, Timeout: time.Second,
+	}, Node: node}
+	return cfg
+}
+
+func startAndStop(t *testing.T, set receiver.Settings, cfg *Config) {
+	t.Helper()
+	old := initialDelay
+	initialDelay = time.Hour
+	t.Cleanup(func() { initialDelay = old })
+	r, err := newReceiver(set, cfg)
+	require.NoError(t, err)
+	r.setMetrics(consumertest.NewNop())
+	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
+	require.NoError(t, r.Shutdown(context.Background()))
+}
+
+func nodeLines(logs *observer.ObservedLogs) []observer.LoggedEntry {
+	var out []observer.LoggedEntry
+	for _, e := range logs.FilterLevelExact(zapcore.InfoLevel).All() {
+		if strings.Contains(e.Message, "guests node") {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func TestStartLogsTheConfiguredGuestsNodeOnce(t *testing.T) {
+	set, logs := settingsWithLogs()
+
+	startAndStop(t, set, guestsOnlyConfig(resourcesFake(t), "pve12"))
+
+	lines := nodeLines(logs)
+	require.Len(t, lines, 1)
+	ctx := lines[0].ContextMap()
+	assert.Equal(t, "pve12", ctx["node"])
+	assert.Equal(t, "guests.node", ctx["source"])
+}
+
+func TestStartLogsTheHostNameFallbackAsTheGuestsNode(t *testing.T) {
+	old := hostnameFn
+	hostnameFn = func() (string, error) { return "collector-7f9c.scrape.svc", nil }
+	t.Cleanup(func() { hostnameFn = old })
+	set, logs := settingsWithLogs()
+
+	startAndStop(t, set, guestsOnlyConfig(resourcesFake(t), ""))
+
+	lines := nodeLines(logs)
+	require.Len(t, lines, 1)
+	ctx := lines[0].ContextMap()
+	assert.Equal(t, "collector-7f9c", ctx["node"])
+	assert.Equal(t, "host name", ctx["source"])
+	assert.Contains(t, lines[0].Message, "guests.node is empty")
+}
+
+func TestStartLogsNoGuestsNodeWhenGuestsAreOff(t *testing.T) {
+	set, logs := settingsWithLogs()
+	f := resourcesFake(t)
+	cfg := validConfig()
+	cfg.BaseURLs = []string{f.url()}
+
+	startAndStop(t, set, cfg)
+
+	assert.Empty(t, nodeLines(logs))
+}
+
 func TestInsecureSkipVerifyLogsOneWarnAtStart(t *testing.T) {
 	f := resourcesFake(t)
 	cfg := validConfig()

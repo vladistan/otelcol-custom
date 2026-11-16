@@ -1,0 +1,60 @@
+# The ipmi receiver alone, for the scrape image in its own Deployment (see scrape-ipmi-deployment.yaml).
+#
+# Validate: IPMI_USERNAME=u IPMI_PASSWORD=p OTEL_MAIN_OTLP_ENDPOINT=http://localhost:4318 \
+#   otelcol-scrape validate --config test/configs/scrape-ipmi.yaml
+#
+# One account, read-only, at the user privilege level. Each scrape opens one session, reads and closes it. The cipher
+# suite is set per BMC and never probed: every probe is one more login on a shared account. An authentication failure
+# stops that BMC for 15 minutes, then 30; after three in a row it stays stopped until the pod restarts.
+
+receivers:
+  ipmi:
+    collection_interval: 60s
+    max_concurrent: 8
+    exchange_timeout: 3s
+    scrape_timeout: 20s
+    bmcs:
+      - name: bmc-01
+        address: 192.0.2.11
+        username: ${env:IPMI_USERNAME}
+        password: ${env:IPMI_PASSWORD}
+        vendor: supermicro
+        cipher_suite: 3
+        ipmi_version: "2.0"
+        privilege_level: user
+      # dcmi_power: true reads the host power over a second, administrator session, once per power_interval
+      # (5m by default). It is off here: the account stays at user privilege.
+      - name: bmc-02
+        address: 192.0.2.12:623
+        username: ${env:IPMI_USERNAME}
+        password: ${env:IPMI_PASSWORD}
+        vendor: supermicro
+        cipher_suite: 3
+        dcmi_power: false
+        power_interval: 5m
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  batch:
+    timeout: 10s
+exporters:
+  otlp_http:
+    endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+  debug:
+    verbosity: basic
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [ipmi]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http]

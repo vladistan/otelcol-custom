@@ -6,6 +6,7 @@
 package zfskstatreceiver
 
 import (
+	"slices"
 	"time"
 	"unsafe"
 
@@ -40,7 +41,42 @@ func realSysctl() sysctlFns {
 			}
 			return time.Unix(int64(tv.Sec), int64(tv.Usec)*1000), nil
 		},
+		getfsstat: listMounts,
 	}
+}
+
+// listMounts returns the mounted file systems from getfsstat, without asking each one to refresh.
+func listMounts() ([]mount, error) {
+	n, err := unix.Getfsstat(nil, unix.MNT_NOWAIT)
+	if err != nil {
+		return nil, err
+	}
+	buf := make([]unix.Statfs_t, n)
+	n, err = unix.Getfsstat(buf, unix.MNT_NOWAIT)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]mount, 0, n)
+	for i := range buf[:n] {
+		st := &buf[i]
+		out = append(out, mount{
+			from:      cString(st.Mntfromname[:]),
+			fsType:    cString(st.Fstypename[:]),
+			blockSize: st.Bsize,
+			blocks:    st.Blocks,
+			free:      st.Bfree,
+			avail:     uint64(max(st.Bavail, 0)),
+		})
+	}
+	return out, nil
+}
+
+// cString is the text of a NUL-terminated byte array.
+func cString(b []byte) string {
+	if i := slices.Index(b, 0); i >= 0 {
+		b = b[:i]
+	}
+	return string(b)
 }
 
 // rawSysctl calls __sysctl with mib; it returns the number of bytes written to old.

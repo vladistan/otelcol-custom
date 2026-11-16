@@ -1,0 +1,268 @@
+{
+  "commands": [
+    {
+      "bytes": 2048,
+      "file": "ctrl_getinfo.bin",
+      "name": "ctrl_getinfo",
+      "opcode": "0x01010000",
+      "status": 0
+    },
+    {
+      "bytes": 64,
+      "file": "ctrl_get_props.bin",
+      "name": "ctrl_get_props",
+      "opcode": "0x01020100",
+      "status": 0
+    },
+    {
+      "bytes": 16,
+      "file": "pr_get_status.bin",
+      "name": "pr_get_status",
+      "opcode": "0x01070100",
+      "status": 0
+    },
+    {
+      "bytes": 208,
+      "file": "pr_get_properties.bin",
+      "name": "pr_get_properties",
+      "opcode": "0x01070200",
+      "status": 0
+    },
+    {
+      "bytes": 5768,
+      "file": "pd_get_list.bin",
+      "name": "pd_get_list",
+      "opcode": "0x02010000",
+      "status": 0
+    },
+    {
+      "bytes": 5768,
+      "file": "pd_list_query.bin",
+      "mailbox": "050000000000000000000000",
+      "name": "pd_list_query",
+      "opcode": "0x02010100",
+      "status": 0
+    },
+    {
+      "bytes": 1032,
+      "file": "ld_get_list.bin",
+      "name": "ld_get_list",
+      "opcode": "0x03010000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "ld_list_query.bin",
+      "name": "ld_list_query",
+      "opcode": "0x03010100",
+      "status": 0
+    },
+    {
+      "bytes": 3296,
+      "file": "cfg_read.bin",
+      "name": "cfg_read",
+      "opcode": "0x04010000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_13.bin",
+      "mailbox": "0d0000000000000000000000",
+      "name": "pd_get_info_13",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_15.bin",
+      "mailbox": "0f0000000000000000000000",
+      "name": "pd_get_info_15",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_17.bin",
+      "mailbox": "110000000000000000000000",
+      "name": "pd_get_info_17",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_19.bin",
+      "mailbox": "130000000000000000000000",
+      "name": "pd_get_info_19",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_20.bin",
+      "mailbox": "140000000000000000000000",
+      "name": "pd_get_info_20",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_21.bin",
+      "mailbox": "150000000000000000000000",
+      "name": "pd_get_info_21",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 512,
+      "file": "pd_get_info_252.bin",
+      "mailbox": "fc0000000000000000000000",
+      "name": "pd_get_info_252",
+      "opcode": "0x02020000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_0.bin",
+      "name": "ld_get_info_0",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_0.bin",
+      "name": "ld_get_prop_0",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_6.bin",
+      "mailbox": "060000000000000000000000",
+      "name": "ld_get_info_6",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_6.bin",
+      "mailbox": "060000000000000000000000",
+      "name": "ld_get_prop_6",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_2.bin",
+      "mailbox": "020000000000000000000000",
+      "name": "ld_get_info_2",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_2.bin",
+      "mailbox": "020000000000000000000000",
+      "name": "ld_get_prop_2",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_4.bin",
+      "mailbox": "040000000000000000000000",
+      "name": "ld_get_info_4",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_4.bin",
+      "mailbox": "040000000000000000000000",
+      "name": "ld_get_prop_4",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_1.bin",
+      "mailbox": "010000000000000000000000",
+      "name": "ld_get_info_1",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_1.bin",
+      "mailbox": "010000000000000000000000",
+      "name": "ld_get_prop_1",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 384,
+      "file": "ld_get_info_3.bin",
+      "mailbox": "030000000000000000000000",
+      "name": "ld_get_info_3",
+      "opcode": "0x03020000",
+      "status": 0
+    },
+    {
+      "bytes": 32,
+      "file": "ld_get_prop_3.bin",
+      "mailbox": "030000000000000000000000",
+      "name": "ld_get_prop_3",
+      "opcode": "0x03030000",
+      "status": 0
+    },
+    {
+      "bytes": 64,
+      "file": "bbu_get_status.bin",
+      "name": "bbu_get_status",
+      "opcode": "0x05010000",
+      "status": 0
+    },
+    {
+      "bytes": 0,
+      "name": "bbu_get_capacity_info",
+      "opcode": "0x05020000",
+      "status": 61
+    },
+    {
+      "bytes": 67,
+      "file": "bbu_get_design_info.bin",
+      "name": "bbu_get_design_info",
+      "opcode": "0x05030000",
+      "status": 0
+    },
+    {
+      "bytes": 256,
+      "file": "bbu_get_prop.bin",
+      "name": "bbu_get_prop",
+      "opcode": "0x05050100",
+      "status": 0
+    },
+    {
+      "bytes": 20,
+      "file": "event_get_info.bin",
+      "name": "event_get_info",
+      "opcode": "0x01040100",
+      "status": 0
+    },
+    {
+      "bytes": 25608,
+      "file": "event_get.bin",
+      "mailbox": "36ba0000ffff00fe00000000",
+      "name": "event_get",
+      "opcode": "0x01040300",
+      "status": 0
+    }
+  ],
+  "device": "/dev/megaraid_sas_ioctl_node",
+  "host_no": 0,
+  "label": "c3108-a",
+  "pci": "0000:04:00.0",
+  "rescrubbed": true,
+  "scrubbed": true,
+  "tool": "megaraid-capture",
+  "version": "0.1.0"
+}

@@ -6,6 +6,7 @@ package iscsireceiver
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -23,6 +24,7 @@ var errNoSessions = errors.New("no iSCSI sessions found")
 
 // session is one initiator session and its connections.
 type session struct {
+	id          int // the number in the directory name session<N>
 	target      string
 	tpgt        string
 	state       string
@@ -57,10 +59,27 @@ type sysfsReader struct {
 	root     string
 	readFile func(string) ([]byte, error)
 	readDir  func(string) ([]os.DirEntry, error)
+	readlink func(string) (string, error)
+
+	// goneLogged holds the SCSI devices already reported as vanished.
+	goneLogged map[string]bool
 }
 
+// maxAttrBytes bounds one attribute read: a sysfs attribute is one page at most.
+const maxAttrBytes = 4096
+
 func newSysfsReader(logger *zap.Logger, root string) *sysfsReader {
-	return &sysfsReader{logger: logger, root: root, readFile: os.ReadFile, readDir: os.ReadDir}
+	return &sysfsReader{logger: logger, root: root, readFile: readBounded, readDir: os.ReadDir, readlink: os.Readlink}
+}
+
+// readBounded reads at most maxAttrBytes of a file.
+func readBounded(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxAttrBytes))
 }
 
 // dirEntry is a class directory with the numbers parsed from its name.
@@ -85,6 +104,7 @@ func (r *sysfsReader) sessions() ([]session, error) {
 			r.logger.Debug("Skipping an iSCSI session that cannot be read", zap.String("session", d.name), zap.Error(err))
 			continue
 		}
+		s.id = d.session
 		s.connections = conns[d.session]
 		if len(s.connections) > 0 {
 			s.portal = s.connections[0].portal

@@ -25,6 +25,13 @@ func TestConfigValidate(t *testing.T) {
 		"zero interval":           {func(c *Config) { c.CollectionInterval = 0 }, "collection_interval"},
 		"interval under a second": {func(c *Config) { c.CollectionInterval = time.Millisecond }, "at least 1 second"},
 		"empty sysfs path":        {func(c *Config) { c.SysfsPath = "" }, "sysfs_path"},
+		"no LUN cap":              {func(c *Config) { c.MaxLUNs = 0 }, "max_luns"},
+		"negative LUN cap":        {func(c *Config) { c.MaxLUNs = -1 }, "max_luns"},
+		"LUN cap over the limit":  {func(c *Config) { c.MaxLUNs = maxMaxLUNs + 1 }, "max_luns"},
+		"largest LUN cap":         {func(c *Config) { c.MaxLUNs = maxMaxLUNs }, ""},
+		"LUNs off":                {func(c *Config) { c.LUNs = false }, ""},
+		"LUNs off, no cap":        {func(c *Config) { c.LUNs, c.MaxLUNs = false, 0 }, ""},
+		"LUNs off, cap too big":   {func(c *Config) { c.LUNs, c.MaxLUNs = false, maxMaxLUNs+1 }, ""},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -54,6 +61,17 @@ func TestConfigLoadsBothKeys(t *testing.T) {
 	assert.Equal(t, "/host/sys/class", cfg.SysfsPath)
 }
 
+func TestConfigLoadsTheLUNKeys(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cm := confmap.NewFromStringMap(map[string]any{"luns": false, "max_luns": 40})
+
+	require.NoError(t, cm.Unmarshal(cfg))
+	require.NoError(t, cfg.Validate())
+
+	assert.False(t, cfg.LUNs)
+	assert.Equal(t, 40, cfg.MaxLUNs)
+}
+
 func TestConfigRejectsAnUnknownKey(t *testing.T) {
 	cfg := createDefaultConfig().(*Config)
 	cm := confmap.NewFromStringMap(map[string]any{"username": "x"})
@@ -72,6 +90,8 @@ func TestFactoryTypeStabilityAndDefaults(t *testing.T) {
 	assert.Equal(t, component.StabilityLevelDevelopment, f.MetricsStability())
 	assert.Equal(t, time.Minute, cfg.CollectionInterval)
 	assert.Equal(t, "/sys/class", cfg.SysfsPath)
+	assert.True(t, cfg.LUNs)
+	assert.Equal(t, 256, cfg.MaxLUNs)
 }
 
 func TestFactoryCreatesMetricsOnly(t *testing.T) {

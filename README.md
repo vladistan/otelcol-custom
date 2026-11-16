@@ -154,7 +154,9 @@ INFO line and the status returns to OK. The retry stops at shutdown.
 
 ### Proxmox VE metrics
 
-The `pve` receiver is in the Linux and static Linux edge builds. It reads a Proxmox VE cluster through
+The `pve` receiver is in the Linux and static Linux edge builds and in the scrape image (from 0.3.16; the
+scrape pod sets `guests.node` on one instance per node, see
+[Proxmox VE and SNMP pollers](docs/scrape-collector.md#proxmox-ve-and-snmp-pollers)). It reads a Proxmox VE cluster through
 the HTTP API with two scrapers; the metric names and attributes are in
 [Metrics and runtime environment](docs/otel-metrics.md#proxmox-ve--receiverpvereceiver). It runs no
 external command.
@@ -172,7 +174,7 @@ receivers:
       enabled: true
       token_id: otel@pve!guests
       token_secret: ${env:PVE_GUESTS_TOKEN}
-      node: pve1
+      node: pve1                    # required in a scrape pod; the host name is used when empty
 ```
 
 - `base_urls` is a list. A connect or TLS failure moves on to the next address; for `resources` so does a 5xx
@@ -197,7 +199,8 @@ receivers:
 
 ### SNMP and NetFlow
 
-The Linux and static Linux edge builds include the contrib `snmp` and `netflow` receivers (both alpha).
+The Linux and static Linux edge builds include the contrib `snmp` and `netflow` receivers (both alpha); the
+scrape image includes `snmp` only, from 0.3.16.
 `snmp` polls one device per instance, by OID; `netflow` turns NetFlow, IPFIX and sFlow records into logs,
 one record per flow. See [SNMP and NetFlow on the Linux edge](docs/snmp-netflow.md) for the keys, the
 unverified QNAP iSCSI and LLDP OIDs, how to measure flow volume, and the advice to bind one address because
@@ -281,6 +284,8 @@ receivers:
     collection_interval: 60s   # default
     drivers: [ena]             # default
     interfaces: []             # empty: every interface with a matching driver
+    max_statistics: 200        # default; cap on network.interface.statistic series per scrape
+    statistics: []             # default: none; see "Other statistics" below
 ```
 
 It emits one cumulative sum, `network.allowance.exceeded` (unit `{packet}`), with
@@ -294,8 +299,52 @@ the attributes `network.interface.name` and `allowance`:
 | `conntrack` | `conntrack_allowance_exceeded` |
 | `linklocal` | `linklocal_allowance_exceeded` |
 
-No other statistic is read, and the receiver has no option for more. An interface
-that does not support statistics (a bridge, `veth` or loopback) is skipped without a
+When the driver reports `conntrack_allowance_available` (AWS Nitro instances with ENA
+driver 2.8.1 or later), the receiver also emits the gauge `network.allowance.available`
+(unit `{connection}`) with `network.interface.name` and `allowance` set to `conntrack`: the
+tracked connections the instance can still create before it reaches its allowance. The
+allowance itself is not in the ioctl output, so an alert uses a floor on `available`, not a
+ratio. A driver that does not report it gives no point and one info line per interface.
+
+#### Other statistics
+
+With no `statistics` entry the receiver reads nothing beyond the six names above. Each
+entry of `statistics` selects more driver statistics:
+
+```yaml
+receivers:
+  ethtool:
+    statistics:
+      - match: '^queue_[0-9]+_tx_cnt$'      # a regular expression, unanchored, use ^ and $
+        type: sum                           # sum for a counter, gauge for a value that moves both ways
+      - match: '^queue_[0-9]+_tx_queue_stop$'
+        type: gauge
+    max_statistics: 200
+```
+
+Each match becomes one point of `network.interface.statistic` (unit `1`) with the
+attributes `network.interface.name` and `statistic`, the full name from the driver. An
+entry of type `sum` makes a monotonic cumulative sum and one of type `gauge` a gauge;
+both are metrics of that one name. A name that several entries match is emitted once,
+under the first. `ethtool` does not say whether a statistic is a counter or a gauge, so
+the type is required, and a pattern that does not compile, an entry without a type and
+any type but `sum` or `gauge` fail at startup. The old key `stats_regex` stays rejected.
+An entry that matches no statistic logs one info line.
+
+The ENA statistics AWS documents are `bw_in_allowance_exceeded`, `bw_out_allowance_exceeded`,
+`pps_allowance_exceeded`, `conntrack_allowance_exceeded`, `linklocal_allowance_exceeded` and
+`conntrack_allowance_available`. The driver also reports per-queue statistics whose
+names carry the queue number, such as `queue_0_tx_cnt` and `queue_0_rx_cnt` (the names
+differ by driver version and were not checked on a host for this release). A pattern that
+matches per-queue names multiplies the series by the number of queues: a 32-queue instance
+with a dozen statistics per queue is several hundred series per interface. `max_statistics`
+(default 200) caps the series of `network.interface.statistic` in one scrape across all
+interfaces; the names past the cap, in sorted order by interface and then name, are dropped
+with one warning for as long as the count stays over the cap. Other drivers than `ena`
+work when listed in `drivers`, but their statistic names were not checked. One interface
+can use the whole cap, so the interfaces sorted later get no series.
+
+An interface that does not support statistics (a bridge, `veth` or loopback) is skipped without a
 warning. A matching interface whose driver lacks the counters gets one warning, as
 does a permission error. The read commands need no capability, so a permission error
 means a seccomp or security profile of the container blocks the ioctl; the warning names
@@ -580,8 +629,10 @@ The `zfskstat` receiver reads the OpenZFS kstats in process, with no external
 command and no privilege beyond read access. Per pool it reports I/O bytes and
 operations by direction, the time the wait and run queues were busy (in seconds, not a
 latency), queue lengths and the pool state; it also reports the ARC size, hits and
-misses. With `datasets: true` it adds I/O bytes and operations per dataset. The metric
-names, types and units are in `docs/otel-metrics.md`.
+misses. With `datasets: true` it adds I/O bytes, operations and unlinks per dataset, and
+by default it reports the newest closed transaction group of each pool (`zfs.pool.txg.*`).
+On FreeBSD it also reports the space of the root dataset of each pool. The metric names,
+types and units are in `docs/otel-metrics.md`.
 
 ```yaml
 receivers:
@@ -592,8 +643,11 @@ receivers:
     pools: []                             # empty means every pool
     exclude_pools: []
     arcstats: true                        # default
-    datasets: false                       # default; true adds zfs.dataset.io.*
+    datasets: false                       # default; true adds zfs.dataset.io.* and zfs.dataset.unlinks
+    dataset_include: []                   # globs on <pool>/<dataset>; empty reads every dataset
+    dataset_exclude: []                   # globs on <pool>/<dataset>, applied after the include list
     max_datasets: 100                     # default; datasets above it are dropped in sorted order, 0 is no cap
+    txg: true                             # default; false turns off zfs.pool.txg.*
 
 service:
   pipelines:
@@ -616,6 +670,24 @@ container, mount the host `/proc/spl` and point `kstat_path` at it. Counters res
 from zero when a pool is imported again. The sums start at host boot, read from
 `/proc/uptime` (`kern.boottime` on FreeBSD), or at the time the collector started when
 that cannot be read.
+
+The dataset globs follow the Go `path.Match` rules: `*` does not match `/`, so `tank/*`
+selects the children of `tank` and `tank/*/*` the next level. A dataset is read only
+while it is mounted or open, because ZFS keeps its kstat only then. The include and
+exclude lists run before the `max_datasets` cap. The three `zfs.pool.txg.*` gauges come
+from the newest closed row of the pool's `txgs` kstat; the kernel fills that file only
+while the module parameter `zfs_txg_history` is above 0, and a pool with no closed row
+or no `txgs` file gets no txg series and one info line. FreeBSD 13 may not expose `txgs`
+through sysctl; this was not checked on a host.
+
+On FreeBSD the receiver reads the mount of each pool's root dataset with `getfsstat`
+and reports its used and available bytes as `zfs.dataset.space.used` and `.available`.
+These are the sizes of the root dataset, which `statfs` reports for the whole pool tree
+without the parity and metadata overhead that `zpool list` counts in SIZE, ALLOC and
+FREE, so they do not equal those columns. Pool fragmentation and per-vdev error counts
+are not available: they need the libzfs interface, which the receiver does not use. A
+pool whose root dataset is not mounted gets no space series and one debug line, and
+Linux hosts get no `zfs.dataset.space.*` series.
 The Windows edge, the gateway and the scrape collector do not include the receiver.
 
 ### Hardware temperature, fan and voltage sensors
@@ -664,15 +736,19 @@ and the scrape collector do not include the receiver.
 The `iscsi` receiver is in the Linux and static Linux edge builds. It reports the iSCSI
 sessions of an initiator host from `/sys/class/iscsi_session` and
 `/sys/class/iscsi_connection`: a session gauge per session (with its state, target,
-portal and portal group tag), a count and a gauge per connection. It opens only the
-files `targetname`, `tpgt`, `state`, `persistent_address` and `persistent_port` and never
-a credential file such as `password`.
+portal and portal group tag), a count and a gauge per connection. With `luns` on (the
+default) it also reports each LUN as `hw.status`, `hw.logical_disk.limit` and
+`iscsi.lun.state`, from `/sys/class/scsi_device` and the block device of each path. It
+opens only the files `targetname`, `tpgt`, `state`, `persistent_address`,
+`persistent_port`, `type` and `size` and never a credential file such as `password`.
 
 ```yaml
 receivers:
   iscsi:
     collection_interval: 60s          # default
     sysfs_path: /sys/class            # default
+    luns: true                        # default; false keeps the session series only
+    max_luns: 256                     # default; at most 4096; 7 points per LUN
 
 service:
   pipelines:
@@ -683,9 +759,119 @@ service:
 A host with no iSCSI sessions has no session directory: the receiver starts, logs one
 info line and sends nothing, and looks again at each interval. A session that is
 `FAILED` or `FREE` is reported through the `state` attribute, so an alert rule should
-test `state != "LOGGED_IN"` or a missing `LOGGED_IN` series. The Windows edge, the
+test `state != "LOGGED_IN"` or a missing `LOGGED_IN` series. A LUN that cannot be read has
+state `unknown` in `iscsi.lun.state`, no `hw.status` point and one warning; with multipath
+each path is reported under its own device, never the `dm-N` device. Beyond `max_luns` the
+rest are left out with one info line. See `docs/otel-metrics.md`. The Windows edge, the
 gateway and the scrape collector do not include the receiver, and the receiver cannot
 be created off Linux.
+
+### MegaRAID controllers
+
+The `megaraid` receiver is in the Linux and static Linux edge builds. It reads LSI MegaRAID
+controllers (Dell PERC, Supermicro LSI cards) through `/dev/megaraid_sas_ioctl_node` and reports
+controller, logical drive, physical drive and battery state as `hw.*` and `raid.*` metrics, and the
+controller event log as logs. Only read-only commands are sent from a fixed list, with no `megacli`
+or `storcli`, and nothing on the controller changes.
+
+```yaml
+extensions:
+  file_storage/megaraid:
+    directory: /var/lib/otelcol/megaraid
+
+receivers:
+  megaraid:
+    collection_interval: 60s         # default
+    smart: false                     # default; true reads SATA drives through the controller
+    events:
+      enabled: true                  # default
+      storage: file_storage/megaraid # keeps the last read event
+      min_class: info                # default
+
+service:
+  extensions: [file_storage/megaraid]
+  pipelines:
+    metrics:
+      receivers: [megaraid]
+    logs:
+      receivers: [megaraid]
+```
+
+It needs file access to the node (owner, group and mode) and `CAP_SYS_ADMIN`: root has both, a
+non-root user needs both (in a container, the device node and the capability). Other tools
+that use the node queue behind a scrape. The 2208 and 3108 controllers are the declared generations;
+others are read best-effort. The tests ran on buffers built from the driver headers, not on a
+controller; the metric table and what is unverified are in `docs/otel-metrics.md`.
+
+### Disk health (SMART)
+
+The `smart` receiver is in the Linux and static Linux edge builds. It reads the health of NVMe and
+SATA disks from the collector process and emits `hw.*` metrics: `hw.status`, `hw.temperature`,
+`hw.errors`, `hw.physical_disk.endurance_utilization`, `hw.physical_disk.size`, power-on time, power
+cycles, data moved, and the SATA attribute table as `hw.physical_disk.smart` with the attribute
+`hw.physical_disk.smart_value_type`. It sends `SG_IO` and NVMe admin ioctls itself, one disk at a
+time, and never runs `smartctl`.
+
+```yaml
+receivers:
+  smart:
+    collection_interval: 5m          # default
+    attributes: default              # default (20 ids) | all | [5, 9, 194]
+    value_types: [normalized, raw]   # default; worst and threshold are opt-in
+
+service:
+  pipelines:
+    metrics:
+      receivers: [smart]
+```
+
+It needs root, or a user that can read the device files (the `disk` group for SATA, an ACL or udev rule
+for `/dev/nvmeN`) and holds `CAP_SYS_ADMIN` (NVMe) and `CAP_SYS_RAWIO` (SATA), and a unit file that leaves
+`PrivateDevices` unset or allows `block-sd` and `char-nvme`. A disk that cannot be opened gives one error
+that asks for read access, a command the kernel refuses gives one error that names the capability, and
+the others are still read. The commands are read only,
+SMART is never switched on, and disks behind a RAID controller are skipped. The metric table, the
+series budget and the failure modes are in `docs/smart.md`.
+
+### Dell iDRAC health and sensors
+
+The `idrac` receiver is in the Linux and static Linux edge builds. It reads a Dell iDRAC through the Redfish API and
+reports health, temperatures, fans, voltages, power, drives, memory and processors with the `hw.*` names of the
+OpenTelemetry semantic conventions (see `docs/otel-metrics.md`). It logs in with a session token (one `POST` to
+`/redfish/v1/SessionService/Sessions`, then `X-Auth-Token` on each request), logs in again once after a 401, and deletes
+the session at shutdown. `test/configs/edge-idrac.yaml` is a sample.
+
+```yaml
+receivers:
+  idrac:
+    collection_interval: 60s
+    max_concurrent: 8                   # targets read at once
+    targets:
+      - name: db-1                          # host.name of the resource
+        address: https://192.0.2.5
+        username: ${env:IDRAC_USERNAME}
+        password: ${file:/etc/otelcol/idrac.password}
+        ca_file: /etc/otelcol/idrac-ca.pem  # pins the iDRAC CA
+        insecure_skip_verify: false         # default
+        resources: [system, thermal, power, storage, memory, processors, bmc]   # default: all
+        request_timeout: 10s                # default
+        scrape_timeout: 30s                 # default
+```
+
+Use an iDRAC account with a read-only role: the Login and ReadOnly privileges and nothing else. The password comes from
+`${env:...}` or `${file:...}`; the receiver stores it as an opaque string and writes it, and the session token, in no
+log. Certificate verification is on: a certificate that does not verify gives `hw.bmc.up` 0 with reason `tls`, and the
+receiver never retries without verification. Set `ca_file` to the iDRAC CA. A Redfish path the iDRAC answers 404 for
+is marked absent, logs one info line and is asked again after 6 hours. The legacy `Thermal` and `Power` are read first,
+because they carry the temperature limits, the voltages and the host power; `ThermalSubsystem` and `PowerSubsystem` are
+the fallback for firmware that no longer serves them, and give readings, fans and supplies without those three. A
+BMC that answers 400 or 501 to `$expand` is read member by member for 6 hours, then asked again. One drive or member that
+answers an error is skipped with one warning until a scrape without one, and `otelcol_hw_bmc_skipped_reads` counts each
+skip by target and part (the scrape still reports `hw.bmc.up` 1); a timeout, a login or a TLS failure still ends the scrape.
+A scrape makes about 10 requests plus one per drive, so a chassis with many drives on a slow iDRAC needs a longer
+`scrape_timeout`; `max_concurrent` (default 8) limits the targets read at once. After a failed login the iDRAC is not
+contacted for 15 minutes, then 30, doubling to 6 hours, and after three in a row not again until restart. The Windows
+edge, the FreeBSD edge, the gateway and the scrape collector do not include the receiver.
 
 ### OpenVPN client traffic
 
@@ -760,6 +946,10 @@ Linux edge only), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
 `zfskstatreceiver` (own module, ZFS pool I/O, pool state and ARC metrics, Linux edge only),
 `hwmonreceiver` (own module, temperature, fan and voltage sensors, Linux edge; FreeBSD by build tag),
 `iscsireceiver` (own module, iSCSI initiator sessions from sysfs, Linux edge only),
+`idracreceiver` (own module, Dell iDRAC health and sensors through Redfish, Linux edge only),
+`ipmireceiver` (own module, BMC sensors over IPMI, scrape image only),
+`hwschema` (own module, the `hw.*` vocabulary and metric builder of the two BMC receivers),
+`megaraidreceiver` (own module, MegaRAID status and events through the megaraid_sas ioctl node, Linux edge only),
 `openvpnstatusreceiver` (own module, OpenVPN client traffic from the status file, Linux edge only),
 `cloudwatchmetricsreceiver` (own module, CloudWatch metrics for many accounts, regions and tiers, scrape image only),
 `auth0receiver` (own module, Auth0 events from SQS; in the tree from 0.3.1 and

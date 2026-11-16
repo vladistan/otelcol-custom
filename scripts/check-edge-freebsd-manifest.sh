@@ -43,6 +43,14 @@ readonly REMOVED=(
 	"$CONTRIB/receiver/redisreceiver"
 	"$LOCAL/receiver/iscsireceiver"
 	"replace:$LOCAL/receiver/iscsireceiver"
+	"$LOCAL/receiver/smartreceiver"
+	"replace:$LOCAL/receiver/smartreceiver"
+	"replace:$LOCAL/receiver/smartdecode"
+	"$LOCAL/receiver/idracreceiver"
+	"replace:$LOCAL/receiver/idracreceiver"
+	"$LOCAL/receiver/megaraidreceiver"
+	"replace:$LOCAL/receiver/megaraidreceiver"
+	"replace:$LOCAL/receiver/hwschema"
 )
 
 die() {

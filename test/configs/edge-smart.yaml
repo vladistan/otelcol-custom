@@ -1,0 +1,32 @@
+# Linux edge reading the health of NVMe and SATA disks.
+#
+# Validate: otelcol-edge validate --config test/configs/edge-smart.yaml
+# Needs root, or a user that can read the device files (the disk group for SATA, an ACL for /dev/nvmeN)
+# with CAP_SYS_ADMIN for NVMe and CAP_SYS_RAWIO for SATA, and a unit file that leaves PrivateDevices
+# unset (or a DeviceAllow list with block-sd and char-nvme). See docs/smart.md.
+
+receivers:
+  smart:
+    collection_interval: 5m
+    command_timeout: 5s
+    skip_if_standby: true
+    # The 20 default attributes with the normalized and raw values. Use "all", or a list of ids,
+    # for more, and add worst and threshold to value_types to emit them.
+    attributes: default
+    value_types: [normalized, raw]
+    max_devices: 64
+
+processors:
+  batch:
+    timeout: 10s
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [smart]
+      processors: [batch]
+      exporters: [debug]

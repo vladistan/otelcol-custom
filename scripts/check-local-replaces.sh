@@ -15,6 +15,12 @@ readonly CONTRIB="github.com/open-telemetry/opentelemetry-collector-contrib/rece
 readonly REQUIRED_IN_SCRAPE=(
 	"$CONTRIB/awscloudwatchreceiver"
 	"$CONTRIB/googlecloudmonitoringreceiver"
+	"github.com/vladistan/otelcol-custom/receiver/pvereceiver"
+)
+# Receivers the scrape image must list: the Proxmox VE and SNMP pollers run in the scrape pod.
+readonly REQUIRED_RECEIVERS_IN_SCRAPE=(
+	"github.com/vladistan/otelcol-custom/receiver/pvereceiver"
+	"$CONTRIB/snmpreceiver"
 )
 
 die() {
@@ -58,6 +64,15 @@ if [ -f "$scrape" ]; then
 	for module in "${REQUIRED_IN_SCRAPE[@]}"; do
 		if ! grep -Eq -- "^[[:space:]]*-[[:space:]]+${module//./\\.}[[:space:]]+=>[[:space:]]+\.\./\.\./" "$scrape"; then
 			echo "FAIL: builder-scrape.yaml does not replace $module with a local copy"
+			failed=1
+		fi
+	done
+fi
+
+if [ -f "$scrape" ]; then
+	for module in "${REQUIRED_RECEIVERS_IN_SCRAPE[@]}"; do
+		if ! grep -Eq -- "^[[:space:]]*-[[:space:]]+gomod:[[:space:]]+${module//./\\.}[[:space:]]+" "$scrape"; then
+			echo "FAIL: builder-scrape.yaml does not list the receiver $module"
 			failed=1
 		fi
 	done

@@ -14,7 +14,7 @@ build-edge-freebsd: build-edge-image
     echo "Building otelcol-edge {{version}} for freebsd/amd64..."
     mkdir -p {{edge_freebsd_dir}}
     {{docker_bin}} run --rm -i --platform linux/amd64 \
-        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache \
+        -u "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e GOFLAGS=-buildvcs=false \
         -v "$PWD:$PWD" -w "$PWD" -v {{edge_gomod_volume}}:/go/pkg/mod \
         {{edge_build_image}} bash -euo pipefail -s <<'EOF'
     export CGO_ENABLED=0

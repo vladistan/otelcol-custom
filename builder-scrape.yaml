@@ -14,6 +14,11 @@ replaces:
   - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
   - github.com/vladistan/otelcol-custom/receiver/auth0receiver => ../../receiver/auth0receiver
   - github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver => ../../receiver/cloudwatchmetricsreceiver
+  - github.com/vladistan/otelcol-custom/receiver/ipmireceiver => ../../receiver/ipmireceiver
+  - github.com/vladistan/otelcol-custom/receiver/hwschema => ../../receiver/hwschema
+  - github.com/vladistan/otelcol-custom/receiver/pvereceiver => ../../receiver/pvereceiver
+  # go-ipmi is pre-1.0: the version is pinned here, and a bump is a deliberate change.
+  - github.com/bougou/go-ipmi => github.com/bougou/go-ipmi v0.9.2
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
   # yamllint disable-line rule:line-length
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver => ../../receiver/googlecloudmonitoringreceiver
@@ -33,6 +38,12 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver v0.164.1
   # CloudWatch metrics: accounts, regions and tiers in one instance
   - gomod: github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver v0.0.0
+  # Lab BMC sensors over IPMI; runs in a Deployment of its own (docs/scrape-collector.md)
+  - gomod: github.com/vladistan/otelcol-custom/receiver/ipmireceiver v0.0.0
+  # Proxmox VE cluster resources and guest agent facts, one instance per node (docs/scrape-collector.md)
+  - gomod: github.com/vladistan/otelcol-custom/receiver/pvereceiver v0.0.0
+  # SNMP devices read by OID, one instance per device (contrib, alpha)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/snmpreceiver v0.164.1
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudpubsubreceiver v0.164.1
   # metrics: Cloud Run metrics, one project per receiver instance
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver v0.164.1

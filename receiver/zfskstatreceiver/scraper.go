@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -59,6 +60,9 @@ var datasetMetrics = []ioMetric{
 	{"zfs.dataset.io.operations", "{operation}", "Read and write operations on the dataset.", false, []ioPoint{
 		{"reads", "direction", "read", 1}, {"writes", "direction", "write", 1},
 	}},
+	{"zfs.dataset.unlinks", "{unlink}", "Files and directories removed from the dataset.", false, []ioPoint{
+		{"nunlinks", "", "", 1},
+	}},
 }
 
 // arcMetric is one ARC metric read from the arcstats file by name.
@@ -78,6 +82,18 @@ type poolStats struct {
 	io       map[string]uint64
 	state    string
 	datasets []datasetStats
+	txg      *txgRow     // newest closed transaction group; nil when there is none
+	space    *spaceStats // FreeBSD only: statfs of the root dataset; nil when it is not mounted
+}
+
+// txgRow is the newest closed transaction group of a pool.
+type txgRow struct {
+	dirty, written, syncNanos uint64
+}
+
+// spaceStats is the statfs answer for the root dataset of a pool, in bytes.
+type spaceStats struct {
+	used, available uint64
 }
 
 type datasetStats struct {
@@ -115,6 +131,17 @@ func (e *episodes) warn(key, msg string, fields ...zap.Field) {
 	}
 	e.warned[key] = true
 	e.logger.Warn(msg, fields...)
+}
+
+// once logs msg at level the first time the key is seen since it last cleared.
+func (e *episodes) once(level zapcore.Level, key, msg string, fields ...zap.Field) {
+	if e.warned[key] {
+		return
+	}
+	e.warned[key] = true
+	if ce := e.logger.Check(level, msg); ce != nil {
+		ce.Write(fields...)
+	}
 }
 
 func (e *episodes) clear(key string) { delete(e.warned, key) }
@@ -240,6 +267,10 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	}
 	emitIO(sm, ioMetrics, poolSeries(snap.pools), s.resets, start, now)
 	emitState(sm, snap.pools, now)
+	if s.cfg.Txg {
+		emitTxg(sm, snap.pools, now)
+	}
+	emitSpace(sm, snap.pools, now)
 	if s.cfg.Datasets {
 		emitIO(sm, datasetMetrics, datasetSeries(snap.pools), s.resets, start, now)
 	}
@@ -354,6 +385,69 @@ func emitState(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp
 		dp.Attributes().PutStr("state", p.state)
 		dp.SetTimestamp(now)
 		dp.SetIntValue(1)
+	}
+}
+
+// txgMetrics are the gauges of the newest closed transaction group.
+var txgMetrics = []struct {
+	name, unit, description string
+	value                   func(txgRow) float64
+	whole                   bool
+}{
+	{"zfs.pool.txg.dirty", "By", "Dirty data in the newest closed transaction group.", func(r txgRow) float64 { return float64(r.dirty) }, true},
+	{"zfs.pool.txg.written", "By", "Data written by the newest closed transaction group.", func(r txgRow) float64 { return float64(r.written) }, true},
+	{"zfs.pool.txg.sync.time", "s", "Time the newest closed transaction group took to sync.", func(r txgRow) float64 { return float64(r.syncNanos) * 1e-9 }, false},
+}
+
+func emitTxg(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
+	for _, m := range txgMetrics {
+		var dps pmetric.NumberDataPointSlice
+		created := false
+		for _, p := range pools {
+			if p.txg == nil {
+				continue
+			}
+			if !created {
+				dps, created = newMetric(sm, m.name, m.unit, m.description, true), true
+			}
+			dp := dps.AppendEmpty()
+			dp.Attributes().PutStr("zfs.pool", p.name)
+			dp.SetTimestamp(now)
+			if m.whole {
+				setValue(dp, uint64(m.value(*p.txg)), 1)
+			} else {
+				dp.SetDoubleValue(m.value(*p.txg))
+			}
+		}
+	}
+}
+
+// spaceMetrics are the FreeBSD gauges from statfs of the root dataset.
+var spaceMetrics = []struct {
+	name, description string
+	value             func(spaceStats) uint64
+}{
+	{"zfs.dataset.space.used", "Space the root dataset of the pool uses, from statfs. Not the pool ALLOC of zpool list.", func(s spaceStats) uint64 { return s.used }},
+	{"zfs.dataset.space.available", "Space the root dataset of the pool can still use, from statfs. Not the pool FREE of zpool list.", func(s spaceStats) uint64 { return s.available }},
+}
+
+func emitSpace(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
+	for _, m := range spaceMetrics {
+		var dps pmetric.NumberDataPointSlice
+		created := false
+		for _, p := range pools {
+			if p.space == nil {
+				continue
+			}
+			if !created {
+				dps, created = newMetric(sm, m.name, "By", m.description, true), true
+			}
+			dp := dps.AppendEmpty()
+			dp.Attributes().PutStr("zfs.pool", p.name)
+			dp.Attributes().PutStr("zfs.dataset", p.name)
+			dp.SetTimestamp(now)
+			setValue(dp, m.value(*p.space), 1)
+		}
 	}
 }
 

@@ -24,6 +24,8 @@ type pveReceiver struct {
 	resources *resourcesScraper
 	guests    *guestsScraper
 	clients   []*apiClient
+	// nodeSource says where the guests node came from: "guests.node" or "host name".
+	nodeSource string
 
 	mu      sync.Mutex
 	metrics consumer.Metrics
@@ -54,8 +56,10 @@ func newReceiver(settings receiver.Settings, cfg *Config) (*pveReceiver, error) 
 			return nil, err
 		}
 		node := cfg.Guests.Node
+		r.nodeSource = "guests.node"
 		if node == "" {
 			node = localNode()
+			r.nodeSource = "host name"
 		}
 		if node == "" {
 			return nil, errors.New("guests.node is empty and the host name is unknown; set guests.node")
@@ -94,6 +98,13 @@ func (r *pveReceiver) Start(context.Context, component.Host) error {
 	}
 	if r.guests != nil {
 		r.run(ctx, r.cfg.Guests.CollectionInterval, r.sweepGuestsOnce)
+	}
+	if r.guests != nil {
+		msg := "guests node"
+		if r.nodeSource == "host name" {
+			msg = "guests.node is empty: the guests node is the short host name; in a pod that is the pod name, so set guests.node"
+		}
+		r.logger.Info(msg, zap.String("node", r.guests.node), zap.String("source", r.nodeSource))
 	}
 	if r.cfg.InsecureSkipVerify {
 		r.logger.Warn("insecure_skip_verify is on: the PVE certificate is not verified")

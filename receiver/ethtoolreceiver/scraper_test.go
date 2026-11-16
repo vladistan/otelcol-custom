@@ -236,13 +236,12 @@ func TestScrapeDriversAndInterfacesSelectTheInterfaces(t *testing.T) {
 	}
 }
 
-func TestScrapeOtherStatisticsEmitNothing(t *testing.T) {
+func TestScrapeOtherStatisticsEmitNothingWithoutAStatisticsList(t *testing.T) {
 	nic := enaNIC()
 	nic.stats["eth0"] = append(enaStats(10),
 		stat{"queue_0_tx_cnt", 99},
-		stat{"conntrack_allowance_available", 98},
 		stat{"tx_timeout", 97})
-	s, _ := newTestScraper(t, testConfig(), nic)
+	s, logs := newTestScraper(t, testConfig(), nic)
 
 	got := points(t, s.scrape(time.Unix(2000, 0)))
 
@@ -253,6 +252,7 @@ func TestScrapeOtherStatisticsEmitNothing(t *testing.T) {
 		"eth0/conntrack":     13,
 		"eth0/linklocal":     14,
 	}, got)
+	assert.Equal(t, 1, countLevel(logs, zapcore.InfoLevel), "only the missing available statistic")
 }
 
 func TestScrapeUnsupportedAndRemovedInterfacesAreSkippedWithoutWarning(t *testing.T) {
@@ -394,7 +394,7 @@ func TestScrapeNoMatchLineRepeatsAfterAMatchWasSeen(t *testing.T) {
 	nic.ifaces = nil
 	s.scrape(time.Unix(2060, 0))
 
-	assert.Equal(t, 1, countLevel(logs, zapcore.InfoLevel))
+	assert.Equal(t, 1, logs.FilterMessageSnippet("No network interface with a matching driver").Len())
 }
 
 func TestScrapeListingFailureWarnsAndEmitsNothing(t *testing.T) {

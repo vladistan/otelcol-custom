@@ -1,7 +1,9 @@
 # SNMP and NetFlow on the Linux edge
 
 The Linux edge and static Linux edge builds include two contrib receivers at v0.164.1, both alpha:
-`snmp` (metrics) and `netflow` (logs). The Windows edge, the gateway and the scrape collector do not.
+`snmp` (metrics) and `netflow` (logs). The scrape image includes `snmp` only, from 0.3.16 (see
+[the scrape collector](scrape-collector.md#proxmox-ve-and-snmp-pollers)); the Windows edge and the gateway include
+neither.
 Sample configs: `test/configs/edge-snmp.yaml` and `test/configs/edge-netflow.yaml`.
 
 ## snmp

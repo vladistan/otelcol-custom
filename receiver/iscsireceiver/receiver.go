@@ -25,11 +25,15 @@ type iscsiReceiver struct {
 }
 
 func newReceiver(settings receiver.Settings, cfg *Config, next consumer.Metrics, src sessionSource) *iscsiReceiver {
+	sc := newScraper(settings.Logger, src)
+	if ls, ok := src.(lunSource); ok && cfg.LUNs {
+		sc.luns, sc.maxLUNs = ls, cfg.MaxLUNs
+	}
 	return &iscsiReceiver{
 		logger:   settings.Logger,
 		interval: cfg.CollectionInterval,
 		consumer: next,
-		scraper:  newScraper(settings.Logger, src),
+		scraper:  sc,
 	}
 }
 

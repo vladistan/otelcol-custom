@@ -21,7 +21,11 @@ type classTree struct {
 	root string
 }
 
-func newClassTree(t *testing.T) *classTree { return &classTree{t: t, root: t.TempDir()} }
+// newClassTree makes <tmp>/class as the sysfs_path; <tmp>/devices holds the device directories
+// the scsi_device links point at.
+func newClassTree(t *testing.T) *classTree {
+	return &classTree{t: t, root: filepath.Join(t.TempDir(), "class")}
+}
 
 func (c *classTree) write(rel, content string) {
 	c.t.Helper()
@@ -68,7 +72,7 @@ func TestReadsASessionWithItsConnection(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	assert.Equal(t, session{
-		target: "iqn.2004-04.com.example:nas:iscsi.lun1.abc", tpgt: "1", state: "LOGGED_IN", portal: "192.0.2.10:3260",
+		id: 1, target: "iqn.2004-04.com.example:nas:iscsi.lun1.abc", tpgt: "1", state: "LOGGED_IN", portal: "192.0.2.10:3260",
 		connections: []connection{{portal: "192.0.2.10:3260", state: "LOGGED_IN"}},
 	}, got[0])
 }
@@ -133,13 +137,19 @@ func TestNeverOpensAFileOutsideTheAllowList(t *testing.T) {
 	c := newClassTree(t)
 	c.session("1", "iqn.a", "1", "LOGGED_IN")
 	c.connection("1", "0", "192.0.2.10", "3260", "LOGGED_IN")
+	c.lun(lunSpec{session: 1, host: 3, id: 1, state: "running", device: "sdb", sectors: "8", holder: "dm-0"})
+	c.writeAbs(filepath.Join(filepath.Dir(c.root), "devices", "platform", "host3", "session1", "target3:0:0", "3:0:0:1", "rev"), "1.0")
 	r := newTestReader(c)
 	allowed := map[string]bool{
 		"targetname": true, "tpgt": true, "state": true, "initiatorname": true, "ifacename": true,
 		"persistent_address": true, "persistent_port": true,
+		"type": true, "size": true, // the LUN reads
 	}
-	var opened []string
-	inner := r.readFile
+	listed := map[string]bool{ // the directories that may be listed
+		"class": true, "iscsi_session": true, "iscsi_connection": true, "scsi_device": true, "block": true, "holders": true,
+	}
+	var opened, dirs []string
+	inner, innerDir := r.readFile, r.readDir
 	r.readFile = func(p string) ([]byte, error) {
 		opened = append(opened, filepath.Base(p))
 		if !allowed[filepath.Base(p)] {
@@ -147,17 +157,33 @@ func TestNeverOpensAFileOutsideTheAllowList(t *testing.T) {
 		}
 		return inner(p)
 	}
+	r.readDir = func(p string) ([]os.DirEntry, error) {
+		dirs = append(dirs, filepath.Base(p))
+		if !listed[filepath.Base(p)] {
+			return nil, errors.New("listed a directory outside the allow-list: " + p)
+		}
+		return innerDir(p)
+	}
 
 	got, err := r.sessions()
+	luns, lunErr := r.luns()
 
 	require.NoError(t, err)
+	require.NoError(t, lunErr)
 	require.Len(t, got, 1)
+	require.Len(t, luns, 1, "the LUN reads ran inside the allow-list too")
+	assert.NoError(t, luns[0].err)
 	for _, name := range opened {
 		assert.True(t, allowed[name], name)
 	}
-	assert.NotContains(t, opened, "username")
-	assert.NotContains(t, opened, "password")
-	assert.NotContains(t, opened, "password_in")
+	for _, name := range dirs {
+		assert.True(t, listed[name], name)
+	}
+	assert.Contains(t, opened, "type")
+	assert.Contains(t, opened, "size")
+	for _, never := range []string{"username", "password", "password_in", "rev", "vendor", "model", "serial"} {
+		assert.NotContains(t, opened, never)
+	}
 }
 
 func TestASessionThatCannotBeReadIsSkipped(t *testing.T) {

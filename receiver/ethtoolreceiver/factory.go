@@ -15,6 +15,8 @@ import (
 const (
 	typeStr   = "ethtool"
 	stability = component.StabilityLevelDevelopment
+	// defaultMaxStatistics bounds network.interface.statistic series per scrape.
+	defaultMaxStatistics = 200
 )
 
 // NewFactory creates the factory of the ethtool receiver.
@@ -30,6 +32,7 @@ func createDefaultConfig() component.Config {
 	return &Config{
 		CollectionInterval: time.Minute,
 		Drivers:            []string{"ena"},
+		MaxStatistics:      defaultMaxStatistics,
 	}
 }
 

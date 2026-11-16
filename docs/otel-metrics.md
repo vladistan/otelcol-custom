@@ -90,6 +90,12 @@ value is not zero.
 | `zfs.pool.state` | gauge, always 1 | `1` | `zfs.pool`, `state` (for example `ONLINE`, `DEGRADED`) | pool `state` file |
 | `zfs.dataset.io.bytes` | monotonic sum | `By` | `zfs.pool`, `zfs.dataset`, `direction` | `objset-*` `nread`, `nwritten`; only with `datasets: true` |
 | `zfs.dataset.io.operations` | monotonic sum | `{operation}` | `zfs.pool`, `zfs.dataset`, `direction` | `objset-*` `reads`, `writes`; only with `datasets: true` |
+| `zfs.dataset.unlinks` | monotonic sum | `{unlink}` | `zfs.pool`, `zfs.dataset` | `objset-*` `nunlinks`; only with `datasets: true` |
+| `zfs.pool.txg.dirty` | gauge | `By` | `zfs.pool` | `txgs`, `ndirty` of the newest closed row; on while `txg: true` (default) |
+| `zfs.pool.txg.written` | gauge | `By` | `zfs.pool` | `txgs`, `nwritten` of the newest closed row |
+| `zfs.pool.txg.sync.time` | gauge | `s` | `zfs.pool` | `txgs`, `stime` of the newest closed row, nanoseconds converted |
+| `zfs.dataset.space.used` | gauge | `By` | `zfs.pool`, `zfs.dataset` (the pool name) | FreeBSD only: `statfs` of the mount of the root dataset |
+| `zfs.dataset.space.available` | gauge | `By` | `zfs.pool`, `zfs.dataset` (the pool name) | FreeBSD only: `statfs` of the mount of the root dataset |
 | `zfs.arc.size` | gauge | `By` | none | `arcstats` `size` |
 | `zfs.arc.hits` | monotonic sum | `{hit}` | none | `arcstats` `hits` |
 | `zfs.arc.misses` | monotonic sum | `{miss}` | none | `arcstats` `misses` |
@@ -114,12 +120,29 @@ still emits `zfs.pool.state`, the ARC metrics and, with `datasets`, the dataset
 metrics. A host without ZFS has no `kstat_path` (or no `kstat.zfs` sysctl): the
 receiver starts, logs one info line, sends nothing and looks again at each interval.
 A sysctl error other than not found logs one warning until a read succeeds again.
-`max_datasets` (default 100, 0 for no cap) keeps the first datasets in sorted order and
-logs one warning until the count fits again. A dataset name may hold spaces on both
+`dataset_include` and `dataset_exclude` list globs on `<pool>/<dataset>` (`path.Match`
+rules; `*` does not match `/`); an empty include list reads every dataset and exclude
+wins. They run before the cap. `max_datasets` (default 100, 0 for no cap) keeps the first
+datasets in sorted order and logs one warning until the count fits again. A dataset name may hold spaces on both
 sources. The dataset and pool counters restart at the scrape time when a value goes
 down, which is how a remounted dataset or a re-imported pool appears; other sums
 start at host boot. A pool whose `io` file is empty, short or
-not numeric is skipped with one warning until it reads cleanly again. See the [README](../README.md#zfs-pool-and-arc-metrics).
+not numeric is skipped with one warning until it reads cleanly again.
+
+The three `zfs.pool.txg.*` gauges read the newest closed row (state `C`, highest `txg`)
+of the `txgs` kstat, found by column name. The kernel fills `txgs` only while the module
+parameter `zfs_txg_history` is above 0; a pool with no closed row or no `txgs` file gets
+no txg series and one info line, and `txg: false` turns the metrics and the read off. The
+FreeBSD sysctl source reads `kstat.zfs.<pool>.misc.txgs` when the tree has it; whether
+FreeBSD 13 exposes it was not checked on a host.
+
+`zfs.dataset.space.used` and `.available` come from `getfsstat` on FreeBSD: the entry of
+type `zfs` whose source name equals the pool name is the mount of the root dataset, and
+the values are its `statfs` used and available blocks times the block size. They differ
+from the SIZE, ALLOC and FREE of `zpool list`, which count the whole pool, and the receiver
+reports no fragmentation and no per-vdev errors: those need the libzfs interface, which a
+later release may add. A pool whose root dataset is not mounted gets no space series and
+one debug line. On Linux, and with the `proc` source, no space series exists. See the [README](../README.md#zfs-pool-and-arc-metrics).
 
 ### Proxmox VE — `receiver/pvereceiver`
 
@@ -244,14 +267,53 @@ Linux and static Linux edge builds; see the [README](../README.md#hardware-tempe
 Reads `sysfs_path` (default `/sys/class`) every `collection_interval` (default `60s`):
 the directories `iscsi_session/session<N>` and `iscsi_connection/connection<N>:<M>`.
 A connection belongs to the session with the same number. The receiver opens only
-`targetname`, `tpgt` and `state` of a session and `persistent_address`,
-`persistent_port` and `state` of a connection.
+`targetname`, `tpgt` and `state` of a session, `persistent_address`,
+`persistent_port` and `state` of a connection and, with `luns` on, `type` and
+`state` of a SCSI device and `size` of its block device.
 
 | Metric | Type | Unit | Attributes |
 |---|---|---|---|
 | `iscsi.session.state` | gauge, always 1 | `1` | `state` (`LOGGED_IN`, `FAILED`, `FREE`), `iscsi.target`, `iscsi.portal`, `iscsi.tpgt` |
 | `iscsi.session.count` | gauge | `{session}` | none |
 | `iscsi.connection.state` | gauge, always 1 | `1` | `state`, `iscsi.target`, `iscsi.portal` |
+| `hw.status` | gauge | `1` | `hw.id`, `hw.name`, `hw.type` (`logical_disk`), `hw.parent`, `hw.state`; one point for each state, 1 for the current one |
+| `hw.logical_disk.limit` | gauge | `By` | `hw.id`, `hw.name`, `hw.type`, `hw.parent` |
+| `iscsi.lun.state` | gauge, always 1 | `1` | `state` (the SCSI device state, or `unknown`), `iscsi.target`, `iscsi.portal`, `iscsi.lun`, `iscsi.device`, `iscsi.holder` (the first device-mapper device on the path, only when there is one), `iscsi.holders` (how many, only when more than one) |
+
+The last three are the per-LUN series, on by default (`luns: true`). A LUN is a SCSI
+device behind a session: the receiver follows the links in `scsi_device/<H:C:T:L>` (a
+device with no `session<N>` in its path is a local disk and is left out), reads `type`
+(only disks, type 0 and 14, are reported), `state` and the `size` of its block device
+(512 byte sectors). It takes the semantic-convention names for a logical disk,
+`hw.status` with `hw.type` `logical_disk` and `hw.logical_disk.limit`, as the `megaraid`
+receiver does; `hw.id` is `<target>/<portal>/<lun>`, `hw.name` the block device and
+`hw.parent` the target. `iscsi.lun.state` keeps the raw state, the block device and the
+holder. `hw.state` comes from the SCSI state: `running` is `ok`; `blocked`, `quiesce`,
+`created` and `created-blocked` (a session that is recovering or a device not yet
+usable) are `degraded`; `offline`, `transport-offline`, `cancel` and `deleted` are
+`failed`.
+
+A LUN whose `state` cannot be read, whose block device cannot be found or whose state is
+not in the table has state `unknown` in `iscsi.lun.state` and no `hw.status` point, and
+a warning is logged once for each run of failures; an alert should test for
+`state="unknown"`. A size that cannot be read drops only `hw.logical_disk.limit`. A LUN
+whose session could not be read is skipped. With multipath the receiver reports each
+path under its own device (`sdb`, `sdc`) and never the `dm-N` device on top of them;
+`iscsi.holder` names the first one (in name order) and `iscsi.holders` counts them when
+there are several, so the paths of one map can be grouped. Each LUN is 7 points: 5 of
+`hw.status` (one for each `hw.state`), 1 of `hw.logical_disk.limit` and 1 of
+`iscsi.lun.state`. `max_luns` (default 256, at most 4096) caps the LUNs of one scrape, so
+256 LUNs are 1,792 points and 4096 are 28,672: the first ones in session and LUN order are
+kept and one info line says so. The cap is applied after the LUNs are read, so a host with
+many more devices still pays to read them. `max_luns` is checked only when `luns` is on.
+Two sessions to one portal give the same `hw.id`, as they do for `iscsi.session.state`.
+
+A device that vanishes while it is read (the read of its `type` file fails with "no
+such file", "no such device" or "stale file handle") gives no series, one info line for each such device until it is back, and is not
+an `unknown` LUN; a `type` that fails for another reason keeps the LUN as `unknown`. An
+attribute read takes at most 4 KiB. The read of all LUNs gives up after 10 seconds with one
+warning for each run of failures, sends the session series anyway and does not start a
+second read until the first returns, so a wedged sysfs costs one goroutine.
 
 `iscsi.portal` is `address:port`, with an IPv6 address in brackets. A session with no
 connection has an empty portal. Two sessions with the same target, portal and portal
@@ -263,6 +325,155 @@ gauges like `zfs.pool.state`: a changed state ends one series and starts another
 so an alert rule should test for `state != LOGGED_IN` or a missing `LOGGED_IN` series.
 A host with no session: the receiver starts, logs one info line, sends nothing and
 looks again at each interval. Linux edge builds only.
+
+### Dell iDRAC — `receiver/idracreceiver` and `receiver/hwschema`
+
+Reads a Dell iDRAC through Redfish every `collection_interval` (default `60s`) per target. The legacy `Thermal` and `Power` resources are read first; `ThermalSubsystem` and `PowerSubsystem` only when the iDRAC no longer serves them, and they have no temperature limits, voltages or host power. A scrape makes about 10 requests plus one per drive, so set `scrape_timeout` above the time of that many requests on a slow iDRAC; `max_concurrent` (default 8) limits the targets read at once. The metric names, units and
+attribute keys are in the `hwschema` module, which the `ipmi` receiver of the scrape image shares, so one query covers
+both. All metrics are gauges.
+
+| Metric | Unit | Redfish source |
+|---|---|---|
+| `hw.status` | `1` | `Status.Health` of the system (`host`), chassis (`enclosure`), fans (`fan`), power supplies (`power_supply`), drives (`physical_disk`), DIMMs (`memory`), processors (`cpu`) and the BMC (`bmc`); one point per `hw.state` (`ok`, `degraded`, `failed`, `needs_cleaning`, `predicted_failure`), 1 for the current one. `OK` is `ok`, `Warning` `degraded`, `Critical` `failed`; an unknown or null health gives no point |
+| `hw.temperature` | `Cel` | `ReadingCelsius` |
+| `hw.temperature.limit` | `Cel` | `UpperThresholdCritical` (`critical`) and `UpperThresholdNonCritical` (`high.degraded`) |
+| `hw.fan.speed` | `rpm` | A fan `Reading` whose `ReadingUnits` is RPM, or `SpeedPercent.SpeedRPM` |
+| `hw.fan.speed_ratio` | `1` | A fan reading in percent, or `SpeedPercent`, divided by 100 |
+| `hw.voltage` | `V` | `ReadingVolts` |
+| `hw.host.power` | `W` | `PowerConsumedWatts` of the legacy `Power` resource; not available from `PowerSubsystem` |
+| `hw.power_supply.usage`, `.limit`, `.utilization` | `W`, `W`, `1` | `LastPowerOutputWatts` (or `OutputPowerWatts` of the supply `Metrics` link), `PowerCapacityWatts`, and their ratio |
+| `hw.physical_disk.size` | `By` | `CapacityBytes` |
+| `hw.physical_disk.endurance_utilization` | `1` | 1 minus `PredictedMediaLifeLeftPercent` divided by 100, with `hw.physical_disk.state` `used` |
+| `hw.memory.size` | `By` | `CapacityMiB` times 1,048,576 |
+| `hw.bmc.up` | `1` | 1 when the scrape worked; 0 with a `reason` (`timeout`, `auth`, `refused`, `backoff`, `tls`) when not |
+| `hw.bmc.scrape.duration` | `s` | Time of the scrape |
+
+Every resource has `host.name` (the target `name`), `hw.vendor` (`dell`), `server.address` (the iDRAC host),
+`hw.bmc.protocol` (`redfish`) and, where the iDRAC reports them, `hw.model`, `hw.serial_number` (the service tag) and
+`hw.firmware_version` (of the iDRAC). A DIMM or processor whose state is `Absent` gives nothing. The counter
+`otelcol_hw_bmc_auth_failures`, by `bmc`, is in the collector's own telemetry.
+
+| Case | Result |
+|---|---|
+| Wrong password | `hw.bmc.up` 0, reason `auth`; not contacted for 15 minutes, then 30, doubling to 6 hours; after three in a row stopped until restart |
+| 401 on a request | One new login and one retry; a second 401 is an authentication failure |
+| Certificate does not verify | `hw.bmc.up` 0, reason `tls`; no retry without verification |
+| iDRAC slow or hung | A request ends at `request_timeout`, the scrape at `scrape_timeout`; `hw.bmc.up` 0, reason `timeout`; the other targets are not delayed |
+| A path answers 404 (older firmware, or a reset in progress) | Marked absent, one info line, asked again after 6 hours; the rest is read |
+| `$expand` answers 400 or 501 | The collection is read again without the query, and the query is not sent again to that iDRAC |
+| A drive or a collection member answers an error | That drive or member is skipped with one warning until a scrape without one; the rest is read and `hw.bmc.up` is 1 |
+| Another resource answers 500 or an error | `hw.bmc.up` 0, reason `refused`, and only that and the duration are sent |
+
+Alert rules: `hw.bmc.up` equal to 0 for 15 minutes, and no `hw.bmc.up` series for three collection intervals. A scrape
+reads about 12 to 20 resources one after the other, one request at a time. Linux and static Linux edge builds only; see
+the [README](../README.md#dell-idrac-health-and-sensors).
+
+### MegaRAID controllers — `receiver/megaraidreceiver`
+
+Reads every controller of the `megaraid_sas` driver (Dell PERC and Supermicro LSI cards) through
+`/dev/megaraid_sas_ioctl_node` every `collection_interval` (default `60s`). Controllers come from
+`/sys/class/scsi_host/host*/proc_name`; each one is read in turn. Only read-only MFI commands are
+sent, and one function checks every frame against a fixed list of 19 opcodes. No `megacli`,
+`storcli` or `smartctl` runs, and nothing on the controller is changed.
+
+| Metric | Type | Unit | Attributes |
+|---|---|---|---|
+| `hw.status` | gauge, one point per state | `1` | `hw.id`, `hw.name`, `hw.type` (`disk_controller`, `logical_disk`, `physical_disk`, `battery`), `hw.state` (`ok`, `degraded`, `predicted_failure`, `failed`), `hw.parent`; drives add `raid.enclosure`, `raid.slot` |
+| `hw.temperature` | gauge | `Cel` | `hw.id`, `hw.type`, `hw.sensor_location` (`roc`, `controller`, `drive`, `battery`) |
+| `hw.errors` | counter | `{error}` | drive `hw.id`, `error.type` (`media`, `other`, `predictive_failure`) |
+| `hw.physical_disk.size` | gauge | `By` | drive identity |
+| `hw.logical_disk.limit` | gauge | `By` | `hw.id` (`<controller>/ld<target>`), `hw.name` |
+| `hw.battery.charge` | gauge | `1` | `hw.id` (`<controller>/bbu`) |
+| `hw.battery.time_left` | gauge | `s` | battery identity |
+| `raid.controller.info` | gauge, always 1 | `1` | `hw.model`, `hw.firmware_version`, `hw.serial_number`, `raid.memory.size` (MiB) |
+| `raid.controller.reachable` | gauge | `1` | `hw.id`; 0 once when the driver reports the controller unusable |
+| `raid.logical_disk.level` | gauge, always 1 | `1` | `raid.level` (`raid0`, `raid1`, `raid5`, `raid6`, `raid10`, `raid50`, `raid60`) |
+| `raid.logical_disk.strip_size` | gauge | `By` | logical drive identity |
+| `raid.logical_disk.cache_policy` | gauge | `1` | `raid.cache_policy` (the policy byte in hex) |
+| `raid.progress` | gauge | `1` | `raid.operation` (`rebuild`, `patrol`, `check`, `init`, `reconstruction`, `copyback`), value 0 to 1 |
+| `raid.battery.cycles` | gauge | `{cycle}` | battery identity |
+| `raid.battery.next_learn_time` | gauge | `s` | Unix time of the next learn cycle |
+| `otelcol_megaraid_event_read_errors` | counter | `{error}` | `hw.id`; event log reads that failed (only with `events.enabled`) |
+| `raid.physical_disk.smart_state` | gauge, always 1 | `1` | `raid.smart_state` (`ok`, `predicted_failure`, `disabled`, `unsupported`, `standby`, `not_ata`, `unavailable`); only with `smart: true` |
+
+The controller `hw.id` is its PCI address. A drive `hw.id` is its serial number, so it survives a
+move between slots. The controller state is `failed` when a logical drive is offline or a drive has
+failed, and `degraded` when a logical drive is degraded or a drive predicts failure. Logical drive
+states: optimal `ok`, partially degraded and degraded `degraded`, offline `failed`. Drive firmware
+states: online, hot spare, unconfigured good and JBOD `ok`; rebuild and copyback `degraded`; failed,
+offline and unconfigured bad `failed`; a predictive-failure count above 0 on an otherwise healthy
+drive gives `predicted_failure`. A controller with no battery gets no battery command.
+
+Keys: `collection_interval` (60s), `smart` (false), `smart_interval` (15m, at least 60s),
+`create_node` (false; makes the device node from `/proc/devices`, needs `CAP_MKNOD`) and an `events`
+block with `enabled` (true), `storage` (a `file_storage` extension), `min_class` (`info`) and
+`max_per_scrape` (200).
+
+**Events.** With `events.enabled` the receiver reads the controller event log as logs: the body is
+the description, with the attributes `raid.event.sequence`, `raid.event.class`, `raid.event.code` and
+`raid.event.locale`. The last sequence number of each controller is kept in the `file_storage`
+extension named by `events.storage` and saved after the logs reached the next consumer. With no saved
+number the first start reads from the newest event, so no old event is sent; a saved number above
+the newest one (log cleared) is reset to the newest. Events below `min_class` are skipped and at most
+`max_per_scrape` are read in one scrape. Without a usable `file_storage` the receiver logs one error
+that names it, sends no events and keeps sending metrics. A metrics-only pipeline reads no events.
+
+**SMART through the controller.** With `smart: true` each SATA drive gets IDENTIFY DEVICE, SMART READ
+DATA, SMART READ THRESHOLDS and SMART RETURN STATUS (and CHECK POWER MODE first) as ATA PASS-THROUGH
+frames, decoded by the same code as the `smart` receiver, so a SATA disk behind the controller gives
+the same `hw.physical_disk.*` series as one on a plain port. A drive is read at most once per
+`smart_interval`, one at a time, never while it rebuilds, copies back, has failed or runs a patrol
+read. SMART is never switched on or off and no off-line test starts; a drive with SMART off shows
+`raid.smart_state` `disabled`. SAS drives are not read in this stage. A JBOD drive that
+also shows as a plain disk is read by both receivers; the receiver does not match them by serial yet.
+
+**Privilege and sharing.** Opening the node needs two things: file access to it (the node is mode 0600
+and owned by root when `create_node` made it) and `CAP_SYS_ADMIN`, which the driver checks whatever
+the file mode says. A non-root collector needs both; a refused open (`EACCES`) logs the owner and
+mode of the node and names both, and a refused call (`EPERM`) names the capability. In a container,
+add the device node and the capability. The driver takes one lock for every ioctl of a controller, so
+any other tool that uses the node (`megacli`, `storcli`, `smartctl -d megaraid`) queues behind a
+scrape and the receiver queues behind it, up to a 5 s limit per call. A call that times out is
+not retried: the receiver keeps the node open, sends nothing more to that controller and logs one
+line until the kernel returns from the call, then reads again at the next interval. A stuck
+controller costs one buffer set, not one for each scrape. Linux edge builds only; the receiver
+cannot be created elsewhere. A missing node needs the driver loaded, or `create_node: true`.
+
+**Failed event reads.** A failed read of the event log (a refused or timed-out command, or a failed
+read of the saved position) logs one line for each run of failures and raises
+`otelcol_megaraid_event_read_errors`. A failed read of the saved position skips that scrape's
+events: it is not taken for a first start, so unread events are neither dropped nor replayed. A
+saved value that is not a number restarts the log at the newest event. Event timestamps are the
+time the receiver read the event, not the controller's own time.
+
+**Drives that sleep.** Before any SMART read the receiver sends CHECK POWER MODE. A drive in standby, or
+one for which the controller returns no ATA status registers, is left alone and shows
+`raid.smart_state` `standby` or `unavailable`; the receiver never wakes a drive to read it. This is
+stricter than the `smart` receiver, which reads a drive whose power state it cannot tell.
+
+**Series per drive.** Stage 1 sends about 10 series per drive (4 status, temperature, 3 error counts,
+size, and one per running operation), about 10 per logical drive, 8 for the battery and 8 for the
+controller. SMART adds up to 42 series per SATA drive (20 default attributes, two value types, power
+on time and power cycles).
+
+**Supported controllers.** The 2208 (Dell PERC H710 and similar, Supermicro 9271 and 9286 cards) and
+the 3108 (PERC H730, 9361 and 9363 cards) are the declared generations. Any other product is read
+the same way, best-effort, and logs one info line with its name at start.
+
+**What is verified and what is not.** The struct layouts come from the FreeBSD `mfireg.h` and the Linux
+`megaraid_sas.h` headers. Two scrubbed captures of real controllers are committed under
+`receiver/megaraidreceiver/testdata/` and the tests decode them: a Supermicro 2208 (firmware
+3.240.05, two RAID 1 volumes, four drives, no battery) and an Avago 3108 (firmware 4.680.00, six
+single-drive RAID 0 volumes, six drives, a CacheVault module). They fixed the drive and logical drive
+counts, the memory size, the drive temperature offset and the epoch of the next learn time. No real
+controller was available for a live run. The states `degraded`, `failed`, `predicted_failure` and the
+rebuild, patrol and check progress rest on synthetic buffers, not on live firmware, and both captures
+are healthy. A 3108 answers the battery capacity command with status 61 and no data, so it sends no
+`hw.battery.charge`, `hw.battery.time_left` or `raid.battery.cycles`. Unconfirmed on hardware: the
+battery status bits, the `PD_SCSI_IO` frame layout used for SMART (sense buffer, status 0x2d), the
+logical drive query list layout, the choice of the extended list commands from the controller limits
+(the capability bit offset is unknown), and the cache policy bits (the byte is sent as it is). The
+firmware version is the `APP` image component, not the package version.
 
 ### Normalized/denormalized load — `processor/normalizedloadprocessor`
 

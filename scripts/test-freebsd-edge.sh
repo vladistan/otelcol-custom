@@ -61,6 +61,11 @@ just -n verify-public-artifacts >"$SCRATCH/verify" 2>&1 || true
 expect_grep "the verify recipe checks the FreeBSD asset" "otelcol-edge-.*-freebsd-amd64" "$SCRATCH/verify"
 expect_grep "the verify recipe runs the FreeBSD build check" 'check-edge-freebsd' "$SCRATCH/verify"
 expect_no_grep "the verify recipe does not run the FreeBSD binary" 'docker.*run.*freebsd' "$SCRATCH/verify"
+# The OCB step of every container build must not stamp VCS data (clean runners fail on it).
+for recipe in build-edge-linux build-edge-static-linux build-edge-windows build-edge-freebsd; do
+	just -n "$recipe" >"$SCRATCH/recipe-$recipe" 2>&1 || true
+	expect_grep "$recipe passes GOFLAGS=-buildvcs=false to the container" 'GOCACHE=/tmp/gocache -e GOFLAGS=-buildvcs=false' "$SCRATCH/recipe-$recipe"
+done
 
 # Checksum and site listing of the asset.
 mkdir -p "$SCRATCH/public"
@@ -101,8 +106,8 @@ if just check-edge-freebsd "$SCRATCH/probe-badver" >"$SCRATCH/check-ver.out" 2>&
 # Docs and CHANGELOG.
 expect_grep "docs name the install path" '/usr/local/bin/otelcol-edge' "$DOC"
 expect_grep "docs name the rc.d service" 'otelcol_edge' "$DOC"
-# The Unreleased section and the release section right below it (the newest release before the cut).
-awk '/^## \[/ { n++ } n >= 1 && n <= 2' CHANGELOG.md >"$SCRATCH/unreleased"
+# The FreeBSD wording lives in the release that added the build, which a later release pushes down.
+cp CHANGELOG.md "$SCRATCH/unreleased"
 for name in journald psi ethtool; do
 	expect_grep "CHANGELOG names $name as not running on FreeBSD" "FreeBSD.*\`$name\`|\`$name\`.*FreeBSD" "$SCRATCH/unreleased"
 	expect_grep "docs name $name as not in the FreeBSD build" "\`$name\`.*Not in the build" "$DOC"
