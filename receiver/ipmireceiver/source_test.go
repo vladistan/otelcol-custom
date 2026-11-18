@@ -25,19 +25,18 @@ const (
 	goIPMIImport = "github.com/bougou/go-ipmi"
 )
 
-// Names of go-ipmi calls the adapter may make. A call on a go-ipmi receiver (the client variables,
-// the client package and the types package) that is not on this list is refused, whatever its name.
+// go-ipmi calls the adapter may make; any other call on a go-ipmi value is refused, whatever its name.
 var allowedIPMICalls = map[string]bool{
 	"Connect": true, "ConnectAuto": true, "Close": true,
 	"GetDeviceID": true, "GetSDRsMap": true, "GetSensorReading": true, "GetDCMIPowerReading": true, "GetSDRRepoInfo": true,
+	"GetFRUInventoryAreaInfo": true, "ReadFRUData": true, "GetSDRsRaw": true,
 	"WithTimeout": true, "WithRetry": true, "WithInterface": true, "WithCipherSuiteID": true, "WithMaxPrivilegeLevel": true,
 	"WithCommandContext": true, "WithResponderAddr": true, "WithResponderLUN": true, "NewClient": true,
 	"ConvertReading": true, "TrueEvents": true, "IsResponseError": true, "CipherSuiteID": true,
 }
 
-// valueCalls are the methods the adapter calls on values it holds (errors, records, times). Any
-// other method call in the adapter, on any receiver that is not an imported package, must be on
-// allowedIPMICalls, so a client kept in any variable or returned by a call is still checked.
+// valueCalls are methods of plain values (errors, records, times). Every other method call in the
+// adapter must be on allowedIPMICalls, so a client held in any variable is still checked.
 var valueCalls = map[string]bool{
 	"Error": true, "StatusCode": true, "CompletionCode": true, "HasAnalogReading": true, "Timeout": true,
 	"Equal": true, "After": true, "IsZero": true, "OwnerID": true, "LUN": true, "Unwrap": true,
@@ -57,10 +56,7 @@ func packageNames(f *ast.File) map[string]bool {
 	return out
 }
 
-// sourceViolations lists what is wrong with a set of non-test source files
-// (name to content): a file other than the adapter that imports go-ipmi, a call
-// in the adapter that is neither on the allow-list nor a read, an os/exec or
-// cgo import, a metric name written outside hwschema, and cipher probing.
+// sourceViolations returns the rules the non-test sources (name to content) break.
 func sourceViolations(files map[string]string) []string {
 	var out []string
 	metricNames := map[string]bool{}
@@ -201,6 +197,33 @@ func f(c interface{ GetDeviceID(); GetSDRsMap(); GetSensorReading(); GetDCMIPowe
 	assert.Empty(t, got)
 }
 
+func TestSourceRuleAcceptsTheReadOnlyFRUCalls(t *testing.T) {
+	got := sourceViolations(map[string]string{adapterFile: `package x
+import _ "github.com/bougou/go-ipmi/pkg/client"
+func f(c interface{ GetFRUInventoryAreaInfo(); ReadFRUData(); GetSDRsRaw() }) {
+	c.GetFRUInventoryAreaInfo(); c.ReadFRUData(); c.GetSDRsRaw()
+}`})
+
+	assert.Empty(t, got)
+}
+
+func TestSourceRuleFailsOnFRUWriteAndOtherStorageCommands(t *testing.T) {
+	for _, call := range []string{"WriteFRUData", "ClearSEL", "DeleteSDR", "ColdReset", "SetSystemBootOptions"} {
+		got := sourceViolations(map[string]string{adapterFile: "package x\nfunc f(c interface{ " + call + "() }) { c." + call + "() }"})
+
+		assert.Contains(t, got, "adapter.go: calls "+call+", which is not on the list of reads")
+	}
+}
+
+func TestSourceRuleFailsOnTheFRUMetricNamesWrittenOutsideHwschema(t *testing.T) {
+	got := sourceViolations(map[string]string{"x.go": `package x
+var a = "inventory.bmc.fru.info"
+var b = "inventory.collection.status"`})
+
+	assert.Contains(t, got, "x.go: writes the metric name inventory.bmc.fru.info")
+	assert.Contains(t, got, "x.go: writes the metric name inventory.collection.status")
+}
+
 func TestSourceRuleFailsOnExecCgoAndAMetricNameOutsideHwschema(t *testing.T) {
 	got := sourceViolations(map[string]string{"x.go": `package x
 import "os/exec"
@@ -215,23 +238,21 @@ func TestSourceRuleFailsOnCipherProbing(t *testing.T) {
 	got := sourceViolations(map[string]string{"x.go": `package x
 func probeCipherSuites() {}
 func g() { probeCipherSuites() }
-var _ = struct{ a int }{}
 func h(s struct{ ProbeCipherSuites func() }) { s.ProbeCipherSuites() }`})
 
 	assert.Contains(t, got, "x.go: probes cipher suites")
 }
 
-// Both receivers import hwschema.
-func TestTheTargetBuildsEveryPointThroughHwschema(t *testing.T) {
-	b, err := os.ReadFile("target.go")
+func TestTheTargetImportsHwschemaToBuildItsPoints(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "target.go", nil, parser.ImportsOnly)
 	require.NoError(t, err)
 
-	assert.Contains(t, string(b), `"github.com/vladistan/otelcol-custom/receiver/hwschema"`)
-}
+	var imports []string
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		require.NoError(t, err)
+		imports = append(imports, path)
+	}
 
-func TestConfigRequiresACipherSuiteForIPMI20AndNeverProbes(t *testing.T) {
-	cfg := validConfig()
-	cfg.BMCs[0].CipherSuite = nil
-
-	assert.ErrorContains(t, cfg.Validate(), "cipher_suite is required for IPMI 2.0")
+	assert.Contains(t, imports, "github.com/vladistan/otelcol-custom/receiver/hwschema")
 }

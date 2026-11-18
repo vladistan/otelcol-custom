@@ -211,10 +211,10 @@ func TestStatesFollowTheCountsAndTheFirmwareStates(t *testing.T) {
 	dev := labFake(t)
 	dev.set(opCtrlGetInfo, ctrlBuf(ctrlOpts{device: pciDevice2208, product: "p", maxLDs: 64, ldDegraded: 1, pdPresent: 3}))
 	ld := ldSpec{target: 0, level: 5, spans: 1, state: ldStateOffline}
-	dev.setMbox(opLDGetInfo, mbox(0), ldInfoBuf(ld))
-	dev.setMbox(opPDGetInfo, mbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: pdFailed}))
-	dev.setMbox(opPDGetInfo, mbox(5, 0), pdInfoBuf(pdSpec{id: 5, vendor: "ATA", serial: "S5", fw: pdRebuild, rebuildPct: 32768}))
-	dev.setMbox(opPDGetInfo, mbox(6, 0), pdInfoBuf(pdSpec{id: 6, vendor: "ATA", serial: "S6", fw: pdOnline, pred: 2}))
+	dev.setMbox(opLDGetInfo, mailbox(0), ldInfoBuf(ld))
+	dev.setMbox(opPDGetInfo, mailbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: pdFailed}))
+	dev.setMbox(opPDGetInfo, mailbox(5, 0), pdInfoBuf(pdSpec{id: 5, vendor: "ATA", serial: "S5", fw: pdRebuild, rebuildPct: 32768}))
+	dev.setMbox(opPDGetInfo, mailbox(6, 0), pdInfoBuf(pdSpec{id: 6, vendor: "ATA", serial: "S6", fw: pdOnline, pred: 2}))
 	s, _, _ := newTestScraper(t, testConfig(), dev)
 
 	md := s.scrape(context.Background()).metrics
@@ -232,8 +232,8 @@ func TestStatesFollowTheCountsAndTheFirmwareStates(t *testing.T) {
 func TestLogicalDriveProgressAndUnknownStates(t *testing.T) {
 	dev := labFake(t)
 	spec := ldSpec{target: 0, level: 5, spans: 1, state: 9, checkPct: 65535, bgiPct: 16384}
-	dev.setMbox(opLDGetInfo, mbox(0), ldInfoBuf(spec))
-	dev.setMbox(opPDGetInfo, mbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: 0x77}))
+	dev.setMbox(opLDGetInfo, mailbox(0), ldInfoBuf(spec))
+	dev.setMbox(opPDGetInfo, mailbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: 0x77}))
 	s, logs, _ := newTestScraper(t, testConfig(), dev)
 
 	md := s.scrape(context.Background()).metrics
@@ -266,8 +266,8 @@ func TestExtendedListsAreChosenFromTheControllerLimits(t *testing.T) {
 			dev.set(opLDListQuery, ldQueryBuf(0))
 			dev.set(opPDGetList, pdListBuf(pdAddr{DeviceID: 4}))
 			dev.set(opPDListQuery, pdListBuf(pdAddr{DeviceID: 4}))
-			dev.setMbox(opLDGetInfo, mbox(0), ldInfoBuf(ldSpec{target: 0, level: 0, state: ldStateOptimal}))
-			dev.setMbox(opPDGetInfo, mbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: pdOnline}))
+			dev.setMbox(opLDGetInfo, mailbox(0), ldInfoBuf(ldSpec{target: 0, level: 0, state: ldStateOptimal}))
+			dev.setMbox(opPDGetInfo, mailbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "S4", fw: pdOnline}))
 			s, _, _ := newTestScraper(t, testConfig(), dev)
 
 			s.scrape(context.Background())
@@ -302,7 +302,50 @@ func TestARejectedCommandIsSentOncePerController(t *testing.T) {
 	s.scrape(context.Background())
 
 	assert.Equal(t, 2, dev.count(opBBUGetCapacityInfo), "once for each of the two controllers, never again")
-	assert.Equal(t, 2, logs.FilterMessage("The controller does not know a command and it is not sent again").Len())
+	assert.Equal(t, 2, logs.FilterMessage("The controller does not know a command and it is not sent again until the receiver restarts").Len())
+}
+
+func TestANotSupportedCommandIsAskedAtTheNextScrape(t *testing.T) {
+	dev := labFake(t)
+	dev.setStatus(opBBUGetCapacityInfo, statusNotSupported)
+	s, logs, _ := newTestScraper(t, testConfig(), dev)
+
+	for range 3 {
+		s.scrape(context.Background())
+	}
+
+	assert.Equal(t, 3, dev.count(opBBUGetCapacityInfo), "a not supported answer is no reason to stop asking")
+	assert.Equal(t, 1, logs.FilterMessage("The controller reports a command as not supported and it is asked again at every scrape").Len(), "one line for the episode")
+	assert.Zero(t, logs.FilterLevelExact(zapcore.WarnLevel).Len())
+}
+
+func TestAnInvalidCommandIsRememberedUntilRestart(t *testing.T) {
+	dev := labFake(t)
+	dev.setStatus(opBBUGetCapacityInfo, statusInvalidDCMD)
+	s, _, clock := newTestScraper(t, testConfig(), dev)
+
+	s.scrape(context.Background())
+	clock.advance(30 * 24 * time.Hour)
+	s.scrape(context.Background())
+	s.scrape(context.Background())
+
+	assert.Equal(t, 1, dev.count(opBBUGetCapacityInfo), "never again, however long the receiver runs")
+}
+
+func TestACommandThatWorksAgainIsUsedAgain(t *testing.T) {
+	dev := labFake(t)
+	dev.setStatus(opBBUGetCapacityInfo, statusNotSupported)
+	s, logs, _ := newTestScraper(t, testConfig(), dev)
+	s.scrape(context.Background())
+	dev.setStatus(opBBUGetCapacityInfo, statusOK)
+
+	s.scrape(context.Background())
+	s.scrape(context.Background())
+	dev.setStatus(opBBUGetCapacityInfo, statusNotSupported)
+	s.scrape(context.Background())
+
+	assert.Equal(t, 4, dev.count(opBBUGetCapacityInfo), "read at every scrape")
+	assert.Equal(t, 2, logs.FilterMessage("The controller reports a command as not supported and it is asked again at every scrape").Len(), "a new episode is logged again")
 }
 
 func TestOtherStatusesWarnOncePerCommand(t *testing.T) {
@@ -483,7 +526,7 @@ func TestScrapeCoversEveryControllerInTurn(t *testing.T) {
 
 func TestADriveWithoutASerialIsNamedByControllerAndDevice(t *testing.T) {
 	dev := labFake(t)
-	dev.setMbox(opPDGetInfo, mbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", fw: pdOnline}))
+	dev.setMbox(opPDGetInfo, mailbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", fw: pdOnline}))
 	s, _, _ := newTestScraper(t, testConfig(), dev)
 
 	md := s.scrape(context.Background()).metrics
@@ -554,4 +597,18 @@ func TestFindControllersReportsAnUnreadableDirectory(t *testing.T) {
 	_, err := findControllers(root)
 
 	assert.Error(t, err)
+}
+
+func TestAShortLogicalDriveWarnsOncePerController(t *testing.T) {
+	dev := labFake(t)
+	dev.setMbox(opLDGetProp, mailbox(0), []byte{1, 2, 3})
+	s, logs, _ := newTestScraper(t, testConfig(), dev)
+
+	out := s.scrape(context.Background())
+	s.scrape(context.Background())
+
+	assert.Equal(t, 1, logs.FilterMessage("A logical drive properties answer is shorter than expected").Len(), "one line, not one for each scrape")
+	level, ok := find(out.metrics, metricLDLevel)
+	require.True(t, ok, "the drive is still reported from its info answer")
+	assert.Equal(t, "raid5", level.attrs[attrLevel])
 }

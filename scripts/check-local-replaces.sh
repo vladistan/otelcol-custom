@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fails unless every local replace in a builder-*.yaml points to a directory whose
 # go.mod names the replaced module, and builder-scrape.yaml replaces the two
-# vendored cloud receivers. A replace line looks like:
+# vendored cloud receivers and the patched AWS logs encoding extension, and the two Linux edge
+# manifests replace the patched netflow receiver. A replace line looks like:
 #   - github.com/x/y => ../../receiver/y
 # The path is relative to build/<name>, so "../../" is the tool directory.
 #
@@ -16,7 +17,13 @@ readonly REQUIRED_IN_SCRAPE=(
 	"$CONTRIB/awscloudwatchreceiver"
 	"$CONTRIB/googlecloudmonitoringreceiver"
 	"github.com/vladistan/otelcol-custom/receiver/pvereceiver"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awslogsencodingextension"
 )
+# The Linux edge builds carry the patched copy of the contrib netflow receiver.
+readonly REQUIRED_IN_EDGE=(
+	"$CONTRIB/netflowreceiver"
+)
+readonly EDGE_MANIFESTS=(builder-edge.yaml builder-edge-static.yaml)
 # Receivers the scrape image must list: the Proxmox VE and SNMP pollers run in the scrape pod.
 readonly REQUIRED_RECEIVERS_IN_SCRAPE=(
 	"github.com/vladistan/otelcol-custom/receiver/pvereceiver"
@@ -68,6 +75,17 @@ if [ -f "$scrape" ]; then
 		fi
 	done
 fi
+
+for edge in "${EDGE_MANIFESTS[@]}"; do
+	if [ -f "$dir/$edge" ]; then
+		for module in "${REQUIRED_IN_EDGE[@]}"; do
+			if ! grep -Eq -- "^[[:space:]]*-[[:space:]]+${module//./\\.}[[:space:]]+=>[[:space:]]+\.\./\.\./" "$dir/$edge"; then
+				echo "FAIL: $edge does not replace $module with a local copy"
+				failed=1
+			fi
+		done
+	fi
+done
 
 if [ -f "$scrape" ]; then
 	for module in "${REQUIRED_RECEIVERS_IN_SCRAPE[@]}"; do

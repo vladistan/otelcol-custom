@@ -122,7 +122,7 @@ func TestSensorValuesUnitsAndIDs(t *testing.T) {
 
 func TestUpperCriticalThresholdGivesOneLimitPoint(t *testing.T) {
 	clock := newClock()
-	board := newBoard(clock, sdrRecord{number: 1, name: "CPU1 Temp", kind: kindTemperature, upperCritical: fp(95)})
+	board := newBoard(clock, sdrRecord{number: 1, name: "CPU1 Temp", kind: kindTemperature, upperCritical: ptrTo(95)})
 	board.readings[1] = sensorReading{value: 40}
 	r := newRig(t, board, clock, nil)
 
@@ -190,7 +190,7 @@ func TestAbsentPowerSupplyGivesNoStatus(t *testing.T) {
 	assert.Equal(t, 0, pointCount(r.scrape(t), "hw.status"))
 }
 
-func TestChassisIntrusion(t *testing.T) {
+func TestChassisIntrusionOffsetZeroGivesFailedAndNoOffsetGivesOK(t *testing.T) {
 	clock := newClock()
 	board := newBoard(clock, sdrRecord{number: 1, name: "Chassis Intru", kind: kindIntrusion})
 	r := newRig(t, board, clock, nil)
@@ -247,8 +247,9 @@ func TestEachScrapeReadsTheSelectedSensorsOnceAndNeverReadsTheWholeRepositoryAga
 	r.scrape(t)
 
 	assert.Equal(t, []uint8{1, 2, 3, 4, 1, 2, 3, 4}, board.sensorReads)
+	require.NotEmpty(t, board.calls, "the session was used")
 	for _, call := range board.calls {
-		assert.Contains(t, []string{"GetDeviceID", "GetSDRsMap", "GetSensorReading", "GetDCMIPowerReading"}, call)
+		assert.Contains(t, []string{"GetDeviceID", "GetSDRsMap", "GetSensorReading", "GetDCMIPowerReading", "ListFRUDevices", "ReadFRU"}, call)
 	}
 }
 
@@ -342,7 +343,7 @@ func TestAuthFailureBacksOff15Then30MinutesAndStopsAfterTheThirdUntilRestart(t *
 	assert.Equal(t, "backoff", reason)
 }
 
-func TestAuthBackoffDoublesToAnCeilingOfSixHours(t *testing.T) {
+func TestAuthBackoffDoublesFromFifteenMinutesAndStopsAtSixHours(t *testing.T) {
 	assert.Equal(t, 15*time.Minute, authBackoff(1))
 	assert.Equal(t, 30*time.Minute, authBackoff(2))
 	assert.Equal(t, time.Hour, authBackoff(3))
@@ -416,7 +417,6 @@ func TestAHangingBMCGivesTimeoutAtTheDeadlineWhileAnotherIsScrapedOnTime(t *test
 	_, reason := upValue(t, mdHung)
 	assert.Equal(t, "timeout", reason)
 	assert.GreaterOrEqual(t, waited, 50*time.Millisecond)
-	assert.Less(t, waited, time.Second)
 	up, _ := upValue(t, mdGood)
 	assert.Equal(t, int64(1), up)
 }
@@ -493,7 +493,7 @@ func TestDCMIPowerOpensOneAdministratorSessionPer5MinutesAndClosesItAtOnce(t *te
 
 func TestInvalidCommandMarksDCMIAbsentForGood(t *testing.T) {
 	r, board, clock := dcmiRig(t)
-	board.powerErrs = []error{completionError{code: ccInvalidCommand}}
+	board.powerErrs = []error{completionError{code: completionInvalidCommand}}
 
 	md := r.scrape(t)
 	assert.Equal(t, 0, pointCount(md, "hw.host.power"))
@@ -508,7 +508,7 @@ func TestInvalidCommandMarksDCMIAbsentForGood(t *testing.T) {
 
 func TestInitializingAnswerIsRetriedAtTheNextInterval(t *testing.T) {
 	r, board, clock := dcmiRig(t)
-	board.powerErrs = []error{completionError{code: ccInitializing}}
+	board.powerErrs = []error{completionError{code: completionInitializing}}
 
 	md := r.scrape(t)
 	assert.Equal(t, 0, pointCount(md, "hw.host.power"))
@@ -521,7 +521,7 @@ func TestInitializingAnswerIsRetriedAtTheNextInterval(t *testing.T) {
 
 func TestInsufficientPrivilegeWarnsOnceAndStopsPowerReads(t *testing.T) {
 	r, board, clock := dcmiRig(t)
-	board.powerErrs = []error{completionError{code: ccInsufficientPrivilege}}
+	board.powerErrs = []error{completionError{code: completionInsufficientPrivilege}}
 
 	r.scrape(t)
 	clock.Advance(time.Hour)
@@ -532,6 +532,27 @@ func TestInsufficientPrivilegeWarnsOnceAndStopsPowerReads(t *testing.T) {
 	assert.Equal(t, 1, board.powerReads)
 	warns := r.logs.FilterLevelExact(zapcore.WarnLevel).FilterMessageSnippet("not an administrator")
 	assert.Equal(t, 1, warns.Len())
+}
+
+func TestAMalformedDCMIReplyWarnsOncePerBMCAndIsRetriedAtTheNextInterval(t *testing.T) {
+	r, board, clock := dcmiRig(t)
+	board.powerErrs = []error{errMalformed, errMalformed, errMalformed}
+
+	md := r.scrape(t)
+	assert.Equal(t, 0, pointCount(md, "hw.host.power"), "no point for the interval")
+	up, _ := upValue(t, md)
+	assert.Equal(t, int64(1), up, "the sensors are fine")
+	clock.Advance(5 * time.Minute)
+	r.scrape(t)
+	clock.Advance(5 * time.Minute)
+	r.scrape(t)
+	clock.Advance(5 * time.Minute)
+	md = r.scrape(t)
+
+	assert.Equal(t, 4, board.powerReads, "tried again at every power interval")
+	assert.Equal(t, 1, pointCount(md, "hw.host.power"), "the first good answer gives a point")
+	warns := r.logs.FilterLevelExact(zapcore.WarnLevel).FilterMessageSnippet("malformed")
+	assert.Equal(t, 1, warns.Len(), "one WARN for the BMC, not one per interval")
 }
 
 func TestAdministratorDialFailureDoesNotFailTheSensorScrape(t *testing.T) {

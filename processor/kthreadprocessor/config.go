@@ -20,6 +20,10 @@ type Config struct {
 	Patterns []string `mapstructure:"patterns"`
 	// AggregateName is the process.executable.name of the aggregate resource.
 	AggregateName string `mapstructure:"aggregate_name"`
+	// KernelParent also merges a Linux resource with no command line and no
+	// executable path whose parent pid is 2, or whose pid is 2 and whose parent pid
+	// is 0 or absent: the threads the kernel starts.
+	KernelParent bool `mapstructure:"kernel_parent"`
 }
 
 // catchAllPatterns lists the patterns made only of * and ?, which match every
@@ -34,10 +38,11 @@ func (cfg *Config) catchAllPatterns() []string {
 	return out
 }
 
-// Validate rejects an empty pattern list, an empty pattern and an empty name.
+// Validate rejects an empty pattern list (unless kernel_parent finds the threads), an
+// empty pattern and an empty name.
 func (cfg *Config) Validate() error {
-	if len(cfg.Patterns) == 0 {
-		return errors.New("patterns must not be empty")
+	if len(cfg.Patterns) == 0 && !cfg.KernelParent {
+		return errors.New("patterns must not be empty when kernel_parent is false")
 	}
 	for i, pattern := range cfg.Patterns {
 		if pattern == "" {

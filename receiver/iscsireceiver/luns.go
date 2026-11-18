@@ -23,10 +23,10 @@ type lunSource interface {
 	luns() ([]lun, error)
 }
 
-// lun is one logical unit of one session, seen as a SCSI device. state is the SCSI device state
-// ("unknown" when it cannot be told), device the block device of this path, holder the
-// first device-mapper device that sits on top of it, if any, and holders how many there are.
-// err says what could not be read.
+// lun is one logical unit of one session, seen as a SCSI device. state is "unknown" when it
+// cannot be told, and then the LUN gives no hw.status point; hw.logical_disk.limit needs a
+// block device with a readable size. holder is the first device-mapper device on top of
+// device, holders their number, err what could not be read.
 type lun struct {
 	session   int
 	id        int
@@ -73,15 +73,14 @@ const (
 	lunVanished                    // the device went away while it was read: left out
 )
 
-// vanished reports an error that means the device is gone, not unreadable.
-func vanished(err error) bool {
+// isVanished reports an error that means the device is gone, not unreadable.
+func isVanished(err error) bool {
 	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENODEV) || errors.Is(err, syscall.ESTALE)
 }
 
-// luns lists the iSCSI LUNs of the host in session and LUN order. Entries that are not iSCSI
-// devices or not disks are left out, and so is a device that vanishes while it is read (one info
-// line for each such device until it is back); a LUN that cannot be read completely is returned
-// with its error and the state "unknown".
+// luns lists the iSCSI LUNs in session and LUN order. Non-iSCSI entries, non-disks and a device
+// that vanishes while it is read are left out (the vanished one logs one info line until it is
+// back); a LUN that is only partly readable is returned with its error and state "unknown".
 func (r *sysfsReader) luns() ([]lun, error) {
 	base := filepath.Join(r.root, classSCSIDevice)
 	entries, err := r.readDir(base)
@@ -107,8 +106,12 @@ func (r *sysfsReader) luns() ([]lun, error) {
 		if m == nil {
 			continue
 		}
-		session, _ := strconv.Atoi(m[1])
-		id, _ := strconv.Atoi(m[2])
+		session, sessionErr := strconv.Atoi(m[1])
+		id, idErr := strconv.Atoi(m[2])
+		if err := errors.Join(sessionErr, idErr); err != nil {
+			r.logger.Debug("Skipping a SCSI device whose session or LUN number is out of range", zap.String("device", name), zap.Error(err))
+			continue
+		}
 		l, outcome := r.readLUN(filepath.Join(base, name, "device"), session, id)
 		switch outcome {
 		case lunRead:
@@ -139,7 +142,7 @@ func (r *sysfsReader) readLUN(dir string, session, id int) (l lun, outcome readO
 
 	typ, err := r.text(filepath.Join(dir, fileType))
 	if err != nil {
-		if vanished(err) {
+		if isVanished(err) {
 			return lun{}, lunVanished
 		}
 		problems = append(problems, err)

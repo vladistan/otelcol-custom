@@ -16,18 +16,18 @@ import (
 
 	"github.com/bougou/go-ipmi/pkg/client"
 	"github.com/bougou/go-ipmi/pkg/types"
+
+	"github.com/vladistan/otelcol-custom/receiver/hwschema"
 )
 
-// This file is the only one that speaks go-ipmi. It reaches the library through
-// GetDeviceID, GetSDRsMap, GetSensorReading and GetDCMIPowerReading, plus the
-// repository info call that tells the SDR timestamp, and the connect and close
-// calls of the session. Nothing here sends a chassis, power, user or
-// configuration command.
+// This file is the only one that speaks go-ipmi, and it sends read commands
+// only; the wire allow-list in adapter_test.go enforces that.
 
 const (
-	defaultPort      = 623
-	exchangeRetries  = 1
-	completionNoData = 0xCB // requested data not present
+	defaultPort     = 623
+	minPort         = 1
+	maxPort         = 65535
+	exchangeRetries = 1
 )
 
 // newDialer returns the dialFunc that opens a go-ipmi session; exchange is the
@@ -53,7 +53,10 @@ func newDialer(exchange time.Duration) dialFunc {
 // newClient builds the client without connecting: address, credentials,
 // interface and cipher suite, privilege level, exchange timeout and retry.
 func newClient(cfg BMCConfig, level string, exchange time.Duration) (*client.Client, error) {
-	host, port := splitAddress(cfg.Address)
+	host, port, err := splitAddress(cfg.Address)
+	if err != nil {
+		return nil, err
+	}
 	c, err := client.NewClient(host, port, cfg.Username, string(cfg.Password))
 	if err != nil {
 		return nil, fmt.Errorf("new client: %w", err)
@@ -70,14 +73,24 @@ func newClient(cfg BMCConfig, level string, exchange time.Duration) (*client.Cli
 	return c, nil
 }
 
-func splitAddress(address string) (string, int) {
-	if h, p, err := net.SplitHostPort(address); err == nil {
-		if n, err := strconv.Atoi(p); err == nil {
-			return h, n
+// splitAddress splits host or host:port. Only a missing port defaults; a port
+// that does not parse is an error, or the wrong port would be polled silently.
+func splitAddress(address string) (string, int, error) {
+	host, portText, err := net.SplitHostPort(address)
+	if err != nil {
+		if address == "" {
+			return "", 0, errors.New("address is empty")
 		}
-		return h, defaultPort
+		return address, defaultPort, nil
 	}
-	return address, defaultPort
+	if host == "" {
+		return "", 0, fmt.Errorf("address %q has no host", address)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port < minPort || port > maxPort {
+		return "", 0, fmt.Errorf("address %q: port must be a number from %d to %d", address, minPort, maxPort)
+	}
+	return host, port, nil
 }
 
 func privilege(level string) types.PrivilegeLevel {
@@ -240,9 +253,95 @@ func convert(h *sdrHandle, raw uint8) float64 {
 func (s *ipmiSession) GetDCMIPowerReading(ctx context.Context) (float64, error) {
 	res, err := s.c.GetDCMIPowerReading(ctx)
 	if err != nil {
-		return 0, classify(err)
+		return 0, classifyDCMI(err)
 	}
 	return float64(res.CurrentPower), nil
+}
+
+// SDR FRU device locator values: the entity IDs of a processor and a memory
+// device, and the device type modifiers of a DIMM and a processor FRU.
+const (
+	entityProcessor   = 0x03
+	entityMemory      = 0x20
+	modifierDIMM      = 0x01
+	modifierProcessor = 0x03
+)
+
+// ListFRUDevices lists the logical FRU devices of the SDR that belong to a DIMM or a processor.
+// The built-in device 0 is read apart.
+func (s *ipmiSession) ListFRUDevices(ctx context.Context) ([]fruDevice, error) {
+	sdrs, err := s.c.GetSDRsRaw(ctx, types.SDRRecordTypeFRUDeviceLocator)
+	if err != nil {
+		return nil, classify(err)
+	}
+	var out []fruDevice
+	for _, sdr := range sdrs {
+		loc := sdr.FRUDeviceLocator
+		if loc == nil || !loc.IsLogicalFRUDevice || loc.AccessLUN != 0 || loc.FRUDeviceID_SlaveAddress == 0 {
+			continue
+		}
+		var kind string
+		switch {
+		case loc.FRUEntityID == entityMemory || loc.DeviceTypeModifier == modifierDIMM:
+			kind = hwschema.FRUDIMM
+		case loc.FRUEntityID == entityProcessor || loc.DeviceTypeModifier == modifierProcessor:
+			kind = hwschema.FRUCPU
+		default:
+			continue
+		}
+		// go-ipmi sets only the responder address of a message; it cannot bridge through Send Message,
+		// so a device the BMC does not hold is marked and never asked (device N of the BMC is another device).
+		isRemote := (loc.DeviceAccessAddress != 0 && loc.DeviceAccessAddress != types.BMC_SA) || loc.ChannelNumber != 0
+		out = append(out, fruDevice{
+			id: loc.FRUDeviceID_SlaveAddress, name: string(loc.DeviceIDBytes), kind: kind,
+			isRemote: isRemote, isSPD: loc.DeviceTypeModifier == modifierDIMM,
+		})
+		if len(out) >= fruMaxDevices {
+			break
+		}
+	}
+	return out, nil
+}
+
+// ReadFRU reads the chassis, board and product areas of one FRU device.
+func (s *ipmiSession) ReadFRU(ctx context.Context, deviceID uint8) ([]byte, error) {
+	info, err := s.c.GetFRUInventoryAreaInfo(ctx, deviceID)
+	if err != nil {
+		return nil, classify(err)
+	}
+	if err := fruAccessError(info.DeviceAccessedByWords); err != nil {
+		return nil, err
+	}
+	return readFRUImage(int(info.AreaSizeBytes), func(offset, count int) ([]byte, error) {
+		res, err := s.c.ReadFRUData(ctx, deviceID, uint16(offset), uint8(count))
+		if err != nil {
+			return nil, classify(err)
+		}
+		data := res.Data
+		if int(res.CountReturned) < len(data) {
+			data = data[:res.CountReturned]
+		}
+		return data, nil
+	})
+}
+
+// fruAccessError refuses a FRU device that is read in words; the offsets of Read FRU Data would
+// then count words, and the reader counts bytes.
+func fruAccessError(byWords bool) error {
+	if byWords {
+		return fmt.Errorf("%w: read by words", errFRUUnsupported)
+	}
+	return nil
+}
+
+// classifyDCMI is classify for the DCMI power read, where a reply that is too short or is not a DCMI answer
+// is a fault of the BMC, marked errMalformed. The other reads keep such an error as the library gave it.
+func classifyDCMI(err error) error {
+	if err != nil && (errors.Is(err, types.ErrUnpackedDataTooShort) || errors.Is(err, types.ErrDCMIGroupExtensionIDMismatch) ||
+		strings.Contains(strings.ToLower(err.Error()), "not enough data for")) {
+		return fmt.Errorf("%w: %s", errMalformed, err)
+	}
+	return classify(err)
 }
 
 // classify maps a go-ipmi or transport error to the receiver's errors. The text
@@ -293,9 +392,8 @@ func classify(err error) error {
 	return err
 }
 
-// isAuthText finds the credential failures go-ipmi reports without a typed error. Its Connect joins
-// the errors of every cipher suite with %v, so the status error arrives as text: "RMCP+ status 0xd:
-// Unauthorized name". A RAKP message whose authentication code does not match is a wrong password.
+// isAuthText finds credential failures that go-ipmi's Connect reports as text: it joins the
+// errors of every cipher suite with %v, which drops the typed status error.
 func isAuthText(err error) bool {
 	s := strings.ToLower(err.Error())
 	for _, m := range authTexts {
@@ -333,11 +431,9 @@ func isPrivilegeLevelCall(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "setsessionprivilegelevel to")
 }
 
-// refusesRole reports the completion codes of that step that mean the level is not available to the
-// account: request level not available (0x81), above the channel limit (0x82) and insufficient
-// privilege (0xd4).
+// refusesRole reports the completion codes of that step that mean the account may not have the level.
 func refusesRole(code uint8) bool {
-	return code == 0x81 || code == 0x82 || code == ccInsufficientPrivilege
+	return code == completionRequestedLevelUnavailable || code == completionAboveChannelLimit || code == completionInsufficientPrivilege
 }
 
 func isTimeoutText(err error) bool {

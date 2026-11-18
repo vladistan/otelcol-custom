@@ -28,7 +28,7 @@ build-edge-windows: build-edge-image
     cd {{edge_windows_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    GOOS=windows GOARCH=amd64 go build -buildvcs=false \
+    GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge.exe .
     EOF
@@ -125,7 +125,7 @@ validate-edge-windows-config config:
     cd {{edge_windows_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    CGO_ENABLED=0 go build -buildvcs=false \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge-host .
     cd - >/dev/null

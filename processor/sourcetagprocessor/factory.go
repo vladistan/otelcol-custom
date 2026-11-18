@@ -43,5 +43,5 @@ func createLogsProcessor(
 	if err != nil {
 		return nil, err
 	}
-	return &processorImpl{provider: conf.Provider, rules: rules, next: nextConsumer, tel: tel}, nil
+	return &processorImpl{provider: conf.Provider, rules: rules, next: nextConsumer, metrics: tel}, nil
 }

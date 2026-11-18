@@ -11,6 +11,8 @@ replaces:
   # Pin sentry-go to the version cmd/otelcol-custom compiles against. The builder
   # compiles before the entrypoint is copied in; unpinned it takes the newest release.
   - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
+  # Contrib netflow receiver with a local patch: v9 bytes and packets add the IN and OUT counters
+  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver => ../../receiver/netflowreceiver
   # Custom components from this repository (paths relative to build/edge/ directory)
   - github.com/vladistan/otelcol-custom/receiver/psireceiver => ../../receiver/psireceiver
   - github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver => ../../receiver/openvpnstatusreceiver
@@ -32,9 +34,11 @@ replaces:
   - github.com/vladistan/otelcol-custom/receiver/zfskstatreceiver => ../../receiver/zfskstatreceiver
   - github.com/vladistan/otelcol-custom/receiver/hwmonreceiver => ../../receiver/hwmonreceiver
   - github.com/vladistan/otelcol-custom/receiver/iscsireceiver => ../../receiver/iscsireceiver
+  - github.com/vladistan/otelcol-custom/receiver/inventoryreceiver => ../../receiver/inventoryreceiver
   - github.com/vladistan/otelcol-custom/receiver/idracreceiver => ../../receiver/idracreceiver
   - github.com/vladistan/otelcol-custom/receiver/hwschema => ../../receiver/hwschema
   - github.com/vladistan/otelcol-custom/receiver/megaraidreceiver => ../../receiver/megaraidreceiver
+  - github.com/vladistan/otelcol-custom/receiver/ksmreceiver => ../../receiver/ksmreceiver
 # =============================================================================
 # Extensions - Minimal set for edge deployments
 # =============================================================================
@@ -94,10 +98,14 @@ receivers:
   - gomod: github.com/vladistan/otelcol-custom/receiver/hwmonreceiver v0.0.0
   # iSCSI initiator sessions from sysfs
   - gomod: github.com/vladistan/otelcol-custom/receiver/iscsireceiver v0.0.0
+  # Daily hardware facts (CPU, memory modules, board, drives, GPU) as info gauges
+  - gomod: github.com/vladistan/otelcol-custom/receiver/inventoryreceiver v0.0.0
   # Dell iDRAC health and sensors through Redfish
   - gomod: github.com/vladistan/otelcol-custom/receiver/idracreceiver v0.0.0
   # MegaRAID controller status and events through the megaraid_sas ioctl node (Linux only)
   - gomod: github.com/vladistan/otelcol-custom/receiver/megaraidreceiver v0.0.0
+  # Kernel Samepage Merging counters from sysfs (Linux only)
+  - gomod: github.com/vladistan/otelcol-custom/receiver/ksmreceiver v0.0.0
 # =============================================================================
 # Processors - Minimal processing for edge
 # =============================================================================

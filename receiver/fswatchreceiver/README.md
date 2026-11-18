@@ -85,6 +85,12 @@ rescan back), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_droppe
 
 ## What counts as new
 
+The receiver is create-only: it reports a file when it is created and, once the size
+settles, a second record when the write is complete. An append to an existing file and a
+deletion emit nothing. A file renamed while the collector is down is reported under its
+final name only. On a Windows host after a 2 minute collector outage the receiver sent no
+duplicate records and replayed nothing.
+
 A file created in the tree, or moved into it from outside. A directory moved in
 reports the files inside it. Writes, deletions and renames within one directory
 are ignored. A file moved from one directory of the tree to another is reported

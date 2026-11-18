@@ -129,7 +129,7 @@ func TestReal3108BatteryAndTheCapacityCommandThatIsNotSupported(t *testing.T) {
 	assert.Zero(t, logs.FilterLevelExact(zapcore.WarnLevel).Len(), "status 61 is quiet")
 	assert.Equal(t, 1, dev.count(opBBUGetCapacityInfo))
 	s.scrape(context.Background())
-	assert.Equal(t, 1, dev.count(opBBUGetCapacityInfo), "and not asked again")
+	assert.Equal(t, 2, dev.count(opBBUGetCapacityInfo), "and asked again at the next scrape")
 }
 
 func TestReal3108ScrapeGivesTheLabHost(t *testing.T) {

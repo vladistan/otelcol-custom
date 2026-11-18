@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // classTree is a fake /sys/class with the two iSCSI classes.
@@ -306,4 +308,58 @@ func TestSessionsAreReadInNumericOrder(t *testing.T) {
 	require.Len(t, got, 2)
 	assert.Equal(t, "iqn.two", got[0].target)
 	assert.Equal(t, "iqn.ten", got[1].target)
+}
+
+func TestASessionNumberOutOfRangeIsSkippedNotReadAsZero(t *testing.T) {
+	c := newClassTree(t)
+	c.session("99999999999999999999", "iqn.huge", "1", "LOGGED_IN")
+	c.session("1", "iqn.a", "1", "LOGGED_IN")
+
+	got, err := newTestReader(c).sessions()
+
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 1, got[0].id)
+}
+
+func TestLunNumberOutOfRangeIsSkippedNotReadAsZero(t *testing.T) {
+	c := newClassTree(t)
+	c.lun(lunSpec{session: 1, host: 3, id: 1, state: "running", device: "sdb", sectors: "8"})
+	r := newTestReader(c)
+	r.readlink = func(string) (string, error) {
+		return "../../devices/platform/host3/session1/target3:0:0/3:0:0:99999999999999999999/scsi_device/3:0:0:1", nil
+	}
+
+	got, err := r.luns()
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestAConnectionListFailureWarnsOncePerRun(t *testing.T) {
+	c := newClassTree(t)
+	c.session("1", "iqn.a", "1", "LOGGED_IN")
+	core, logs := observer.New(zapcore.DebugLevel)
+	r := newSysfsReader(zap.New(core), c.root)
+	failing := true
+	r.readDir = func(p string) ([]os.DirEntry, error) {
+		if failing && filepath.Base(p) == connClass {
+			return nil, syscall.EACCES
+		}
+		return os.ReadDir(p)
+	}
+
+	for range 3 {
+		_, err := r.sessions()
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 1, logs.FilterLevelExact(zapcore.WarnLevel).Len(), "one warning for the whole run")
+
+	failing = false
+	_, err := r.sessions()
+	require.NoError(t, err)
+	failing = true
+	_, err = r.sessions()
+	require.NoError(t, err)
+	assert.Equal(t, 2, logs.FilterLevelExact(zapcore.WarnLevel).Len(), "a new run warns again")
 }

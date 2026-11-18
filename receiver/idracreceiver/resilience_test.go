@@ -6,6 +6,7 @@ package idracreceiver
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,9 +19,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// $expand.
-
-func TestAnExpandThe400IsAnswerGetsOneRetryWithoutTheQueryAndIsRemembered(t *testing.T) {
+func TestAnExpandRefusedWith400Or501GetsOneRetryWithoutTheQueryAndIsRemembered(t *testing.T) {
 	for _, code := range []int{400, 501} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			f := newFakeRedfish()
@@ -36,8 +35,8 @@ func TestAnExpandThe400IsAnswerGetsOneRetryWithoutTheQueryAndIsRemembered(t *tes
 			u, _ := up(t, md)
 			assert.Equal(t, int64(1), u)
 			assert.Equal(t, 1, pointCount(md, "hw.memory.size"))
-			assert.Equal(t, 1, f.countQuery(sys+"/Storage"), "the query is sent once for the whole BMC, then dropped")
-			assert.Equal(t, 0, f.countQuery(sys+"/Memory"), "the BMC that refused the query is not asked again")
+			assert.Equal(t, 1, f.countQuery(sys+"/Memory"), "the query is sent once for the whole BMC, then dropped")
+			assert.Equal(t, 0, f.countQuery(sys+"/Processors"), "the BMC that refused the query is not asked again")
 		})
 	}
 }
@@ -54,8 +53,6 @@ func TestA500OnAnExpandIsNotARefusalOfTheQuery(t *testing.T) {
 	assert.Equal(t, int64(0), u)
 	assert.Equal(t, 1, f.count("GET", sys+"/Memory"), "no retry without the query")
 }
-
-// Newer firmware.
 
 func TestTheLegacyThermalAndPowerAreReadFirstAndTheSubsystemsOnlyWhenTheyAreGone(t *testing.T) {
 	f := newFakeRedfish()
@@ -131,8 +128,6 @@ func TestSubsystemTemperaturesAreIdentifiedByDeviceNameNotByPosition(t *testing.
 	assert.Equal(t, attr(byID(t, first, "hw.temperature", "CPU1 Temp"), "hw.id"), attr(byID(t, second, "hw.temperature", "CPU1 Temp"), "hw.id"))
 }
 
-// Slow chassis.
-
 func TestOneDriveThatAnswers500IsSkippedAndTheRestOfTheScrapeIsKept(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
@@ -142,16 +137,46 @@ func TestOneDriveThatAnswers500IsSkippedAndTheRestOfTheScrapeIsKept(t *testing.T
 	f.forceStatus(ctrl+"/Drives/Disk.Bay.0", 500)
 	r := newRig(t, f, nil)
 
-	md := r.scrape(t)
-	r.scrape(t)
+	md := r.scrapeStorage(t)
+	r.scrapeStorage(t)
 
-	u, _ := up(t, md)
-	assert.Equal(t, int64(1), u)
-	assert.Equal(t, 1, pointCount(md, "hw.physical_disk.size"), "the good drive is kept")
-	assert.Equal(t, 1, pointCount(md, "hw.fan.speed"), "so is everything else")
+	assert.Len(t, allPts(md, "hw.physical_disk.size"), 1, "the good drive is kept")
 	warns := r.logs.FilterLevelExact(zapcore.WarnLevel).FilterField(zap.String("part", "drive"))
 	assert.Equal(t, 1, warns.Len(), "one warning for the episode, not one per scrape")
 	assert.Equal(t, []string{"db-1/drive", "db-1/drive"}, r.skips, "every skipped read is counted, one per scrape")
+}
+
+func TestAMemberThatDoesNotDecodeIsSkippedCountedAndLogged(t *testing.T) {
+	f := newFakeRedfish()
+	defer f.close()
+	f.set(sys+"/Memory", obj{"Members": []obj{
+		{"Id": "DIMM.Socket.A1", "Name": "DIMM A1", "CapacityMiB": "large", "Status": obj{"Health": "OK"}},
+		{"Id": "DIMM.Socket.A2", "Name": "DIMM A2", "CapacityMiB": 8192, "Status": obj{"Health": "OK"}},
+	}})
+	r := newRig(t, f, nil)
+
+	md := r.scrape(t)
+
+	assert.Equal(t, 1, pointCount(md, "hw.memory.size"), "the member that decodes is kept")
+	assert.Equal(t, []string{"db-1/memory"}, r.skips)
+	warns := r.logs.FilterLevelExact(zapcore.WarnLevel).FilterMessageSnippet("skipped")
+	require.Equal(t, 1, warns.Len())
+	assert.Contains(t, warns.All()[0].ContextMap()["error"], "does not decode")
+}
+
+func TestASupplyMetricsReadThatFailsIsCountedAndTheScrapeKeepsTheSupply(t *testing.T) {
+	f := newFakeRedfish()
+	defer f.close()
+	subsystemOnly(f)
+	f.forceStatus(chassis+"/PowerSubsystem/PowerSupplies/PSU.Slot.1/Metrics", 500)
+	r := newRig(t, f, nil)
+
+	md := r.scrape(t)
+
+	u, _ := up(t, md)
+	assert.Equal(t, int64(1), u)
+	assert.Equal(t, 1, pointCount(md, "hw.power_supply.usage"), "only the supply with its own reading")
+	assert.Equal(t, []string{"db-1/power_supply"}, r.skips)
 }
 
 func TestARefusalOfExpandIsForgottenAfterSixHoursAndTheQueryIsSentAgain(t *testing.T) {
@@ -162,23 +187,36 @@ func TestARefusalOfExpandIsForgottenAfterSixHoursAndTheQueryIsSentAgain(t *testi
 
 	r.scrape(t)
 	r.scrape(t)
-	assert.Equal(t, 1, f.countQuery(sys+"/Storage"), "dropped after the refusal")
+	assert.Equal(t, 1, f.countQuery(sys+"/Memory"), "dropped after the refusal")
 	r.clock.Advance(7 * time.Hour)
 	r.scrape(t)
 
-	assert.Equal(t, 2, f.countQuery(sys+"/Storage"), "asked again once, then dropped again")
+	assert.Equal(t, 2, f.countQuery(sys+"/Memory"), "asked again once, then dropped again")
 }
 
-func TestADriveThatTimesOutStillFailsTheScrapeBecauseTheBMCIsSlow(t *testing.T) {
+func TestAStalledStorageReadDoesNotTouchTheBaseScrape(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
-	f.stall[sys+"/Storage/RAID.Integrated.1-1/Drives/Disk.Bay.0"] = 5 * time.Second
-	r := newRig(t, f, func(c *TargetConfig) { c.RequestTimeout = 100 * time.Millisecond; c.ScrapeTimeout = 2 * time.Second })
+	f.stall[sys+"/Storage"] = 5 * time.Second
+	r := newRig(t, f, func(c *TargetConfig) {
+		c.RequestTimeout = 100 * time.Millisecond
+		c.ScrapeTimeout = 2 * time.Second
+	})
 
 	md := r.scrape(t)
 
-	_, reason := up(t, md)
-	assert.Equal(t, "timeout", reason)
+	u, _ := up(t, md)
+	assert.Equal(t, int64(1), u, "a timeout on the storage collection would end the base scrape")
+	assert.Equal(t, 0, f.count("GET", sys+"/Storage"))
+}
+
+func TestAnUnclassifiedTransportErrorKeepsItsChainAndHidesThePassword(t *testing.T) {
+	c := &client{pass: "pw-value-1"}
+
+	got := c.classify(fmt.Errorf("dial pw-value-1: %w", io.ErrUnexpectedEOF))
+
+	require.ErrorIs(t, got, io.ErrUnexpectedEOF)
+	assert.NotContains(t, got.Error(), "pw-value-1")
 }
 
 func TestAtMostMaxConcurrentTargetsAreReadAtOnce(t *testing.T) {
@@ -229,8 +267,6 @@ func TestAtMostMaxConcurrentTargetsAreReadAtOnce(t *testing.T) {
 	assert.LessOrEqual(t, peak.Load(), int32(2))
 	assert.Greater(t, peak.Load(), int32(0))
 }
-
-// Episodes and re-probing.
 
 func TestTheCertificateWarningComesOncePerEpisode(t *testing.T) {
 	f := newFakeRedfish()

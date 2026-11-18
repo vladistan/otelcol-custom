@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -16,6 +17,123 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 )
+
+// datasetMap maps "pool|dataset" to the value of each point of a metric; it is empty when the metric is absent.
+func datasetMap(t *testing.T, md pmetric.Metrics, metric string) map[string]int64 {
+	t.Helper()
+	out := map[string]int64{}
+	if !slices.Contains(metricNames(md), metric) {
+		return out
+	}
+	dps := dataPoints(findMetric(t, md, metric))
+	for i := 0; i < dps.Len(); i++ {
+		ds, _ := dps.At(i).Attributes().Get("zfs.dataset")
+		pool, _ := dps.At(i).Attributes().Get("zfs.pool")
+		out[pool.Str()+"|"+ds.Str()] = dps.At(i).IntValue()
+	}
+	return out
+}
+
+// twoPoolTree is two pools with three datasets in all, on the proc layout.
+func twoPoolTree() map[string]string {
+	return map[string]string{
+		"tank/state":       "ONLINE\n",
+		"tank/objset-0x1":  objset("tank/home", "nread 4 1\nnunlinks 4 5\n"),
+		"tank/objset-0x2":  objset("tank/tmp", "nread 4 2\nnunlinks 4 6\n"),
+		"vault/state":      "ONLINE\n",
+		"vault/objset-0x3": objset("vault/data", "nread 4 3\nnunlinks 4 7\n"),
+	}
+}
+
+// twoPoolScrapers builds a proc and a sysctl scraper over the same two pools and three datasets.
+func twoPoolScrapers(t *testing.T, include, exclude []string) map[string]*scraper {
+	t.Helper()
+	procCfg := hostConfig()
+	procCfg.Datasets = true
+	procCfg.DatasetInclude, procCfg.DatasetExclude = include, exclude
+	procCfg.KstatPath = writeTree(t, twoPoolTree())
+	procScraper, _ := newTestScraper(procCfg)
+
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addDataset("tank", "0x1", "tank/home", 1, 0, 0, 0)
+	f.addDataset("tank", "0x2", "tank/tmp", 2, 0, 0, 0)
+	f.addPool("vault", "ONLINE")
+	f.addDataset("vault", "0x3", "vault/data", 3, 0, 0, 0)
+	sysCfg := hostConfig()
+	sysCfg.Datasets = true
+	sysCfg.DatasetInclude, sysCfg.DatasetExclude = include, exclude
+	sysCfg.Source = sourceSysctl
+	sysScraper, _ := sysctlScraper(sysCfg, f)
+
+	return map[string]*scraper{"proc": procScraper, "sysctl": sysScraper}
+}
+
+func mapKeys(m map[string]int64) []string {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func TestDatasetIncludeAndExcludeKeepTheMatchingDatasets(t *testing.T) {
+	tests := map[string]struct {
+		include, exclude []string
+		want             []string
+	}{
+		"empty include reads all": {nil, nil, []string{"tank|tank/home", "tank|tank/tmp", "vault|vault/data"}},
+		"include a pool":          {[]string{"tank/*"}, nil, []string{"tank|tank/home", "tank|tank/tmp"}},
+		"include and exclude":     {[]string{"tank/*"}, []string{"tank/tmp"}, []string{"tank|tank/home"}},
+		"exclude only":            {nil, []string{"tank/tmp"}, []string{"tank|tank/home", "vault|vault/data"}},
+		"exclude wins":            {[]string{"tank/tmp"}, []string{"tank/*"}, nil},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			for src, s := range twoPoolScrapers(t, tt.include, tt.exclude) {
+				md := scrapeOnce(t, s)
+
+				assert.Equal(t, len(tt.want) > 0, slices.Contains(metricNames(md), "zfs.dataset.io.bytes"), src)
+				assert.ElementsMatch(t, tt.want, mapKeys(datasetMap(t, md, "zfs.dataset.io.bytes")), src)
+			}
+		})
+	}
+}
+
+func TestDatasetFilterRunsBeforeTheCap(t *testing.T) {
+	cfg := hostConfig()
+	cfg.KstatPath = datasetTree(t, 120)
+	cfg.Datasets = true
+	cfg.MaxDatasets = 5
+	cfg.DatasetInclude = []string{"tank/d11*"}
+	s, logs := newTestScraper(cfg)
+
+	md := scrapeOnce(t, s)
+
+	assert.Len(t, datasetMap(t, md, "zfs.dataset.io.bytes"), 5)
+	assert.Len(t, warnings(logs), 1, "ten datasets match and the cap is five")
+}
+
+func TestDatasetUnlinksOnBothSources(t *testing.T) {
+	cfg := hostConfig()
+	cfg.Datasets = true
+	cfg.KstatPath = writeTree(t, twoPoolTree())
+	procS, _ := newTestScraper(cfg)
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addDataset("tank", "0x1", "tank/home", 1, 0, 0, 0)
+	sysCfg := sysctlConfig()
+	sysCfg.Datasets = true
+	sysS, _ := sysctlScraper(sysCfg, f)
+
+	procMd, sysMd := scrapeOnce(t, procS), scrapeOnce(t, sysS)
+
+	unlinks := findMetric(t, procMd, "zfs.dataset.unlinks")
+	assert.Equal(t, "{unlink}", unlinks.Unit())
+	assert.True(t, unlinks.Sum().IsMonotonic())
+	assert.Equal(t, int64(5), pointFor(t, unlinks, map[string]string{"zfs.pool": "tank", "zfs.dataset": "tank/home"}).IntValue())
+	assert.Equal(t, int64(99), pointFor(t, findMetric(t, sysMd, "zfs.dataset.unlinks"), map[string]string{"zfs.pool": "tank", "zfs.dataset": "tank/home"}).IntValue())
+}
 
 func TestDefaultMaxDatasetsIs100(t *testing.T) {
 	assert.Equal(t, 100, createDefaultConfig().(*Config).MaxDatasets)

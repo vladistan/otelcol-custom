@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigValidate(t *testing.T) {
@@ -45,4 +46,28 @@ func TestConfigValidate(t *testing.T) {
 			assert.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestConfigValidateRejectsABadDatasetGlob(t *testing.T) {
+	tests := map[string]func(*Config){
+		"dataset_include": func(c *Config) { c.DatasetInclude = []string{"tank/[a"} },
+		"dataset_exclude": func(c *Config) { c.DatasetExclude = []string{"tank/[a"} },
+	}
+	for key, mutate := range tests {
+		bad := createDefaultConfig().(*Config)
+		mutate(bad)
+
+		err := bad.Validate()
+
+		require.Error(t, err, key)
+		assert.Contains(t, err.Error(), key)
+	}
+}
+
+func TestConfigValidateAcceptsGoodDatasetGlobs(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cfg.DatasetInclude = []string{"tank/*", "vault/data"}
+	cfg.DatasetExclude = []string{"tank/tmp"}
+
+	require.NoError(t, cfg.Validate())
 }

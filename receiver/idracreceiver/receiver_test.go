@@ -5,6 +5,7 @@ package idracreceiver
 
 import (
 	"context"
+	"errors"
 	"go/ast"
 	"go/parser"
 	gotoken "go/token"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +25,8 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/collector/receiver/receivertest"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
@@ -44,6 +48,7 @@ func twoTargetConfig(a, b *fakeRedfish) *Config {
 		t.Name = []string{"db-1", "db-2"}[i]
 		t.Address = f.srv.URL
 		t.InsecureSkipVerify = true
+		t.Resources = []string{"system", "thermal", "power", "memory", "processors", "bmc"}
 		cfg.Targets = append(cfg.Targets, t)
 	}
 	return cfg
@@ -129,6 +134,42 @@ func TestAuthFailuresAreCountedPerTargetInTheCollectorsOwnTelemetry(t *testing.T
 	assert.Equal(t, int64(0), authFailureCount(t, reader, "db-2"))
 }
 
+// counterFailingProvider makes the creation of one named counter fail.
+type counterFailingProvider struct {
+	noop.MeterProvider
+	failing string
+}
+
+func (p counterFailingProvider) Meter(string, ...metric.MeterOption) metric.Meter {
+	return counterFailingMeter{failing: p.failing}
+}
+
+type counterFailingMeter struct {
+	noop.Meter
+	failing string
+}
+
+func (m counterFailingMeter) Int64Counter(name string, _ ...metric.Int64CounterOption) (metric.Int64Counter, error) {
+	if name == m.failing {
+		return nil, errors.New("counter refused")
+	}
+	return noop.Int64Counter{}, nil
+}
+
+func TestAFailedCounterCreationIsAnErrorOfTheReceiver(t *testing.T) {
+	for _, name := range []string{authFailuresMetric, skippedReadsMetric} {
+		t.Run(name, func(t *testing.T) {
+			set, _ := settings()
+			set.MeterProvider = counterFailingProvider{failing: name}
+
+			_, err := newReceiver(set, validConfig(), consumertest.NewNop())
+
+			require.Error(t, err)
+			assert.ErrorContains(t, err, name)
+		})
+	}
+}
+
 func authFailureCount(t *testing.T, reader sdkmetric.Reader, bmc string) int64 {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
@@ -149,8 +190,6 @@ func authFailureCount(t *testing.T, reader sdkmetric.Reader, bmc string) int64 {
 	}
 	return 0
 }
-
-// Factory.
 
 func TestFactoryTypeAndStability(t *testing.T) {
 	f := NewFactory()
@@ -194,8 +233,6 @@ func TestFactoryCreatesTheReceiverFromAValidConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, r.Shutdown(context.Background()))
 }
-
-// The modern thermal subsystem.
 
 func TestThermalSubsystemWhenTheBMCServesIt(t *testing.T) {
 	f := newFakeRedfish()
@@ -280,8 +317,162 @@ var name = "hw.temperature"`})
 }
 
 func TestTheTargetBuildsEveryPointThroughHwschema(t *testing.T) {
-	b, err := os.ReadFile("target.go")
+	f, err := parser.ParseFile(gotoken.NewFileSet(), "target.go", nil, parser.ImportsOnly)
 	require.NoError(t, err)
 
-	assert.Contains(t, string(b), `"github.com/vladistan/otelcol-custom/receiver/hwschema"`)
+	var imports []string
+	for _, imp := range f.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		require.NoError(t, err)
+		imports = append(imports, path)
+	}
+	assert.Contains(t, imports, "github.com/vladistan/otelcol-custom/receiver/hwschema")
+}
+
+func TestStorageRunsOnItsOwnIntervalApartFromTheBaseScrape(t *testing.T) {
+	f := newFakeRedfish()
+	defer f.close()
+	healthyStorage(f)
+	// The interval check is Validate; the receiver itself takes any value, so a short storage interval fits a test.
+	cfg := storageConfig(f, time.Hour, 100*time.Millisecond, nil)
+	set, _ := settings()
+	sink := new(consumertest.MetricsSink)
+	r, err := newReceiver(set, cfg, sink)
+	require.NoError(t, err)
+	r.offset = func(string, time.Duration) time.Duration { return 0 }
+
+	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
+	assert.Eventually(t, func() bool { _, s := batches(sink); return s >= 3 }, 10*time.Second, 20*time.Millisecond)
+	require.NoError(t, r.Shutdown(context.Background()))
+
+	base, _ := batches(sink)
+	assert.Equal(t, 1, base, "the base scrape ran once in an hour")
+}
+
+func TestASlowStorageReadDoesNotDelayTheBaseScrape(t *testing.T) {
+	f := newFakeRedfish()
+	defer f.close()
+	healthyStorage(f)
+	f.stall[stor] = 1500 * time.Millisecond
+	cfg := storageConfig(f, 100*time.Millisecond, time.Hour, nil)
+	set, _ := settings()
+	sink := new(consumertest.MetricsSink)
+	r, err := newReceiver(set, cfg, sink)
+	require.NoError(t, err)
+	r.offset = func(string, time.Duration) time.Duration { return 0 }
+
+	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
+	assert.Eventually(t, func() bool { b, _ := batches(sink); return b >= 4 }, 10*time.Second, 20*time.Millisecond)
+	_, storageDone := batches(sink)
+	require.NoError(t, r.Shutdown(context.Background()))
+
+	assert.Equal(t, 0, storageDone, "the base scrapes ran while the storage read was still waiting")
+}
+
+// holdStorage makes the storage collection of f wait until the returned function is called, which is also
+// called at the end of the test.
+func holdStorage(t *testing.T, f *fakeRedfish) (release func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	var once sync.Once
+	release = func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(release)
+	f.onRequest = func(path string, start bool) {
+		if start && path == stor {
+			<-gate
+		}
+	}
+	return release
+}
+
+func TestABlockedStorageReadDoesNotHoldTheSlotOfAnotherTargetsBaseScrape(t *testing.T) {
+	a, b := newFakeRedfish(), newFakeRedfish()
+	defer a.close()
+	defer b.close()
+	healthyStorage(a)
+	release := holdStorage(t, a)
+	cfg := twoTargetConfig(a, b)
+	cfg.MaxConcurrent = 1
+	set, _ := settings()
+	r, err := newReceiver(set, cfg, consumertest.NewNop())
+	require.NoError(t, err)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.storageAndSend(t.Context(), r.targets[0])
+	}()
+	require.Eventually(t, func() bool { return a.count("GET", stor) > 0 }, 5*time.Second, 5*time.Millisecond)
+
+	scraped := make(chan struct{})
+	go func() {
+		defer close(scraped)
+		r.scrapeAndSend(t.Context(), r.targets[1])
+	}()
+
+	select {
+	case <-scraped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the base scrape waited for the storage read")
+	}
+	release()
+	<-done
+}
+
+func TestStorageReadsQueueBehindEachOtherAtMaxConcurrentOne(t *testing.T) {
+	a, b := newFakeRedfish(), newFakeRedfish()
+	defer a.close()
+	defer b.close()
+	healthyStorage(a)
+	healthyStorage(b)
+	release := holdStorage(t, a)
+	cfg := twoTargetConfig(a, b)
+	cfg.MaxConcurrent = 1
+	set, _ := settings()
+	r, err := newReceiver(set, cfg, consumertest.NewNop())
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	for _, tg := range r.targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.storageAndSend(t.Context(), tg)
+		}()
+		if tg == r.targets[0] {
+			require.Eventually(t, func() bool { return a.count("GET", stor) > 0 }, 5*time.Second, 5*time.Millisecond)
+		}
+	}
+
+	assert.Never(t, func() bool { return b.count("GET", stor) > 0 }, 200*time.Millisecond, 10*time.Millisecond, "the second read waits for the slot")
+	release()
+	wg.Wait()
+
+	assert.Equal(t, 1, b.count("GET", stor), "the second read runs after the first ends")
+}
+
+func TestWithoutTheStorageResourceNoStorageTimerRuns(t *testing.T) {
+	f := newFakeRedfish()
+	defer f.close()
+	healthyStorage(f)
+	cfg := storageConfig(f, time.Hour, 50*time.Millisecond, []string{"system", "bmc"})
+	set, _ := settings()
+	sink := new(consumertest.MetricsSink)
+	r, err := newReceiver(set, cfg, sink)
+	require.NoError(t, err)
+	r.offset = func(string, time.Duration) time.Duration { return 0 }
+
+	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
+	assert.Eventually(t, func() bool { b, _ := batches(sink); return b >= 1 }, 10*time.Second, 20*time.Millisecond)
+	assert.Never(t, func() bool { _, s := batches(sink); return s > 0 || f.count("GET", stor) > 0 }, 300*time.Millisecond, 10*time.Millisecond)
+	require.NoError(t, r.Shutdown(context.Background()))
+
+	assert.Equal(t, 0, f.count("GET", stor))
+	_, s := batches(sink)
+	assert.Equal(t, 0, s)
+}
+
+func TestTheDefaultStorageIntervalIsFiveMinutesOrTheCollectionIntervalIfLonger(t *testing.T) {
+	assert.Equal(t, 5*time.Minute, TargetConfig{}.storageInterval(time.Minute))
+	assert.Equal(t, 10*time.Minute, TargetConfig{}.storageInterval(10*time.Minute))
+	assert.Equal(t, 90*time.Second, TargetConfig{StorageInterval: 90 * time.Second}.storageInterval(time.Minute))
+	assert.Equal(t, time.Minute, TargetConfig{StorageInterval: time.Minute}.storageInterval(time.Minute))
 }

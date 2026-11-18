@@ -121,11 +121,9 @@ func (d *ioctlDevice) pass(req passRequest) (response, error) {
 	})
 }
 
-// call sends one request and waits at most timeout. After a timeout the kernel may still write
-// the buffers, so they stay allocated until the call returns, then a waiter frees them and closes
-// the channel that hung returns. The device refuses further calls, and the scraper does not open
-// the controller again until the channel is closed. The request goes through check before it
-// reaches the kernel.
+// call sends one request through check and waits at most timeout. After a timeout the kernel may
+// still write the buffers, so they stay allocated until the call returns; a waiter then frees them
+// and closes the channel hung returns. Until then the device refuses further calls.
 func (d *ioctlDevice) call(dataLen, senseBytes int, check func([]byte) error, build func(buf, sense uintptr) []byte) (response, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

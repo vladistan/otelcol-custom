@@ -6,6 +6,7 @@ package zfskstatreceiver
 import (
 	"context"
 	"errors"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -202,7 +203,7 @@ func TestSourceUnsetOnLinuxReadsTheProcFixtures(t *testing.T) {
 
 	md := scrapeOnce(t, s)
 
-	assert.IsType(t, &procSource{}, s.src)
+	assert.IsType(t, &procSource{}, s.source)
 	assert.Equal(t, int64(1048576), pointFor(t, findMetric(t, md, "zfs.pool.io.bytes"), map[string]string{"zfs.pool": "tank", "direction": "read"}).IntValue())
 }
 
@@ -211,7 +212,7 @@ func TestSourceSysctlSelectsTheSysctlReader(t *testing.T) {
 
 	s := newScraper(zap.NewNop(), cfg)
 
-	assert.IsType(t, &sysctlSource{}, s.src)
+	assert.IsType(t, &sysctlSource{}, s.source)
 }
 
 func TestSysctlArcMetricsMatchTheProcNamesAndAttributes(t *testing.T) {
@@ -650,4 +651,377 @@ func TestNonTestSourcesDoNotImportExecOrCgo(t *testing.T) {
 		}
 	}
 	assert.Greater(t, checked, 5)
+}
+
+// The receiver reads the kernel through ioctls and sysctls only, and names the control device
+// in the factory defaults and nowhere else. Parsing skips comments and prose in strings.
+func TestNoLibzfsExecOrCgoInTheReceiverSourceAndTheNodeNameOnlyInTheDefaults(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	require.NoError(t, err)
+	device := "/dev/" + "zfs"
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+		require.NoError(t, err, file)
+		for _, imp := range parsed.Imports {
+			assert.NotEqual(t, `"os/exec"`, imp.Path.Value, file)
+			assert.NotEqual(t, `"C"`, imp.Path.Value, file)
+			assert.NotContains(t, imp.Path.Value, "libzfs", file)
+		}
+		namesDevice := false
+		ast.Inspect(parsed, func(n ast.Node) bool {
+			lit, ok := n.(*ast.BasicLit)
+			namesDevice = namesDevice || (ok && lit.Kind == token.STRING && strings.Contains(lit.Value, device))
+			return true
+		})
+		assert.Equal(t, file == "factory.go", namesDevice, "%s: control device name in a string", file)
+	}
+}
+
+// recordingScraper builds a sysctl scraper over fns and records every name asked of the kernel.
+func recordingScraper(cfg *Config, fns sysctlFns) (*scraper, *observer.ObservedLogs, *[]string) {
+	var reads []string
+	inner := fns
+	fns.getString = func(name string) (string, error) { reads = append(reads, name); return inner.getString(name) }
+	fns.getUint64 = func(name string) (uint64, error) { reads = append(reads, name); return inner.getUint64(name) }
+	core, logs := observer.New(zapcore.DebugLevel)
+	logger := zap.New(core)
+	return newScraperWith(logger, cfg, newSysctlSource(logger, cfg, fns)), logs, &reads
+}
+
+func newest(f *fakeSysctl, body string, pools ...string) {
+	for _, p := range pools {
+		f.addPool(p, "ONLINE")
+		f.addStr("kstat.zfs."+p+".txgs", body)
+	}
+}
+
+func TestSysctlTxgReadsTheTxgsNodeOfThePool(t *testing.T) {
+	f := newFakeSysctl()
+	newest(f, txgsFile(), "tank")
+	s, _ := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.Equal(t, int64(65536), pointFor(t, findMetric(t, md, "zfs.pool.txg.dirty"), poolAttr("tank")).IntValue())
+}
+
+func TestSysctlTxgPrefersTheTxgsNodeOverTheMiscOne(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addStr("kstat.zfs.tank.misc.txgs", strings.Replace(txgsFile(), "65536", "111", 1))
+	f.addStr("kstat.zfs.tank.txgs", txgsFile())
+	s, _ := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.Equal(t, int64(65536), pointFor(t, findMetric(t, md, "zfs.pool.txg.dirty"), poolAttr("tank")).IntValue())
+}
+
+func TestSysctlTxgWithNeitherNodeGivesNoSeriesAndOneInfoLinePerPool(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addPool("bare", "ONLINE")
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+	scrapeOnce(t, s)
+
+	assert.NotContains(t, metricNames(md), "zfs.pool.txg.dirty")
+	assert.Equal(t, 2, logs.FilterMessageSnippet("no txgs sysctl").Len())
+}
+
+// capturedFake builds the sysctl tree of the captured listing: names in listing order, a state
+// for each pool, a txgs body for each pool that has the node and a name for each objset.
+func capturedFake(t *testing.T) *fakeSysctl {
+	t.Helper()
+	body, err := os.ReadFile("testdata/freebsd/truenas-core-13.1-kstat-zfs-listing.txt")
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	require.Greater(t, len(lines), 600)
+	f := newFakeSysctl()
+	for _, name := range lines[2:] {
+		switch {
+		case strings.HasSuffix(name, ".misc.state"):
+			f.addStr(name, "ONLINE")
+		case strings.HasSuffix(name, ".txgs"):
+			f.addStr(name, txgsFile())
+		case strings.HasSuffix(name, ".dataset_name"):
+			f.addStr(name, strings.TrimSuffix(strings.TrimPrefix(name, "kstat.zfs."), ".dataset_name"))
+		default:
+			f.addUint(name, 1)
+		}
+	}
+	return f
+}
+
+func TestTheCapturedTrueNASListingGivesStateAndTxgForBothPools(t *testing.T) {
+	s, _ := sysctlScraper(sysctlConfig(), capturedFake(t))
+
+	md := scrapeOnce(t, s)
+
+	state := findMetric(t, md, "zfs.pool.state")
+	for _, pool := range []string{"P1", "boot-pool"} {
+		assert.Equal(t, int64(1), pointFor(t, state, map[string]string{"zfs.pool": pool, "state": "ONLINE"}).IntValue(), pool)
+		assert.Equal(t, int64(65536), pointFor(t, findMetric(t, md, "zfs.pool.txg.dirty"), poolAttr(pool)).IntValue(), pool)
+	}
+}
+
+func TestAStateWhoseValueCannotBeReadGivesOneWarningThatNamesTheOIDAndTheType(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addPool("odd", "")
+	f.addStr("kstat.zfs.tank.txgs", txgsFile())
+	fns := f.fns()
+	fns.oidType = func(name string) (string, error) { return "opaque", nil }
+	s, logs, _ := recordingScraper(sysctlConfig(), fns)
+
+	first := scrapeOnce(t, s)
+	second := scrapeOnce(t, s)
+
+	assert.Equal(t, []string{"tank"}, poolNamesOf(t, first, "zfs.pool.state"))
+	assert.Equal(t, []string{"tank"}, poolNamesOf(t, second, "zfs.pool.state"))
+	require.Len(t, warnings(logs), 1)
+	ctx := warnings(logs)[0].ContextMap()
+	assert.Equal(t, "kstat.zfs.odd.misc.state", ctx["oid"])
+	assert.Equal(t, "opaque", ctx["type"])
+	assert.Contains(t, metricNames(first), "zfs.pool.txg.dirty", "the other series of the pool and of tank stay")
+}
+
+func TestAStateOfControlBytesIsNotAState(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("odd", "\x01\x02\x03")
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.NotContains(t, metricNames(md), "zfs.pool.state")
+	require.Len(t, warnings(logs), 1)
+	assert.Equal(t, "unknown", warnings(logs)[0].ContextMap()["type"], "no type function reports unknown")
+}
+
+func TestAStateWarningReturnsAfterTheStateReadsCleanlyAgain(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("odd", "")
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	scrapeOnce(t, s)
+	f.strs["kstat.zfs.odd.misc.state"] = "ONLINE"
+	good := scrapeOnce(t, s)
+	f.strs["kstat.zfs.odd.misc.state"] = ""
+	scrapeOnce(t, s)
+
+	assert.Contains(t, metricNames(good), "zfs.pool.state")
+	assert.Len(t, warnings(logs), 2)
+}
+
+func TestAStateWithTrailingSpaceOrNulIsTrimmed(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "DEGRADED\x00\n")
+	s, _ := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.Equal(t, int64(1), pointFor(t, findMetric(t, md, "zfs.pool.state"), map[string]string{"state": "DEGRADED"}).IntValue())
+}
+
+func TestWithDatasetsOffNoObjsetNodeIsRead(t *testing.T) {
+	cfg := sysctlConfig()
+	cfg.Datasets = false
+	f := standardFake()
+	s, _, reads := recordingScraper(cfg, f.fns())
+
+	scrapeOnce(t, s)
+
+	require.NotEmpty(t, *reads)
+	for _, name := range *reads {
+		assert.NotContains(t, name, ".dataset.objset-", name)
+	}
+}
+
+func TestWithDatasetsOnTheObjsetNodesAreRead(t *testing.T) {
+	cfg := sysctlConfig()
+	cfg.Datasets = true
+	s, _, reads := recordingScraper(cfg, standardFake().fns())
+
+	scrapeOnce(t, s)
+
+	joined := strings.Join(*reads, " ")
+	assert.Contains(t, joined, ".dataset.objset-")
+}
+
+func TestReadRawStringGrowsTheBufferWhenTheKernelSaysItIsTooSmall(t *testing.T) {
+	var sizes []int
+	text := strings.Repeat("x", 10000)
+
+	got, err := readRawString(func(old []byte) (int, error) {
+		sizes = append(sizes, len(old))
+		if len(old) < len(text) {
+			return 0, syscall.ENOMEM
+		}
+		return copy(old, text+"\x00\x00"), nil
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, text, got, "trailing NUL bytes are dropped")
+	assert.Equal(t, []int{4096, 8192, 16384}, sizes)
+}
+
+func TestReadRawStringStopsAtTheCap(t *testing.T) {
+	calls := 0
+
+	_, err := readRawString(func([]byte) (int, error) { calls++; return 0, syscall.ENOMEM })
+
+	assert.ErrorIs(t, err, syscall.ENOMEM)
+	assert.Equal(t, 9, calls, "4 KiB doubled to 1 MiB")
+}
+
+func TestReadRawStringPassesOtherErrorsThroughAndReadsEmptyAsEmpty(t *testing.T) {
+	_, err := readRawString(func([]byte) (int, error) { return 0, syscall.EIO })
+	assert.ErrorIs(t, err, syscall.EIO)
+
+	got, err := readRawString(func([]byte) (int, error) { return 0, nil })
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+func TestKindNameNamesTheSysctlTypes(t *testing.T) {
+	for kind, want := range map[uint32]string{
+		2: "int", 3: "string", 4: "int64", 5: "opaque", 6: "uint", 7: "long", 8: "ulong", 9: "uint64", 0xa: "uint8",
+		0xb: "uint16", 0xc: "int8", 0xd: "int16", 0xe: "int32", 0xf: "uint32", 1: "node", 0: "unknown",
+		0x80000003: "string", // the flag bits above the type are ignored
+	} {
+		assert.Equal(t, want, kindName(kind), "kind %#x", kind)
+	}
+}
+
+func TestValidStateAcceptsNamesAndRejectsGarbage(t *testing.T) {
+	for state, want := range map[string]bool{
+		"ONLINE": true, "DEGRADED": true, "UNAVAIL": true, "": false, "\x01": false, "ON LINE": false,
+		strings.Repeat("A", 65): false,
+	} {
+		assert.Equal(t, want, validState(state), "%q", state)
+	}
+}
+
+func TestSysctlStateOfTheStandardFakeIsUnchanged(t *testing.T) {
+	s, _ := sysctlScraper(sysctlConfig(), standardFake())
+
+	md := scrapeOnce(t, s)
+
+	assert.ElementsMatch(t, []string{"tank", "backup", "scratch"}, poolNamesOf(t, md, "zfs.pool.state"))
+}
+
+func TestSysctlTxgReadsTheMiscTxgsNode(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addStr("kstat.zfs.tank.misc.txgs", txgsFile())
+	f.addPool("bare", "ONLINE")
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.Equal(t, int64(65536), pointFor(t, findMetric(t, md, "zfs.pool.txg.dirty"), map[string]string{"zfs.pool": "tank"}).IntValue())
+	assert.Equal(t, []string{"tank"}, poolNamesOf(t, md, "zfs.pool.txg.dirty"))
+	assert.Equal(t, 1, logs.FilterMessageSnippet("no txgs sysctl").Len(), "bare has none")
+}
+
+func TestSysctlTxgNodeWithNoClosedRowOrAReadErrorGivesNoSeries(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.addStr("kstat.zfs.tank.misc.txgs", txgsHeader)
+	f.addPool("bad", "ONLINE")
+	f.addStr("kstat.zfs.bad.misc.txgs", "x")
+	f.readErr["kstat.zfs.bad.misc.txgs"] = syscall.EIO
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	assert.NotContains(t, metricNames(md), "zfs.pool.txg.dirty")
+	assert.Equal(t, 1, logs.FilterMessageSnippet("no closed transaction group").Len())
+	assert.Len(t, warnings(logs), 1, "the read error is one warning")
+}
+
+func rootMount(from, fsType string, blocks, free, avail uint64) mount {
+	return mount{from: from, fsType: fsType, blockSize: 4096, blocks: blocks, free: free, avail: avail}
+}
+
+func TestSysctlSpaceComesFromTheMountOfTheRootDataset(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.mounts = []mount{
+		rootMount("tank/home", "zfs", 1000, 900, 900),
+		rootMount("/dev/ada0p2", "ufs", 5, 1, 1),
+		rootMount("tank", "zfs", 1000, 600, 590),
+	}
+	s, _ := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	attrs := map[string]string{"zfs.pool": "tank", "zfs.dataset": "tank"}
+	used := findMetric(t, md, "zfs.dataset.space.used")
+	assert.Equal(t, "By", used.Unit())
+	assert.Equal(t, pmetric.MetricTypeGauge, used.Type())
+	assert.Equal(t, int64(400*4096), pointFor(t, used, attrs).IntValue())
+	assert.Equal(t, int64(590*4096), pointFor(t, findMetric(t, md, "zfs.dataset.space.available"), attrs).IntValue())
+}
+
+func TestSysctlSpaceWithoutAMountedRootGivesNoSeriesAndOneDebugLine(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.mounts = []mount{rootMount("tank/home", "zfs", 1, 1, 1)}
+	s, logs := sysctlScraper(sysctlConfig(), f)
+
+	first := scrapeOnce(t, s)
+	scrapeOnce(t, s)
+
+	assert.NotContains(t, metricNames(first), "zfs.dataset.space.used")
+	assert.Equal(t, 1, logs.FilterLevelExact(zapcore.DebugLevel).FilterMessageSnippet("not mounted").Len())
+}
+
+func TestSysctlSpaceWithoutAMountListOrWithItsErrorsIsQuietOrOneWarning(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		nilF bool
+		warn int
+	}{
+		"no hook":     {nil, true, 0},
+		"not found":   {syscall.ENOENT, false, 0},
+		"other error": {syscall.EIO, false, 1},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeSysctl()
+			f.addPool("tank", "ONLINE")
+			f.mountsErr = tt.err
+			fns := f.fns()
+			if tt.nilF {
+				fns.getfsstat = nil
+			}
+			cfg := sysctlConfig()
+			core, logs := observer.New(zapcore.DebugLevel)
+			logger := zap.New(core)
+			s := newScraperWith(logger, cfg, newSysctlSource(logger, cfg, fns))
+
+			md := scrapeOnce(t, s)
+
+			assert.NotContains(t, metricNames(md), "zfs.dataset.space.used")
+			assert.Len(t, warnings(logs), tt.warn)
+			assert.Contains(t, metricNames(md), "zfs.pool.state")
+		})
+	}
+}
+
+func TestSpaceUsedNeverUnderflowsWhenFreeExceedsBlocks(t *testing.T) {
+	f := newFakeSysctl()
+	f.addPool("tank", "ONLINE")
+	f.mounts = []mount{rootMount("tank", "zfs", 10, 20, 5)}
+	s, _ := sysctlScraper(sysctlConfig(), f)
+
+	md := scrapeOnce(t, s)
+
+	attrs := map[string]string{"zfs.pool": "tank"}
+	assert.Equal(t, int64(0), pointFor(t, findMetric(t, md, "zfs.dataset.space.used"), attrs).IntValue())
 }

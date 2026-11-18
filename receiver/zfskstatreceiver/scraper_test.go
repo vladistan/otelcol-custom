@@ -24,6 +24,7 @@ const ioHeader = "18 3 0x00 1 80 2056369846284 3085012421498\n"
 func hostConfig() *Config {
 	cfg := createDefaultConfig().(*Config)
 	cfg.KstatPath = filepath.Join("testdata", "host")
+	cfg.IoctlDevice = ""
 	return cfg
 }
 

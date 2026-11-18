@@ -4,10 +4,12 @@
 package smartreceiver
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -22,6 +24,8 @@ const (
 type device struct {
 	name string
 	kind deviceKind
+	// nsBytes is the size of the NVMe namespaces from sysfs, used when the controller reports no capacity.
+	nsBytes uint64
 }
 
 // wholeDisk matches the names of whole SCSI-class disks: sd, hd, vd and xvd with letters only. A name
@@ -47,18 +51,67 @@ func discover(sysfs fs.FS) ([]device, error) {
 		}
 		out = append(out, device{name: name, kind: kindSATA})
 	}
+	var problems []error
 	controllers, err := fs.ReadDir(sysfs, "class/nvme")
-	if err == nil {
+	switch {
+	case err == nil:
 		for _, entry := range controllers {
 			name := entry.Name()
-			if isController(name) {
-				out = append(out, device{name: name, kind: kindNVMe})
+			if !isController(name) {
+				continue
 			}
+			size, sizeErr := namespaceBytes(sysfs, name)
+			if sizeErr != nil {
+				problems = append(problems, sizeErr)
+			}
+			out = append(out, device{name: name, kind: kindNVMe, nsBytes: size})
 		}
+	case !errors.Is(err, fs.ErrNotExist):
+		problems = append(problems, fmt.Errorf("list /sys/class/nvme: %w", err))
 	}
 	slices.SortFunc(out, func(a, b device) int { return strings.Compare(a.name, b.name) })
+	if len(problems) > 0 {
+		return out, fmt.Errorf("%w: %w", errPartialList, errors.Join(problems...))
+	}
 	return out, nil
 }
+
+// errPartialList wraps the cause when discover returns the disks it found but could not list all of them
+// or read all of their sizes. A host without NVMe is not such a case.
+var errPartialList = errors.New("the disk list is incomplete")
+
+// sectorBytes is the unit of the size file of a block device.
+const sectorBytes = 512
+
+// namespaceBytes adds up the namespaces of one NVMe controller. A path of a multipath namespace is
+// not counted. A namespace whose size does not read or parse adds nothing and is named in the error.
+func namespaceBytes(sysfs fs.FS, ctrl string) (uint64, error) {
+	entries, err := fs.ReadDir(sysfs, "class/nvme/"+ctrl)
+	if err != nil {
+		return 0, fmt.Errorf("list the namespaces of %s: %w", ctrl, err)
+	}
+	var total uint64
+	var problems []error
+	for _, entry := range entries {
+		if !namespaceName.MatchString(entry.Name()) {
+			continue
+		}
+		raw, err := fs.ReadFile(sysfs, "class/nvme/"+ctrl+"/"+entry.Name()+"/size")
+		if err != nil {
+			problems = append(problems, fmt.Errorf("read the size of %s: %w", entry.Name(), err))
+			continue
+		}
+		sectors, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64)
+		if err != nil || sectors > ^uint64(0)/sectorBytes-total/sectorBytes {
+			problems = append(problems, fmt.Errorf("the size of %s is not a usable number: %q", entry.Name(), strings.TrimSpace(string(raw))))
+			continue
+		}
+		total += sectors * sectorBytes
+	}
+	return total, errors.Join(problems...)
+}
+
+var namespaceName = regexp.MustCompile(`^nvme[0-9]+n[0-9]+$`)
 
 var controllerName = regexp.MustCompile(`^nvme[0-9]+$`)
 
@@ -75,14 +128,14 @@ func newSelector(include, exclude []string) (selector, error) {
 	for _, expr := range include {
 		re, err := regexp.Compile(expr)
 		if err != nil {
-			return selector{}, err
+			return selector{}, fmt.Errorf("include pattern %q: %w", expr, err)
 		}
 		s.include = append(s.include, re)
 	}
 	for _, expr := range exclude {
 		re, err := regexp.Compile(expr)
 		if err != nil {
-			return selector{}, err
+			return selector{}, fmt.Errorf("exclude pattern %q: %w", expr, err)
 		}
 		s.exclude = append(s.exclude, re)
 	}

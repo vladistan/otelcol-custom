@@ -45,28 +45,14 @@ func (p *syslogProcessor) Shutdown(_ context.Context) error {
 	return nil
 }
 
+// ConsumeLogs splits records by the host.name and service.name they end with.
 func (p *syslogProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
-	for i := 0; i < ld.ResourceLogs().Len(); i++ {
-		rl := ld.ResourceLogs().At(i)
-		resourceAttrs := rl.Resource().Attributes()
-
-		for j := 0; j < rl.ScopeLogs().Len(); j++ {
-			sl := rl.ScopeLogs().At(j)
-			for k := 0; k < sl.LogRecords().Len(); k++ {
-				lr := sl.LogRecords().At(k)
-				p.processLogRecord(lr, resourceAttrs)
-			}
-		}
-	}
-
-	return p.nextConsumer.ConsumeLogs(ctx, ld)
+	return p.nextConsumer.ConsumeLogs(ctx, processPerResource(ld, p.processLogRecord))
 }
 
 func (p *syslogProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcommon.Map) {
 	attrs := lr.Attributes()
 
-	// Get the raw syslog message from the configured source attribute
-	// If the attribute doesn't exist (regex parser failed), try to get from body
 	var message string
 	var regexFailed bool
 
@@ -75,8 +61,7 @@ func (p *syslogProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcom
 		message = messageVal.Str()
 	}
 
-	// If message is empty but body has content, the regex parser likely failed
-	// This happens when syslog messages don't have the expected <priority> prefix
+	// No source attribute: the regex parser failed, usually for want of a <priority> prefix.
 	if message == "" && lr.Body().Type() == pcommon.ValueTypeStr {
 		bodyStr := lr.Body().Str()
 		if bodyStr != "" {
@@ -89,40 +74,27 @@ func (p *syslogProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcom
 		return
 	}
 
-	// Mark if regex parsing failed (no priority extracted)
 	if regexFailed {
 		attrs.PutBool("syslog.parse_error", true)
 	}
 
-	// Preserve original message if configured
 	if p.config.PreserveOriginal {
 		if _, exists := attrs.Get("original_message"); !exists {
 			attrs.PutStr("original_message", message)
 		}
 	}
 
-	// Parse the syslog message
 	info := Parse(message)
 	if info == nil {
-		// Unable to parse, but still try to map severity from priority
-		if p.config.MapSeverity {
-			if priVal, ok := attrs.Get("priority"); ok {
-				if sevNum, sevText := MapPriorityToSeverity(priVal.Str()); sevNum > 0 {
-					lr.SetSeverityNumber(plog.SeverityNumber(sevNum))
-					lr.SetSeverityText(sevText)
-				}
-			}
-		}
-		// Set log source attribute
+		p.mapSeverity(lr, attrs)
 		attrs.PutStr("log.source", "syslog")
 		return
 	}
 
-	// Check for embedded RFC5424 in RFC3164 (double-wrapped BSD syslog)
 	if info.Format == FormatRFC3164 && IsEmbeddedRFC5424(info.Content) {
 		embeddedInfo := Parse(info.Content)
 		if embeddedInfo != nil {
-			// Use the inner RFC5424 fields (they're more specific)
+			// The inner RFC5424 fields are more specific; an empty inner host keeps the outer one.
 			if embeddedInfo.Appname != "" {
 				info.Appname = embeddedInfo.Appname
 			}
@@ -130,28 +102,40 @@ func (p *syslogProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcom
 				info.ProcID = embeddedInfo.ProcID
 			}
 			info.Content = embeddedInfo.Content
-			// Keep outer hostname if inner is empty
 			if embeddedInfo.Hostname != "" {
 				info.Hostname = embeddedInfo.Hostname
 			}
 		}
 	}
 
-	// Set resource attributes
-	if p.config.SetHostname && info.Hostname != "" {
-		resourceAttrs.PutStr("host.name", info.Hostname)
+	host := info.Hostname
+	if host == "" && info.HostMissing {
+		// The line has no HOSTNAME: the sender is the host the receiver saw. The stanza inputs write the
+		// peer name on the record; a resource attribute of the same name is the fallback.
+		if peer, ok := attrs.Get(peerKey); ok {
+			host = peer.Str()
+		} else if peer, ok := resourceAttrs.Get(peerKey); ok {
+			host = peer.Str()
+		}
+	}
+	if p.config.SetHostname {
+		switch {
+		case host != "":
+			resourceAttrs.PutStr(hostKey, host)
+		case info.HostMissing:
+			// No host in the line and no peer name: the host is unset, not the host of the batch.
+			resourceAttrs.Remove(hostKey)
+		}
 	}
 
 	if p.config.SetServiceName && info.Appname != "" {
-		resourceAttrs.PutStr("service.name", info.Appname)
+		resourceAttrs.PutStr(serviceKey, info.Appname)
 	}
 
-	// Set log record attributes
 	if info.ProcID != "" {
 		attrs.PutStr("process.pid", info.ProcID)
 	}
 
-	// Handle Cisco-specific fields
 	if info.Format == FormatCiscoIOS {
 		if info.CiscoFacility != "" {
 			attrs.PutStr("cisco.facility", info.CiscoFacility)
@@ -164,26 +148,29 @@ func (p *syslogProcessor) processLogRecord(lr plog.LogRecord, resourceAttrs pcom
 		}
 	}
 
-	// Capture source IP if available
 	if netPeerIP, ok := attrs.Get("net.peer.ip"); ok {
 		attrs.PutStr("source.ip", netPeerIP.Str())
 	}
 
-	// Map syslog priority to OTEL severity
-	if p.config.MapSeverity {
-		if priVal, ok := attrs.Get("priority"); ok {
-			if sevNum, sevText := MapPriorityToSeverity(priVal.Str()); sevNum > 0 {
-				lr.SetSeverityNumber(plog.SeverityNumber(sevNum))
-				lr.SetSeverityText(sevText)
-			}
-		}
-	}
+	p.mapSeverity(lr, attrs)
 
-	// Set body to the actual message content
 	if p.config.CleanBody && info.Content != "" {
 		lr.Body().SetStr(info.Content)
 	}
 
-	// Set log source attribute
 	attrs.PutStr("log.source", "syslog")
+}
+
+func (p *syslogProcessor) mapSeverity(lr plog.LogRecord, attrs pcommon.Map) {
+	if !p.config.MapSeverity {
+		return
+	}
+	priVal, ok := attrs.Get("priority")
+	if !ok {
+		return
+	}
+	if number, text, ok := MapPriorityToSeverity(priVal.Str()); ok {
+		lr.SetSeverityNumber(number)
+		lr.SetSeverityText(text)
+	}
 }

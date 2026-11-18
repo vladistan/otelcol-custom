@@ -23,7 +23,7 @@ build-edge-freebsd: build-edge-image
     cd {{edge_freebsd_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    GOOS=freebsd GOARCH=amd64 go build -buildvcs=false \
+    GOOS=freebsd GOARCH=amd64 go build -trimpath -buildvcs=false \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge .
     EOF
@@ -82,7 +82,7 @@ validate-edge-freebsd-config config="test/configs/truenas-core-edge.yaml":
     cd {{edge_freebsd_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    CGO_ENABLED=0 go build -buildvcs=false \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge-host .
     cd - >/dev/null

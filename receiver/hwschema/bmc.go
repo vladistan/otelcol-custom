@@ -19,6 +19,20 @@ const (
 	MetricMemorySize             = "hw.memory.size"
 	MetricBMCUp                  = "hw.bmc.up"
 	MetricBMCScrapeDuration      = "hw.bmc.scrape.duration"
+	MetricBMCScrapeErrors        = "hw.bmc.scrape.errors"
+
+	// Storage series of a BMC. The names under hw.disk_controller, hw.logical_disk and the drive indicator
+	// are ours; the conventions have none for them.
+	MetricDiskControllerSpeed   = "hw.disk_controller.speed"
+	MetricLogicalDiskLimit      = "hw.logical_disk.limit"
+	MetricPhysicalDiskIndicator = "hw.physical_disk.indicator"
+
+	// MetricPhysicalDiskPredictedFailure is 1 when the BMC predicts the drive will fail, whatever its health.
+	MetricPhysicalDiskPredictedFailure = "hw.physical_disk.predicted_failure"
+	// MetricLogicalDiskMediaSpanCount is the number of spans of a volume.
+	MetricLogicalDiskMediaSpanCount = "hw.logical_disk.media_span_count"
+	// MetricStorageDriveCount is the number of drives a storage resource lists.
+	MetricStorageDriveCount = "hw.storage.drive_count"
 )
 
 // Units of the BMC metrics.
@@ -26,12 +40,24 @@ const (
 	UnitRPM   = "rpm"
 	UnitVolts = "V"
 	UnitWatts = "W"
+
+	UnitMegabitPerSecond = "Mbit/s"
+	UnitSpans            = "{span}"
+	UnitDrives           = "{drive}"
 )
 
 // Attribute keys of the BMC receivers.
 const (
 	AttrLimitType = "hw.limit_type"
 	AttrReason    = "reason"
+
+	// AttrPathGroup names the group of Redfish paths a failed read belongs to.
+	AttrPathGroup = "path_group"
+
+	// Attributes of drives and volumes.
+	AttrPhysicalDiskProtocol = "hw.physical_disk.protocol"
+	AttrRAIDLevel            = "hw.logical_disk.raid_level"
+	AttrVolumeType           = "hw.logical_disk.volume_type"
 
 	ResHostName = "host.name"
 	ResAddress  = "server.address"
@@ -51,6 +77,11 @@ const (
 	TypeMemory      = "memory"
 	TypeCPU         = "cpu"
 	TypeBMC         = "bmc"
+
+	// Storage: the rollup of one storage resource, its controller and its volumes.
+	TypeStorage        = "storage"
+	TypeDiskController = "disk_controller"
+	TypeLogicalDisk    = "logical_disk"
 )
 
 // DiskStateUsed is hw.physical_disk.state on the endurance metric when the
@@ -64,6 +95,30 @@ const (
 	LimitHighDegraded = "high.degraded"
 )
 
+// Inventory series the ipmi receiver emits from the BMC FRU: an info gauge of
+// value 1 per record, and the status of the read (1 read, 0 unreadable).
+const (
+	MetricBMCFRUInfo      = "inventory.bmc.fru.info"
+	MetricInventoryStatus = "inventory.collection.status"
+
+	AttrFRUType         = "fru.type"
+	AttrInventorySource = "inventory.source"
+	AttrPartNumber      = "hw.part_number"
+	AttrAssetTag        = "hw.asset_tag"
+	AttrVersion         = "hw.version"
+
+	SourceFRU = "fru"
+)
+
+// Values of fru.type.
+const (
+	FRUBoard   = "board"
+	FRUProduct = "product"
+	FRUChassis = "chassis"
+	FRUDIMM    = "dimm"
+	FRUCPU     = "cpu"
+)
+
 // Values of the reason attribute of hw.bmc.up.
 const (
 	ReasonTimeout = "timeout"
@@ -71,6 +126,8 @@ const (
 	ReasonRefused = "refused"
 	ReasonBackoff = "backoff"
 	ReasonTLS     = "tls"
+	// ReasonError is a read that stopped on an internal error.
+	ReasonError = "error"
 )
 
 // BMCMetricNames lists every metric name the BMC receivers emit; a source check
@@ -80,7 +137,10 @@ func BMCMetricNames() []string {
 		MetricTemperature, MetricTemperatureLimit, MetricFanSpeed, MetricFanSpeedRatio, MetricVoltage,
 		MetricHostPower, MetricPowerSupplyUsage, MetricPowerSupplyLimit, MetricPowerSupplyUtilization,
 		MetricPhysicalDiskSize, MetricPhysicalDiskEndurance, MetricMemorySize, MetricStatus,
-		MetricBMCUp, MetricBMCScrapeDuration,
+		MetricBMCUp, MetricBMCScrapeDuration, MetricBMCScrapeErrors,
+		MetricDiskControllerSpeed, MetricLogicalDiskLimit, MetricPhysicalDiskIndicator,
+		MetricPhysicalDiskPredictedFailure, MetricLogicalDiskMediaSpanCount, MetricStorageDriveCount,
+		MetricBMCFRUInfo, MetricInventoryStatus,
 	}
 }
 

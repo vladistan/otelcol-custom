@@ -57,23 +57,31 @@ func TestAStorageKeyThatNamesAMissingExtensionIsNotAValidateError(t *testing.T) 
 }
 
 func TestInvalidKeysFailValidate(t *testing.T) {
-	tests := map[string]func(*Config){
-		"interval":       func(c *Config) { c.CollectionInterval = time.Millisecond },
-		"smart interval": func(c *Config) { c.Smart = true; c.SmartInterval = time.Second },
-		"class":          func(c *Config) { c.Events.MinClass = "loud" },
-		"max low":        func(c *Config) { c.Events.MaxPerScrape = 0 },
-		"max high":       func(c *Config) { c.Events.MaxPerScrape = maxMaxPerScrape + 1 },
+	tests := map[string]struct {
+		mutate  func(*Config)
+		wantErr string
+	}{
+		"interval":       {func(c *Config) { c.CollectionInterval = time.Millisecond }, "collection_interval must be at least 1 second"},
+		"smart interval": {func(c *Config) { c.Smart = true; c.SmartInterval = time.Second }, "smart_interval must be at least"},
+		"class":          {func(c *Config) { c.Events.MinClass = "loud" }, "events.min_class"},
+		"max low":        {func(c *Config) { c.Events.MaxPerScrape = 0 }, "events.max_per_scrape must be between 1 and"},
+		"max high":       {func(c *Config) { c.Events.MaxPerScrape = maxMaxPerScrape + 1 }, "events.max_per_scrape must be between 1 and"},
 	}
-	for name, mutate := range tests {
+	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			cfg := createDefaultConfig().(*Config)
-			mutate(cfg)
+			tt.mutate(cfg)
 
-			assert.Error(t, cfg.Validate())
+			err := cfg.Validate()
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
 	cfg := createDefaultConfig().(*Config)
-	assert.Error(t, confmap.NewFromStringMap(map[string]any{"events": map[string]any{"enable": true}}).Unmarshal(cfg))
+	err := confmap.NewFromStringMap(map[string]any{"events": map[string]any{"enable": true}}).Unmarshal(cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "enable")
 }
 
 func TestFactoryRefusesOtherSystemsAndBadConfigs(t *testing.T) {
@@ -120,8 +128,6 @@ func TestMetricsAndLogsOfOneConfigShareOneReceiver(t *testing.T) {
 	require.NoError(t, l.Shutdown(context.Background()))
 	assert.NoError(t, l.Shutdown(context.Background()), "a second shutdown is harmless")
 }
-
-// ---- events and storage ----
 
 type fakeHost struct {
 	component.Host
@@ -219,6 +225,49 @@ func TestStorageProblemsAreNamedInTheError(t *testing.T) {
 			assert.Contains(t, errs.All()[0].Message, "file_storage")
 		})
 	}
+}
+
+func decodedConfig(t *testing.T, raw map[string]any) *Config {
+	t.Helper()
+	cfg := createDefaultConfig().(*Config)
+	require.NoError(t, confmap.NewFromStringMap(raw).Unmarshal(cfg))
+	return cfg
+}
+
+func TestDefaultEventsWithoutStorageLogNoErrorAndOneInfoLine(t *testing.T) {
+	f := newRecvFixture(t, decodedConfig(t, map[string]any{}), true)
+	require.NoError(t, f.r.Start(context.Background(), fakeHost{Host: componenttest.NewNopHost()}))
+	defer func() { require.NoError(t, f.r.Shutdown(context.Background())) }()
+
+	f.r.scrapeAndSend(context.Background())
+	f.r.scrapeAndSend(context.Background())
+
+	assert.Zero(t, f.logs.FilterLevelExact(zapcore.ErrorLevel).Len(), "no ERROR for the default")
+	info := f.logs.FilterMessageSnippet("Controller events wait for events.storage")
+	require.Equal(t, 1, info.Len(), "one info line across two scrapes")
+	assert.Equal(t, zapcore.InfoLevel, info.All()[0].Level)
+	assert.Len(t, f.metrics.AllMetrics(), 2, "metrics go on")
+	assert.Zero(t, f.dev.count(opEventGet)+f.dev.count(opEventGetInfo))
+}
+
+func TestEventsSetToTrueWithoutStorageStillLogOneError(t *testing.T) {
+	f := newRecvFixture(t, decodedConfig(t, map[string]any{"events": map[string]any{"enabled": true}}), true)
+	require.NoError(t, f.r.Start(context.Background(), fakeHost{Host: componenttest.NewNopHost()}))
+	defer func() { require.NoError(t, f.r.Shutdown(context.Background())) }()
+
+	f.r.scrapeAndSend(context.Background())
+	f.r.scrapeAndSend(context.Background())
+
+	errs := f.logs.FilterLevelExact(zapcore.ErrorLevel)
+	require.Equal(t, 1, errs.Len())
+	assert.Contains(t, errs.All()[0].Message, "file_storage")
+}
+
+func TestConfigRecordsWhetherEventsEnabledWasSet(t *testing.T) {
+	assert.True(t, decodedConfig(t, map[string]any{}).Events.enabledByDefault)
+	assert.True(t, decodedConfig(t, map[string]any{"events": map[string]any{"min_class": "warning"}}).Events.enabledByDefault)
+	assert.False(t, decodedConfig(t, map[string]any{"events": map[string]any{"enabled": false}}).Events.enabledByDefault)
+	assert.False(t, decodedConfig(t, map[string]any{"events": map[string]any{"enabled": true}}).Events.enabledByDefault)
 }
 
 type notStorage struct{ component.Component }

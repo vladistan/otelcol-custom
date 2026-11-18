@@ -1,0 +1,119 @@
+# SQL Server on one Windows host, for the Windows edge build. Every component in this file is valid there.
+# The password is read from a file through ${file:...}; the file is readable only by Administrators and SYSTEM
+# and stays static. Query text is off: the query events go through their own pipeline and exporter, and a
+# transform processor keeps only the listed attributes and empties the body and the scope attributes, so no
+# query or plan text can leave under any key.
+# Placeholder login, instance and gateway host; the role writes the real values.
+
+extensions:
+  file_storage:
+    directory: C:\ProgramData\otelcol-edge\storage
+    create_directory: true
+receivers:
+  sqlserver:
+    collection_interval: 60s
+    # One datasource string, because a direct connection from server, port, username and password has no way
+    # to set the certificate trust. The instance has ForceEncryption off and a self-signed certificate:
+    # encryption stays on and the certificate is trusted. encrypt=disable turns encryption off instead.
+    # yamllint disable-line rule:line-length
+    datasource: "server=localhost;port=1433;user id=example_login;password=${file:C:/ProgramData/otelcol-edge/secrets/sqlserver-password};encrypt=true;TrustServerCertificate=true"
+    metrics:
+      sqlserver.os.wait.duration:
+        enabled: true
+    # In contrib v0.164.1 the two query collections are switched on by their events, and the two keys below
+    # only tune them.
+    events:
+      db.server.top_query:
+        enabled: true
+      db.server.query_sample:
+        enabled: true
+    top_query_collection:
+      collection_interval: 60s
+      max_query_sample_count: 1000
+      top_query_count: 25
+    query_sample_collection:
+      max_rows_per_query: 100
+  windowsperfcounters/sqlserver:
+    collection_interval: 60s
+    metrics:
+      mssql.batch_requests:
+        description: Batch requests received per second
+        unit: "{requests}/s"
+        gauge:
+      mssql.logins:
+        description: Logins started per second
+        unit: "{logins}/s"
+        gauge:
+    perfcounters:
+      - object: 'MSSQL$EXAMPLEINSTANCE:SQL Statistics'
+        counters:
+          - name: Batch Requests/sec
+            metric: mssql.batch_requests
+      - object: 'MSSQL$EXAMPLEINSTANCE:General Statistics'
+        counters:
+          - name: Logins/sec
+            metric: mssql.logins
+  filelog/sqlserver_errorlog:
+    # The live file only. SQL Server renames it to ERRORLOG.1 and so on at a restart; the archives are not read.
+    include:
+      - 'C:/Program Files/Microsoft SQL Server/MSSQL17.EXAMPLEINSTANCE/MSSQL/Log/ERRORLOG'
+    encoding: utf-16le
+    start_at: end
+    multiline:
+      line_start_pattern: '^\x{FEFF}?\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ '
+    storage: file_storage
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 150
+    spike_limit_mib: 30
+  # The query events carry db.query.text, sqlserver.query_plan, sqlserver.context_info (text that the
+  # application sets) and user.name, besides the hashes and figures. Only the keys below stay; a key that a
+  # later release adds is dropped until someone adds it here.
+  # yamllint disable rule:line-length
+  transform/sqlserver_query_allowlist:
+    log_statements:
+      - context: resource
+        statements:
+          - >-
+            keep_keys(attributes, ["db.system.version", "host.name", "server.address", "server.port", "service.instance.id", "service.name", "service.namespace", "sqlserver.computer.name", "sqlserver.database.name", "sqlserver.db.edition", "sqlserver.instance.name"])
+      - context: scope
+        statements:
+          - delete_matching_keys(attributes, ".*")
+      - context: log
+        statements:
+          - >-
+            keep_keys(attributes, ["event.name", "db.namespace", "db.system.name", "sqlserver.query_hash", "sqlserver.query_plan_hash", "sqlserver.execution_count", "sqlserver.total_worker_time", "sqlserver.total_elapsed_time", "sqlserver.total_rows", "sqlserver.total_grant_kb", "sqlserver.total_logical_reads", "sqlserver.total_logical_writes", "sqlserver.total_physical_reads", "sqlserver.query.last_started", "sqlserver.query.plan.creation_time", "sqlserver.procedure_id", "sqlserver.procedure_name", "sqlserver.procedure_execution_count", "sqlserver.blocking_session_id", "sqlserver.blocking.start_time", "sqlserver.command", "sqlserver.cpu_time", "sqlserver.deadlock_priority", "sqlserver.estimated_completion_time", "sqlserver.lock_timeout", "sqlserver.logical_reads", "sqlserver.open_transaction_count", "sqlserver.percent_complete", "sqlserver.query_start", "sqlserver.reads", "sqlserver.request_status", "sqlserver.wait.resource.id", "sqlserver.wait.resource.type", "sqlserver.row_count", "sqlserver.session.duration", "sqlserver.session.start_time", "sqlserver.session_id", "sqlserver.session_status", "sqlserver.transaction_id", "sqlserver.transaction_isolation_level", "sqlserver.wait_time", "sqlserver.wait_type", "sqlserver.writes"])
+          - set(body, "")
+  # yamllint enable rule:line-length
+  # The error log is UTF-16LE with CRLF line ends, and a new file begins with a byte order mark; a record
+  # keeps the newline that ends its last line.
+  transform/sqlserver_errorlog:
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(body, "\\r", "")
+          - replace_pattern(body, "^\\x{FEFF}", "")
+          - replace_pattern(body, "\\n+$", "")
+exporters:
+  otlp_http:
+    endpoint: http://otel-main.example.invalid:4318
+    compression: gzip
+  otlp_http/sqlserver_queries:
+    endpoint: http://otel-main.example.invalid:4318
+    compression: gzip
+service:
+  extensions: [file_storage]
+  pipelines:
+    metrics/sqlserver:
+      receivers: [sqlserver, windowsperfcounters/sqlserver]
+      processors: [memory_limiter]
+      exporters: [otlp_http]
+    logs/sqlserver_errorlog:
+      receivers: [filelog/sqlserver_errorlog]
+      processors: [memory_limiter, transform/sqlserver_errorlog]
+      exporters: [otlp_http]
+    logs/sqlserver_queries:
+      receivers: [sqlserver]
+      processors: [memory_limiter, transform/sqlserver_query_allowlist]
+      exporters: [otlp_http/sqlserver_queries]

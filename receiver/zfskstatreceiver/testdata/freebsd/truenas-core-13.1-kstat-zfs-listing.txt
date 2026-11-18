@@ -1,0 +1,670 @@
+13.1-RELEASE-p9
+     668
+kstat.zfs.P1
+kstat.zfs.P1.dataset
+kstat.zfs.P1.dataset.objset-0x2c7
+kstat.zfs.P1.dataset.objset-0x2c7.nunlinked
+kstat.zfs.P1.dataset.objset-0x2c7.nunlinks
+kstat.zfs.P1.dataset.objset-0x2c7.nread
+kstat.zfs.P1.dataset.objset-0x2c7.reads
+kstat.zfs.P1.dataset.objset-0x2c7.nwritten
+kstat.zfs.P1.dataset.objset-0x2c7.writes
+kstat.zfs.P1.dataset.objset-0x2c7.dataset_name
+kstat.zfs.P1.dataset.objset-0x5b
+kstat.zfs.P1.dataset.objset-0x5b.nunlinked
+kstat.zfs.P1.dataset.objset-0x5b.nunlinks
+kstat.zfs.P1.dataset.objset-0x5b.nread
+kstat.zfs.P1.dataset.objset-0x5b.reads
+kstat.zfs.P1.dataset.objset-0x5b.nwritten
+kstat.zfs.P1.dataset.objset-0x5b.writes
+kstat.zfs.P1.dataset.objset-0x5b.dataset_name
+kstat.zfs.P1.dataset.objset-0x342
+kstat.zfs.P1.dataset.objset-0x342.nunlinked
+kstat.zfs.P1.dataset.objset-0x342.nunlinks
+kstat.zfs.P1.dataset.objset-0x342.nread
+kstat.zfs.P1.dataset.objset-0x342.reads
+kstat.zfs.P1.dataset.objset-0x342.nwritten
+kstat.zfs.P1.dataset.objset-0x342.writes
+kstat.zfs.P1.dataset.objset-0x342.dataset_name
+kstat.zfs.P1.dataset.objset-0x310
+kstat.zfs.P1.dataset.objset-0x310.nunlinked
+kstat.zfs.P1.dataset.objset-0x310.nunlinks
+kstat.zfs.P1.dataset.objset-0x310.nread
+kstat.zfs.P1.dataset.objset-0x310.reads
+kstat.zfs.P1.dataset.objset-0x310.nwritten
+kstat.zfs.P1.dataset.objset-0x310.writes
+kstat.zfs.P1.dataset.objset-0x310.dataset_name
+kstat.zfs.P1.dataset.objset-0x309
+kstat.zfs.P1.dataset.objset-0x309.nunlinked
+kstat.zfs.P1.dataset.objset-0x309.nunlinks
+kstat.zfs.P1.dataset.objset-0x309.nread
+kstat.zfs.P1.dataset.objset-0x309.reads
+kstat.zfs.P1.dataset.objset-0x309.nwritten
+kstat.zfs.P1.dataset.objset-0x309.writes
+kstat.zfs.P1.dataset.objset-0x309.dataset_name
+kstat.zfs.P1.dataset.objset-0x43
+kstat.zfs.P1.dataset.objset-0x43.nunlinked
+kstat.zfs.P1.dataset.objset-0x43.nunlinks
+kstat.zfs.P1.dataset.objset-0x43.nread
+kstat.zfs.P1.dataset.objset-0x43.reads
+kstat.zfs.P1.dataset.objset-0x43.nwritten
+kstat.zfs.P1.dataset.objset-0x43.writes
+kstat.zfs.P1.dataset.objset-0x43.dataset_name
+kstat.zfs.P1.dataset.objset-0x3d
+kstat.zfs.P1.dataset.objset-0x3d.nunlinked
+kstat.zfs.P1.dataset.objset-0x3d.nunlinks
+kstat.zfs.P1.dataset.objset-0x3d.nread
+kstat.zfs.P1.dataset.objset-0x3d.reads
+kstat.zfs.P1.dataset.objset-0x3d.nwritten
+kstat.zfs.P1.dataset.objset-0x3d.writes
+kstat.zfs.P1.dataset.objset-0x3d.dataset_name
+kstat.zfs.P1.dataset.objset-0x36
+kstat.zfs.P1.dataset.objset-0x36.nunlinked
+kstat.zfs.P1.dataset.objset-0x36.nunlinks
+kstat.zfs.P1.dataset.objset-0x36.nread
+kstat.zfs.P1.dataset.objset-0x36.reads
+kstat.zfs.P1.dataset.objset-0x36.nwritten
+kstat.zfs.P1.dataset.objset-0x36.writes
+kstat.zfs.P1.dataset.objset-0x36.dataset_name
+kstat.zfs.P1.dataset.objset-0x25f
+kstat.zfs.P1.dataset.objset-0x25f.nunlinked
+kstat.zfs.P1.dataset.objset-0x25f.nunlinks
+kstat.zfs.P1.dataset.objset-0x25f.nread
+kstat.zfs.P1.dataset.objset-0x25f.reads
+kstat.zfs.P1.dataset.objset-0x25f.nwritten
+kstat.zfs.P1.dataset.objset-0x25f.writes
+kstat.zfs.P1.dataset.objset-0x25f.dataset_name
+kstat.zfs.P1.dataset.objset-0x280
+kstat.zfs.P1.dataset.objset-0x280.nunlinked
+kstat.zfs.P1.dataset.objset-0x280.nunlinks
+kstat.zfs.P1.dataset.objset-0x280.nread
+kstat.zfs.P1.dataset.objset-0x280.reads
+kstat.zfs.P1.dataset.objset-0x280.nwritten
+kstat.zfs.P1.dataset.objset-0x280.writes
+kstat.zfs.P1.dataset.objset-0x280.dataset_name
+kstat.zfs.P1.dataset.objset-0x253
+kstat.zfs.P1.dataset.objset-0x253.nunlinked
+kstat.zfs.P1.dataset.objset-0x253.nunlinks
+kstat.zfs.P1.dataset.objset-0x253.nread
+kstat.zfs.P1.dataset.objset-0x253.reads
+kstat.zfs.P1.dataset.objset-0x253.nwritten
+kstat.zfs.P1.dataset.objset-0x253.writes
+kstat.zfs.P1.dataset.objset-0x253.dataset_name
+kstat.zfs.P1.dataset.objset-0x259
+kstat.zfs.P1.dataset.objset-0x259.nunlinked
+kstat.zfs.P1.dataset.objset-0x259.nunlinks
+kstat.zfs.P1.dataset.objset-0x259.nread
+kstat.zfs.P1.dataset.objset-0x259.reads
+kstat.zfs.P1.dataset.objset-0x259.nwritten
+kstat.zfs.P1.dataset.objset-0x259.writes
+kstat.zfs.P1.dataset.objset-0x259.dataset_name
+kstat.zfs.P1.dataset.objset-0x27a
+kstat.zfs.P1.dataset.objset-0x27a.nunlinked
+kstat.zfs.P1.dataset.objset-0x27a.nunlinks
+kstat.zfs.P1.dataset.objset-0x27a.nread
+kstat.zfs.P1.dataset.objset-0x27a.reads
+kstat.zfs.P1.dataset.objset-0x27a.nwritten
+kstat.zfs.P1.dataset.objset-0x27a.writes
+kstat.zfs.P1.dataset.objset-0x27a.dataset_name
+kstat.zfs.P1.dataset.objset-0xb3
+kstat.zfs.P1.dataset.objset-0xb3.nunlinked
+kstat.zfs.P1.dataset.objset-0xb3.nunlinks
+kstat.zfs.P1.dataset.objset-0xb3.nread
+kstat.zfs.P1.dataset.objset-0xb3.reads
+kstat.zfs.P1.dataset.objset-0xb3.nwritten
+kstat.zfs.P1.dataset.objset-0xb3.writes
+kstat.zfs.P1.dataset.objset-0xb3.dataset_name
+kstat.zfs.P1.dataset.objset-0xc5
+kstat.zfs.P1.dataset.objset-0xc5.nunlinked
+kstat.zfs.P1.dataset.objset-0xc5.nunlinks
+kstat.zfs.P1.dataset.objset-0xc5.nread
+kstat.zfs.P1.dataset.objset-0xc5.reads
+kstat.zfs.P1.dataset.objset-0xc5.nwritten
+kstat.zfs.P1.dataset.objset-0xc5.writes
+kstat.zfs.P1.dataset.objset-0xc5.dataset_name
+kstat.zfs.P1.dataset.objset-0xbf
+kstat.zfs.P1.dataset.objset-0xbf.nunlinked
+kstat.zfs.P1.dataset.objset-0xbf.nunlinks
+kstat.zfs.P1.dataset.objset-0xbf.nread
+kstat.zfs.P1.dataset.objset-0xbf.reads
+kstat.zfs.P1.dataset.objset-0xbf.nwritten
+kstat.zfs.P1.dataset.objset-0xbf.writes
+kstat.zfs.P1.dataset.objset-0xbf.dataset_name
+kstat.zfs.P1.dataset.objset-0xa7
+kstat.zfs.P1.dataset.objset-0xa7.nunlinked
+kstat.zfs.P1.dataset.objset-0xa7.nunlinks
+kstat.zfs.P1.dataset.objset-0xa7.nread
+kstat.zfs.P1.dataset.objset-0xa7.reads
+kstat.zfs.P1.dataset.objset-0xa7.nwritten
+kstat.zfs.P1.dataset.objset-0xa7.writes
+kstat.zfs.P1.dataset.objset-0xa7.dataset_name
+kstat.zfs.P1.dataset.objset-0xb9
+kstat.zfs.P1.dataset.objset-0xb9.nunlinked
+kstat.zfs.P1.dataset.objset-0xb9.nunlinks
+kstat.zfs.P1.dataset.objset-0xb9.nread
+kstat.zfs.P1.dataset.objset-0xb9.reads
+kstat.zfs.P1.dataset.objset-0xb9.nwritten
+kstat.zfs.P1.dataset.objset-0xb9.writes
+kstat.zfs.P1.dataset.objset-0xb9.dataset_name
+kstat.zfs.P1.dataset.objset-0xad
+kstat.zfs.P1.dataset.objset-0xad.nunlinked
+kstat.zfs.P1.dataset.objset-0xad.nunlinks
+kstat.zfs.P1.dataset.objset-0xad.nread
+kstat.zfs.P1.dataset.objset-0xad.reads
+kstat.zfs.P1.dataset.objset-0xad.nwritten
+kstat.zfs.P1.dataset.objset-0xad.writes
+kstat.zfs.P1.dataset.objset-0xad.dataset_name
+kstat.zfs.P1.dataset.objset-0xa1
+kstat.zfs.P1.dataset.objset-0xa1.nunlinked
+kstat.zfs.P1.dataset.objset-0xa1.nunlinks
+kstat.zfs.P1.dataset.objset-0xa1.nread
+kstat.zfs.P1.dataset.objset-0xa1.reads
+kstat.zfs.P1.dataset.objset-0xa1.nwritten
+kstat.zfs.P1.dataset.objset-0xa1.writes
+kstat.zfs.P1.dataset.objset-0xa1.dataset_name
+kstat.zfs.P1.dataset.objset-0x119
+kstat.zfs.P1.dataset.objset-0x119.nunlinked
+kstat.zfs.P1.dataset.objset-0x119.nunlinks
+kstat.zfs.P1.dataset.objset-0x119.nread
+kstat.zfs.P1.dataset.objset-0x119.reads
+kstat.zfs.P1.dataset.objset-0x119.nwritten
+kstat.zfs.P1.dataset.objset-0x119.writes
+kstat.zfs.P1.dataset.objset-0x119.dataset_name
+kstat.zfs.P1.dataset.objset-0x108
+kstat.zfs.P1.dataset.objset-0x108.nunlinked
+kstat.zfs.P1.dataset.objset-0x108.nunlinks
+kstat.zfs.P1.dataset.objset-0x108.nread
+kstat.zfs.P1.dataset.objset-0x108.reads
+kstat.zfs.P1.dataset.objset-0x108.nwritten
+kstat.zfs.P1.dataset.objset-0x108.writes
+kstat.zfs.P1.dataset.objset-0x108.dataset_name
+kstat.zfs.P1.dataset.objset-0x197
+kstat.zfs.P1.dataset.objset-0x197.nunlinked
+kstat.zfs.P1.dataset.objset-0x197.nunlinks
+kstat.zfs.P1.dataset.objset-0x197.nread
+kstat.zfs.P1.dataset.objset-0x197.reads
+kstat.zfs.P1.dataset.objset-0x197.nwritten
+kstat.zfs.P1.dataset.objset-0x197.writes
+kstat.zfs.P1.dataset.objset-0x197.dataset_name
+kstat.zfs.P1.dataset.objset-0x86
+kstat.zfs.P1.dataset.objset-0x86.nunlinked
+kstat.zfs.P1.dataset.objset-0x86.nunlinks
+kstat.zfs.P1.dataset.objset-0x86.nread
+kstat.zfs.P1.dataset.objset-0x86.reads
+kstat.zfs.P1.dataset.objset-0x86.nwritten
+kstat.zfs.P1.dataset.objset-0x86.writes
+kstat.zfs.P1.dataset.objset-0x86.dataset_name
+kstat.zfs.P1.dataset.objset-0x1ce
+kstat.zfs.P1.dataset.objset-0x1ce.nunlinked
+kstat.zfs.P1.dataset.objset-0x1ce.nunlinks
+kstat.zfs.P1.dataset.objset-0x1ce.nread
+kstat.zfs.P1.dataset.objset-0x1ce.reads
+kstat.zfs.P1.dataset.objset-0x1ce.nwritten
+kstat.zfs.P1.dataset.objset-0x1ce.writes
+kstat.zfs.P1.dataset.objset-0x1ce.dataset_name
+kstat.zfs.P1.dataset.objset-0x8e
+kstat.zfs.P1.dataset.objset-0x8e.nunlinked
+kstat.zfs.P1.dataset.objset-0x8e.nunlinks
+kstat.zfs.P1.dataset.objset-0x8e.nread
+kstat.zfs.P1.dataset.objset-0x8e.reads
+kstat.zfs.P1.dataset.objset-0x8e.nwritten
+kstat.zfs.P1.dataset.objset-0x8e.writes
+kstat.zfs.P1.dataset.objset-0x8e.dataset_name
+kstat.zfs.P1.dataset.objset-0x24d
+kstat.zfs.P1.dataset.objset-0x24d.nunlinked
+kstat.zfs.P1.dataset.objset-0x24d.nunlinks
+kstat.zfs.P1.dataset.objset-0x24d.nread
+kstat.zfs.P1.dataset.objset-0x24d.reads
+kstat.zfs.P1.dataset.objset-0x24d.nwritten
+kstat.zfs.P1.dataset.objset-0x24d.writes
+kstat.zfs.P1.dataset.objset-0x24d.dataset_name
+kstat.zfs.P1.dataset.objset-0x1bf
+kstat.zfs.P1.dataset.objset-0x1bf.nunlinked
+kstat.zfs.P1.dataset.objset-0x1bf.nunlinks
+kstat.zfs.P1.dataset.objset-0x1bf.nread
+kstat.zfs.P1.dataset.objset-0x1bf.reads
+kstat.zfs.P1.dataset.objset-0x1bf.nwritten
+kstat.zfs.P1.dataset.objset-0x1bf.writes
+kstat.zfs.P1.dataset.objset-0x1bf.dataset_name
+kstat.zfs.P1.dataset.objset-0x15
+kstat.zfs.P1.dataset.objset-0x15.nunlinked
+kstat.zfs.P1.dataset.objset-0x15.nunlinks
+kstat.zfs.P1.dataset.objset-0x15.nread
+kstat.zfs.P1.dataset.objset-0x15.reads
+kstat.zfs.P1.dataset.objset-0x15.nwritten
+kstat.zfs.P1.dataset.objset-0x15.writes
+kstat.zfs.P1.dataset.objset-0x15.dataset_name
+kstat.zfs.P1.dataset.objset-0x113
+kstat.zfs.P1.dataset.objset-0x113.nunlinked
+kstat.zfs.P1.dataset.objset-0x113.nunlinks
+kstat.zfs.P1.dataset.objset-0x113.nread
+kstat.zfs.P1.dataset.objset-0x113.reads
+kstat.zfs.P1.dataset.objset-0x113.nwritten
+kstat.zfs.P1.dataset.objset-0x113.writes
+kstat.zfs.P1.dataset.objset-0x113.dataset_name
+kstat.zfs.P1.multihost
+kstat.zfs.P1.misc
+kstat.zfs.P1.misc.iostats
+kstat.zfs.P1.misc.iostats.simple_trim_bytes_failed
+kstat.zfs.P1.misc.iostats.simple_trim_extents_failed
+kstat.zfs.P1.misc.iostats.simple_trim_bytes_skipped
+kstat.zfs.P1.misc.iostats.simple_trim_extents_skipped
+kstat.zfs.P1.misc.iostats.simple_trim_bytes_written
+kstat.zfs.P1.misc.iostats.simple_trim_extents_written
+kstat.zfs.P1.misc.iostats.autotrim_bytes_failed
+kstat.zfs.P1.misc.iostats.autotrim_extents_failed
+kstat.zfs.P1.misc.iostats.autotrim_bytes_skipped
+kstat.zfs.P1.misc.iostats.autotrim_extents_skipped
+kstat.zfs.P1.misc.iostats.autotrim_bytes_written
+kstat.zfs.P1.misc.iostats.autotrim_extents_written
+kstat.zfs.P1.misc.iostats.trim_bytes_failed
+kstat.zfs.P1.misc.iostats.trim_extents_failed
+kstat.zfs.P1.misc.iostats.trim_bytes_skipped
+kstat.zfs.P1.misc.iostats.trim_extents_skipped
+kstat.zfs.P1.misc.iostats.trim_bytes_written
+kstat.zfs.P1.misc.iostats.trim_extents_written
+kstat.zfs.P1.misc.guid
+kstat.zfs.P1.misc.state
+kstat.zfs.P1.misc.dmu_tx_assign
+kstat.zfs.P1.misc.dmu_tx_assign.2199023255552 ns
+kstat.zfs.P1.misc.dmu_tx_assign.1099511627776 ns
+kstat.zfs.P1.misc.dmu_tx_assign.549755813888 ns
+kstat.zfs.P1.misc.dmu_tx_assign.274877906944 ns
+kstat.zfs.P1.misc.dmu_tx_assign.137438953472 ns
+kstat.zfs.P1.misc.dmu_tx_assign.68719476736 ns
+kstat.zfs.P1.misc.dmu_tx_assign.34359738368 ns
+kstat.zfs.P1.misc.dmu_tx_assign.17179869184 ns
+kstat.zfs.P1.misc.dmu_tx_assign.8589934592 ns
+kstat.zfs.P1.misc.dmu_tx_assign.4294967296 ns
+kstat.zfs.P1.misc.dmu_tx_assign.2147483648 ns
+kstat.zfs.P1.misc.dmu_tx_assign.1073741824 ns
+kstat.zfs.P1.misc.dmu_tx_assign.536870912 ns
+kstat.zfs.P1.misc.dmu_tx_assign.268435456 ns
+kstat.zfs.P1.misc.dmu_tx_assign.134217728 ns
+kstat.zfs.P1.misc.dmu_tx_assign.67108864 ns
+kstat.zfs.P1.misc.dmu_tx_assign.33554432 ns
+kstat.zfs.P1.misc.dmu_tx_assign.16777216 ns
+kstat.zfs.P1.misc.dmu_tx_assign.8388608 ns
+kstat.zfs.P1.misc.dmu_tx_assign.4194304 ns
+kstat.zfs.P1.misc.dmu_tx_assign.2097152 ns
+kstat.zfs.P1.misc.dmu_tx_assign.1048576 ns
+kstat.zfs.P1.misc.dmu_tx_assign.524288 ns
+kstat.zfs.P1.misc.dmu_tx_assign.262144 ns
+kstat.zfs.P1.misc.dmu_tx_assign.131072 ns
+kstat.zfs.P1.misc.dmu_tx_assign.65536 ns
+kstat.zfs.P1.misc.dmu_tx_assign.32768 ns
+kstat.zfs.P1.misc.dmu_tx_assign.16384 ns
+kstat.zfs.P1.misc.dmu_tx_assign.8192 ns
+kstat.zfs.P1.misc.dmu_tx_assign.4096 ns
+kstat.zfs.P1.misc.dmu_tx_assign.2048 ns
+kstat.zfs.P1.misc.dmu_tx_assign.1024 ns
+kstat.zfs.P1.misc.dmu_tx_assign.512 ns
+kstat.zfs.P1.misc.dmu_tx_assign.256 ns
+kstat.zfs.P1.misc.dmu_tx_assign.128 ns
+kstat.zfs.P1.misc.dmu_tx_assign.64 ns
+kstat.zfs.P1.misc.dmu_tx_assign.32 ns
+kstat.zfs.P1.misc.dmu_tx_assign.16 ns
+kstat.zfs.P1.misc.dmu_tx_assign.8 ns
+kstat.zfs.P1.misc.dmu_tx_assign.4 ns
+kstat.zfs.P1.misc.dmu_tx_assign.2 ns
+kstat.zfs.P1.misc.dmu_tx_assign.1 ns
+kstat.zfs.P1.txgs
+kstat.zfs.P1.reads
+kstat.zfs.boot-pool
+kstat.zfs.boot-pool.dataset
+kstat.zfs.boot-pool.dataset.objset-0xa4
+kstat.zfs.boot-pool.dataset.objset-0xa4.nunlinked
+kstat.zfs.boot-pool.dataset.objset-0xa4.nunlinks
+kstat.zfs.boot-pool.dataset.objset-0xa4.nread
+kstat.zfs.boot-pool.dataset.objset-0xa4.reads
+kstat.zfs.boot-pool.dataset.objset-0xa4.nwritten
+kstat.zfs.boot-pool.dataset.objset-0xa4.writes
+kstat.zfs.boot-pool.dataset.objset-0xa4.dataset_name
+kstat.zfs.boot-pool.multihost
+kstat.zfs.boot-pool.misc
+kstat.zfs.boot-pool.misc.iostats
+kstat.zfs.boot-pool.misc.iostats.simple_trim_bytes_failed
+kstat.zfs.boot-pool.misc.iostats.simple_trim_extents_failed
+kstat.zfs.boot-pool.misc.iostats.simple_trim_bytes_skipped
+kstat.zfs.boot-pool.misc.iostats.simple_trim_extents_skipped
+kstat.zfs.boot-pool.misc.iostats.simple_trim_bytes_written
+kstat.zfs.boot-pool.misc.iostats.simple_trim_extents_written
+kstat.zfs.boot-pool.misc.iostats.autotrim_bytes_failed
+kstat.zfs.boot-pool.misc.iostats.autotrim_extents_failed
+kstat.zfs.boot-pool.misc.iostats.autotrim_bytes_skipped
+kstat.zfs.boot-pool.misc.iostats.autotrim_extents_skipped
+kstat.zfs.boot-pool.misc.iostats.autotrim_bytes_written
+kstat.zfs.boot-pool.misc.iostats.autotrim_extents_written
+kstat.zfs.boot-pool.misc.iostats.trim_bytes_failed
+kstat.zfs.boot-pool.misc.iostats.trim_extents_failed
+kstat.zfs.boot-pool.misc.iostats.trim_bytes_skipped
+kstat.zfs.boot-pool.misc.iostats.trim_extents_skipped
+kstat.zfs.boot-pool.misc.iostats.trim_bytes_written
+kstat.zfs.boot-pool.misc.iostats.trim_extents_written
+kstat.zfs.boot-pool.misc.guid
+kstat.zfs.boot-pool.misc.state
+kstat.zfs.boot-pool.misc.dmu_tx_assign
+kstat.zfs.boot-pool.misc.dmu_tx_assign.2199023255552 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.1099511627776 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.549755813888 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.274877906944 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.137438953472 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.68719476736 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.34359738368 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.17179869184 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.8589934592 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.4294967296 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.2147483648 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.1073741824 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.536870912 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.268435456 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.134217728 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.67108864 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.33554432 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.16777216 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.8388608 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.4194304 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.2097152 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.1048576 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.524288 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.262144 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.131072 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.65536 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.32768 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.16384 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.8192 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.4096 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.2048 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.1024 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.512 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.256 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.128 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.64 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.32 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.16 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.8 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.4 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.2 ns
+kstat.zfs.boot-pool.misc.dmu_tx_assign.1 ns
+kstat.zfs.boot-pool.txgs
+kstat.zfs.boot-pool.reads
+kstat.zfs.misc
+kstat.zfs.misc.zstd
+kstat.zfs.misc.zstd.size
+kstat.zfs.misc.zstd.buffers
+kstat.zfs.misc.zstd.decompress_failed
+kstat.zfs.misc.zstd.compress_failed
+kstat.zfs.misc.zstd.decompress_header_invalid
+kstat.zfs.misc.zstd.decompress_level_invalid
+kstat.zfs.misc.zstd.compress_level_invalid
+kstat.zfs.misc.zstd.decompress_alloc_fail
+kstat.zfs.misc.zstd.compress_alloc_fail
+kstat.zfs.misc.zstd.alloc_fallback
+kstat.zfs.misc.zstd.alloc_fail
+kstat.zfs.misc.fletcher_4_bench
+kstat.zfs.misc.import_progress
+kstat.zfs.misc.vdev_raidz_bench
+kstat.zfs.misc.vdev_mirror_stats
+kstat.zfs.misc.vdev_mirror_stats.preferred_not_found
+kstat.zfs.misc.vdev_mirror_stats.preferred_found
+kstat.zfs.misc.vdev_mirror_stats.non_rotating_seek
+kstat.zfs.misc.vdev_mirror_stats.non_rotating_linear
+kstat.zfs.misc.vdev_mirror_stats.rotating_seek
+kstat.zfs.misc.vdev_mirror_stats.rotating_offset
+kstat.zfs.misc.vdev_mirror_stats.rotating_linear
+kstat.zfs.misc.vdev_cache_stats
+kstat.zfs.misc.vdev_cache_stats.misses
+kstat.zfs.misc.vdev_cache_stats.hits
+kstat.zfs.misc.vdev_cache_stats.delegations
+kstat.zfs.misc.zil
+kstat.zfs.misc.zil.zil_itx_metaslab_slog_bytes
+kstat.zfs.misc.zil.zil_itx_metaslab_slog_count
+kstat.zfs.misc.zil.zil_itx_metaslab_normal_bytes
+kstat.zfs.misc.zil.zil_itx_metaslab_normal_count
+kstat.zfs.misc.zil.zil_itx_needcopy_bytes
+kstat.zfs.misc.zil.zil_itx_needcopy_count
+kstat.zfs.misc.zil.zil_itx_copied_bytes
+kstat.zfs.misc.zil.zil_itx_copied_count
+kstat.zfs.misc.zil.zil_itx_indirect_bytes
+kstat.zfs.misc.zil.zil_itx_indirect_count
+kstat.zfs.misc.zil.zil_itx_count
+kstat.zfs.misc.zil.zil_commit_writer_count
+kstat.zfs.misc.zil.zil_commit_count
+kstat.zfs.misc.dbufstats
+kstat.zfs.misc.dbufstats.metadata_cache_overflow
+kstat.zfs.misc.dbufstats.metadata_cache_size_bytes_max
+kstat.zfs.misc.dbufstats.metadata_cache_size_bytes
+kstat.zfs.misc.dbufstats.metadata_cache_count
+kstat.zfs.misc.dbufstats.hash_insert_race
+kstat.zfs.misc.dbufstats.hash_chain_max
+kstat.zfs.misc.dbufstats.hash_chains
+kstat.zfs.misc.dbufstats.hash_elements_max
+kstat.zfs.misc.dbufstats.hash_elements
+kstat.zfs.misc.dbufstats.hash_collisions
+kstat.zfs.misc.dbufstats.hash_misses
+kstat.zfs.misc.dbufstats.hash_hits
+kstat.zfs.misc.dbufstats.cache_level_11_bytes
+kstat.zfs.misc.dbufstats.cache_level_10_bytes
+kstat.zfs.misc.dbufstats.cache_level_9_bytes
+kstat.zfs.misc.dbufstats.cache_level_8_bytes
+kstat.zfs.misc.dbufstats.cache_level_7_bytes
+kstat.zfs.misc.dbufstats.cache_level_6_bytes
+kstat.zfs.misc.dbufstats.cache_level_5_bytes
+kstat.zfs.misc.dbufstats.cache_level_4_bytes
+kstat.zfs.misc.dbufstats.cache_level_3_bytes
+kstat.zfs.misc.dbufstats.cache_level_2_bytes
+kstat.zfs.misc.dbufstats.cache_level_1_bytes
+kstat.zfs.misc.dbufstats.cache_level_0_bytes
+kstat.zfs.misc.dbufstats.cache_level_11
+kstat.zfs.misc.dbufstats.cache_level_10
+kstat.zfs.misc.dbufstats.cache_level_9
+kstat.zfs.misc.dbufstats.cache_level_8
+kstat.zfs.misc.dbufstats.cache_level_7
+kstat.zfs.misc.dbufstats.cache_level_6
+kstat.zfs.misc.dbufstats.cache_level_5
+kstat.zfs.misc.dbufstats.cache_level_4
+kstat.zfs.misc.dbufstats.cache_level_3
+kstat.zfs.misc.dbufstats.cache_level_2
+kstat.zfs.misc.dbufstats.cache_level_1
+kstat.zfs.misc.dbufstats.cache_level_0
+kstat.zfs.misc.dbufstats.cache_total_evicts
+kstat.zfs.misc.dbufstats.cache_hiwater_bytes
+kstat.zfs.misc.dbufstats.cache_lowater_bytes
+kstat.zfs.misc.dbufstats.cache_target_bytes
+kstat.zfs.misc.dbufstats.cache_size_bytes_max
+kstat.zfs.misc.dbufstats.cache_size_bytes
+kstat.zfs.misc.dbufstats.cache_count
+kstat.zfs.misc.dbufs
+kstat.zfs.misc.arcstats
+kstat.zfs.misc.arcstats.abd_chunk_waste_size
+kstat.zfs.misc.arcstats.cached_only_in_progress
+kstat.zfs.misc.arcstats.arc_raw_size
+kstat.zfs.misc.arcstats.arc_sys_free
+kstat.zfs.misc.arcstats.arc_need_free
+kstat.zfs.misc.arcstats.demand_hit_prescient_prefetch
+kstat.zfs.misc.arcstats.demand_hit_predictive_prefetch
+kstat.zfs.misc.arcstats.async_upgrade_sync
+kstat.zfs.misc.arcstats.arc_meta_min
+kstat.zfs.misc.arcstats.arc_meta_max
+kstat.zfs.misc.arcstats.arc_dnode_limit
+kstat.zfs.misc.arcstats.arc_meta_limit
+kstat.zfs.misc.arcstats.arc_meta_used
+kstat.zfs.misc.arcstats.arc_prune
+kstat.zfs.misc.arcstats.arc_loaned_bytes
+kstat.zfs.misc.arcstats.arc_tempreserve
+kstat.zfs.misc.arcstats.arc_no_grow
+kstat.zfs.misc.arcstats.memory_available_bytes
+kstat.zfs.misc.arcstats.memory_free_bytes
+kstat.zfs.misc.arcstats.memory_all_bytes
+kstat.zfs.misc.arcstats.memory_indirect_count
+kstat.zfs.misc.arcstats.memory_direct_count
+kstat.zfs.misc.arcstats.memory_throttle_count
+kstat.zfs.misc.arcstats.l2_rebuild_log_blks
+kstat.zfs.misc.arcstats.l2_rebuild_bufs_precached
+kstat.zfs.misc.arcstats.l2_rebuild_bufs
+kstat.zfs.misc.arcstats.l2_rebuild_asize
+kstat.zfs.misc.arcstats.l2_rebuild_size
+kstat.zfs.misc.arcstats.l2_rebuild_lowmem
+kstat.zfs.misc.arcstats.l2_rebuild_cksum_lb_errors
+kstat.zfs.misc.arcstats.l2_rebuild_dh_errors
+kstat.zfs.misc.arcstats.l2_rebuild_io_errors
+kstat.zfs.misc.arcstats.l2_rebuild_unsupported
+kstat.zfs.misc.arcstats.l2_rebuild_success
+kstat.zfs.misc.arcstats.l2_data_to_meta_ratio
+kstat.zfs.misc.arcstats.l2_log_blk_count
+kstat.zfs.misc.arcstats.l2_log_blk_asize
+kstat.zfs.misc.arcstats.l2_log_blk_avg_asize
+kstat.zfs.misc.arcstats.l2_log_blk_writes
+kstat.zfs.misc.arcstats.l2_hdr_size
+kstat.zfs.misc.arcstats.l2_asize
+kstat.zfs.misc.arcstats.l2_size
+kstat.zfs.misc.arcstats.l2_io_error
+kstat.zfs.misc.arcstats.l2_cksum_bad
+kstat.zfs.misc.arcstats.l2_abort_lowmem
+kstat.zfs.misc.arcstats.l2_free_on_write
+kstat.zfs.misc.arcstats.l2_evict_l1cached
+kstat.zfs.misc.arcstats.l2_evict_reading
+kstat.zfs.misc.arcstats.l2_evict_lock_retry
+kstat.zfs.misc.arcstats.l2_writes_lock_retry
+kstat.zfs.misc.arcstats.l2_writes_error
+kstat.zfs.misc.arcstats.l2_writes_done
+kstat.zfs.misc.arcstats.l2_writes_sent
+kstat.zfs.misc.arcstats.l2_write_bytes
+kstat.zfs.misc.arcstats.l2_read_bytes
+kstat.zfs.misc.arcstats.l2_rw_clash
+kstat.zfs.misc.arcstats.l2_feeds
+kstat.zfs.misc.arcstats.l2_bufc_metadata_asize
+kstat.zfs.misc.arcstats.l2_bufc_data_asize
+kstat.zfs.misc.arcstats.l2_mfu_asize
+kstat.zfs.misc.arcstats.l2_mru_asize
+kstat.zfs.misc.arcstats.l2_prefetch_asize
+kstat.zfs.misc.arcstats.l2_misses
+kstat.zfs.misc.arcstats.l2_hits
+kstat.zfs.misc.arcstats.mfu_ghost_evictable_metadata
+kstat.zfs.misc.arcstats.mfu_ghost_evictable_data
+kstat.zfs.misc.arcstats.mfu_ghost_size
+kstat.zfs.misc.arcstats.mfu_evictable_metadata
+kstat.zfs.misc.arcstats.mfu_evictable_data
+kstat.zfs.misc.arcstats.mfu_size
+kstat.zfs.misc.arcstats.mru_ghost_evictable_metadata
+kstat.zfs.misc.arcstats.mru_ghost_evictable_data
+kstat.zfs.misc.arcstats.mru_ghost_size
+kstat.zfs.misc.arcstats.mru_evictable_metadata
+kstat.zfs.misc.arcstats.mru_evictable_data
+kstat.zfs.misc.arcstats.mru_size
+kstat.zfs.misc.arcstats.anon_evictable_metadata
+kstat.zfs.misc.arcstats.anon_evictable_data
+kstat.zfs.misc.arcstats.anon_size
+kstat.zfs.misc.arcstats.other_size
+kstat.zfs.misc.arcstats.bonus_size
+kstat.zfs.misc.arcstats.dnode_size
+kstat.zfs.misc.arcstats.dbuf_size
+kstat.zfs.misc.arcstats.metadata_size
+kstat.zfs.misc.arcstats.data_size
+kstat.zfs.misc.arcstats.hdr_size
+kstat.zfs.misc.arcstats.overhead_size
+kstat.zfs.misc.arcstats.uncompressed_size
+kstat.zfs.misc.arcstats.compressed_size
+kstat.zfs.misc.arcstats.size
+kstat.zfs.misc.arcstats.c_max
+kstat.zfs.misc.arcstats.c_min
+kstat.zfs.misc.arcstats.c
+kstat.zfs.misc.arcstats.p
+kstat.zfs.misc.arcstats.hash_chain_max
+kstat.zfs.misc.arcstats.hash_chains
+kstat.zfs.misc.arcstats.hash_collisions
+kstat.zfs.misc.arcstats.hash_elements_max
+kstat.zfs.misc.arcstats.hash_elements
+kstat.zfs.misc.arcstats.evict_l2_skip
+kstat.zfs.misc.arcstats.evict_l2_ineligible
+kstat.zfs.misc.arcstats.evict_l2_eligible_mru
+kstat.zfs.misc.arcstats.evict_l2_eligible_mfu
+kstat.zfs.misc.arcstats.evict_l2_eligible
+kstat.zfs.misc.arcstats.evict_l2_cached
+kstat.zfs.misc.arcstats.evict_not_enough
+kstat.zfs.misc.arcstats.evict_skip
+kstat.zfs.misc.arcstats.access_skip
+kstat.zfs.misc.arcstats.mutex_miss
+kstat.zfs.misc.arcstats.deleted
+kstat.zfs.misc.arcstats.mfu_ghost_hits
+kstat.zfs.misc.arcstats.mfu_hits
+kstat.zfs.misc.arcstats.mru_ghost_hits
+kstat.zfs.misc.arcstats.mru_hits
+kstat.zfs.misc.arcstats.prefetch_metadata_misses
+kstat.zfs.misc.arcstats.prefetch_metadata_hits
+kstat.zfs.misc.arcstats.prefetch_data_misses
+kstat.zfs.misc.arcstats.prefetch_data_hits
+kstat.zfs.misc.arcstats.demand_metadata_misses
+kstat.zfs.misc.arcstats.demand_metadata_hits
+kstat.zfs.misc.arcstats.demand_data_misses
+kstat.zfs.misc.arcstats.demand_data_hits
+kstat.zfs.misc.arcstats.misses
+kstat.zfs.misc.arcstats.hits
+kstat.zfs.misc.dmu_tx
+kstat.zfs.misc.dmu_tx.dmu_tx_quota
+kstat.zfs.misc.dmu_tx.dmu_tx_wrlog_delay
+kstat.zfs.misc.dmu_tx.dmu_tx_dirty_frees_delay
+kstat.zfs.misc.dmu_tx.dmu_tx_dirty_over_max
+kstat.zfs.misc.dmu_tx.dmu_tx_dirty_delay
+kstat.zfs.misc.dmu_tx.dmu_tx_dirty_throttle
+kstat.zfs.misc.dmu_tx.dmu_tx_memory_reclaim
+kstat.zfs.misc.dmu_tx.dmu_tx_memory_reserve
+kstat.zfs.misc.dmu_tx.dmu_tx_group
+kstat.zfs.misc.dmu_tx.dmu_tx_suspended
+kstat.zfs.misc.dmu_tx.dmu_tx_error
+kstat.zfs.misc.dmu_tx.dmu_tx_delay
+kstat.zfs.misc.dmu_tx.dmu_tx_assigned
+kstat.zfs.misc.zfetchstats
+kstat.zfs.misc.zfetchstats.io_active
+kstat.zfs.misc.zfetchstats.io_issued
+kstat.zfs.misc.zfetchstats.max_streams
+kstat.zfs.misc.zfetchstats.misses
+kstat.zfs.misc.zfetchstats.hits
+kstat.zfs.misc.dnodestats
+kstat.zfs.misc.dnodestats.dnode_move_active
+kstat.zfs.misc.dnodestats.dnode_move_rwlock
+kstat.zfs.misc.dnodestats.dnode_move_handle
+kstat.zfs.misc.dnodestats.dnode_move_special
+kstat.zfs.misc.dnodestats.dnode_move_recheck2
+kstat.zfs.misc.dnodestats.dnode_move_recheck1
+kstat.zfs.misc.dnodestats.dnode_move_invalid
+kstat.zfs.misc.dnodestats.dnode_alloc_next_block
+kstat.zfs.misc.dnodestats.dnode_alloc_race
+kstat.zfs.misc.dnodestats.dnode_alloc_next_chunk
+kstat.zfs.misc.dnodestats.dnode_buf_evict
+kstat.zfs.misc.dnodestats.dnode_reallocate
+kstat.zfs.misc.dnodestats.dnode_allocate
+kstat.zfs.misc.dnodestats.dnode_free_interior_lock_retry
+kstat.zfs.misc.dnodestats.dnode_hold_free_refcount
+kstat.zfs.misc.dnodestats.dnode_hold_free_overflow
+kstat.zfs.misc.dnodestats.dnode_hold_free_lock_retry
+kstat.zfs.misc.dnodestats.dnode_hold_free_lock_misses
+kstat.zfs.misc.dnodestats.dnode_hold_free_misses
+kstat.zfs.misc.dnodestats.dnode_hold_free_hits
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_type_none
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_lock_misses
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_lock_retry
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_interior
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_misses
+kstat.zfs.misc.dnodestats.dnode_hold_alloc_hits
+kstat.zfs.misc.dnodestats.dnode_hold_dbuf_read
+kstat.zfs.misc.dnodestats.dnode_hold_dbuf_hold
+kstat.zfs.misc.dbgmsg
+kstat.zfs.misc.abdstats
+kstat.zfs.misc.abdstats.linear_data_size
+kstat.zfs.misc.abdstats.linear_cnt
+kstat.zfs.misc.abdstats.scatter_chunk_waste
+kstat.zfs.misc.abdstats.scatter_data_size
+kstat.zfs.misc.abdstats.scatter_cnt
+kstat.zfs.misc.abdstats.struct_size
+kstat.zfs.misc.metaslab_stats
+kstat.zfs.misc.metaslab_stats.try_hard
+kstat.zfs.misc.metaslab_stats.too_many_tries
+kstat.zfs.misc.metaslab_stats.reload_tree
+kstat.zfs.misc.metaslab_stats.trace_over_limit
+kstat.zfs.misc.fm
+kstat.zfs.misc.fm.erpt-duplicates
+kstat.zfs.misc.fm.payload-set-failed
+kstat.zfs.misc.fm.fmri-set-failed
+kstat.zfs.misc.fm.erpt-set-failed
+kstat.zfs.misc.fm.erpt-dropped

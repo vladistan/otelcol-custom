@@ -80,6 +80,11 @@ grep -v "awscloudwatchreceiver =>" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-aws
 expect_exit_code "a scrape manifest without the CloudWatch replace fails" 1 "$CHECK" "$SCRATCH/no-aws"
 expect_output "the missing CloudWatch replace names the module" "awscloudwatchreceiver"
 
+scratch_tree "$SCRATCH/no-alb-encoding"
+grep -v "awslogsencodingextension =>" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-alb-encoding/builder-scrape.yaml"
+expect_exit_code "a scrape manifest without the AWS logs encoding replace fails" 1 "$CHECK" "$SCRATCH/no-alb-encoding"
+expect_output "the missing encoding replace names the module" "awslogsencodingextension"
+
 scratch_tree "$SCRATCH/no-pve-replace"
 grep -v "pvereceiver =>" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-pve-replace/builder-scrape.yaml"
 expect_exit_code "a scrape manifest without the pve replace fails" 1 "$CHECK" "$SCRATCH/no-pve-replace"
@@ -96,6 +101,13 @@ scratch_tree "$SCRATCH/no-snmp"
 grep -v "snmpreceiver" "$ROOT/builder-scrape.yaml" >"$SCRATCH/no-snmp/builder-scrape.yaml"
 expect_exit_code "a scrape manifest without the snmp receiver fails" 1 "$CHECK" "$SCRATCH/no-snmp"
 expect_output "the missing snmp entry names the receiver" "snmpreceiver"
+
+for edge in builder-edge.yaml builder-edge-static.yaml; do
+	scratch_tree "$SCRATCH/no-netflow-$edge"
+	grep -v "netflowreceiver =>" "$ROOT/$edge" >"$SCRATCH/no-netflow-$edge/$edge"
+	expect_exit_code "$edge without the patched netflow replace fails" 1 "$CHECK" "$SCRATCH/no-netflow-$edge"
+	expect_output "the missing netflow replace names $edge" "$edge does not replace .*netflowreceiver"
+done
 
 scratch_tree "$SCRATCH/gone"
 rm -rf "$SCRATCH/gone/receiver/googlecloudmonitoringreceiver"

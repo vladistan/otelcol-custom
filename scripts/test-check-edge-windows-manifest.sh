@@ -64,6 +64,67 @@ grep -v "fswatchreceiver" "$WINDOWS" >"$SCRATCH/no-fswatch.yaml"
 expect_exit_code "a Windows manifest without fswatchreceiver fails" 1 "$CHECK" "$SCRATCH/no-fswatch.yaml" "$STATIC"
 expect_output "the missing fswatchreceiver is named" "expected addition is missing: .*fswatchreceiver"
 
+grep -v "windiskhealthreceiver" "$WINDOWS" >"$SCRATCH/no-windiskhealth.yaml"
+expect_exit_code "a Windows manifest without windiskhealthreceiver fails" 1 "$CHECK" "$SCRATCH/no-windiskhealth.yaml" "$STATIC"
+expect_output "the missing windiskhealthreceiver is named" "expected addition is missing: .*windiskhealthreceiver"
+
+# windiskhealthreceiver reads through the decoder and schema modules, so the Windows edge keeps both.
+for name in smartdecode hwschema; do
+	grep -v "$name" "$WINDOWS" >"$SCRATCH/no-win-$name.yaml"
+	expect_exit_code "a Windows manifest without $name fails" 1 "$CHECK" "$SCRATCH/no-win-$name.yaml" "$STATIC"
+	expect_output "the missing Windows $name is named" "unexpected removal: .*$name"
+done
+
+grep -v "sqlserverreceiver" "$WINDOWS" >"$SCRATCH/no-sqlserver.yaml"
+expect_exit_code "a Windows manifest without sqlserverreceiver fails" 1 "$CHECK" "$SCRATCH/no-sqlserver.yaml" "$STATIC"
+expect_output "the missing sqlserverreceiver is named" "expected addition is missing: .*sqlserverreceiver"
+
+# sqlserver is at the contrib version of the other contrib components, in the Windows manifest only.
+if grep -q "receiver/sqlserverreceiver v0.164.1" "$ROOT/builder-edge-windows.yaml"; then
+	echo "PASS: builder-edge-windows.yaml lists sqlserverreceiver v0.164.1"
+else
+	echo "FAIL: builder-edge-windows.yaml does not list sqlserverreceiver v0.164.1"
+	failures=$((failures + 1))
+fi
+for other in builder-config.yaml builder-edge.yaml builder-edge-static.yaml builder-gateway.yaml builder-scrape.yaml builder-edge-freebsd.yaml; do
+	if grep -q "sqlserver" "$ROOT/$other"; then
+		echo "FAIL: $other lists sqlserver; only the Windows edge manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no sqlserver entry"
+	fi
+done
+
+# The entrypoint registers its config providers from the imports of main.go. The manifest must list the same
+# ones: an explicit providers section replaces the builder default, and a provider left out loses its pinned
+# version in the generated go.mod.
+MAIN_GO="$ROOT/cmd/otelcol-custom/main.go"
+providers_in_main() {
+	sed -nE 's#^[[:space:]]*([a-z]+[[:space:]]+)?"go\.opentelemetry\.io/collector/confmap/provider/([a-z]+provider)".*#\2#p' "$MAIN_GO" | LC_ALL=C sort -u
+}
+providers_in_manifest() {
+	awk '/^providers:/ {f = 1; next} /^[a-z]/ {f = 0} f' "$1" | sed -nE 's#.*confmap/provider/([a-z]+provider)[[:space:]].*#\1#p' | LC_ALL=C sort -u
+}
+providers_in_main >"$SCRATCH/main-providers"
+if [ "$(wc -l <"$SCRATCH/main-providers")" -ge 5 ]; then
+	echo "PASS: main.go imports $(wc -l <"$SCRATCH/main-providers" | tr -d ' ') config providers"
+else
+	echo "FAIL: main.go imports fewer than 5 config providers: $(tr '\n' ' ' <"$SCRATCH/main-providers")"
+	failures=$((failures + 1))
+fi
+providers_in_manifest "$WINDOWS" >"$SCRATCH/manifest-providers"
+if cmp -s "$SCRATCH/main-providers" "$SCRATCH/manifest-providers"; then
+	echo "PASS: builder-edge-windows.yaml lists the providers that main.go imports"
+else
+	echo "FAIL: builder-edge-windows.yaml providers differ from main.go: manifest $(tr '\n' ' ' <"$SCRATCH/manifest-providers") main $(tr '\n' ' ' <"$SCRATCH/main-providers")"
+	failures=$((failures + 1))
+fi
+while IFS= read -r provider; do
+	grep -v "confmap/provider/$provider" "$WINDOWS" >"$SCRATCH/no-$provider.yaml"
+	expect_exit_code "a Windows manifest without $provider fails" 1 "$CHECK" "$SCRATCH/no-$provider.yaml" "$STATIC"
+	expect_output "the missing $provider is named" "$provider"
+done <"$SCRATCH/main-providers"
+
 grep -v "tightvncprocessor" "$WINDOWS" >"$SCRATCH/no-tightvnc.yaml"
 expect_exit_code "a Windows manifest without tightvncprocessor fails" 1 "$CHECK" "$SCRATCH/no-tightvnc.yaml" "$STATIC"
 expect_output "the missing tightvncprocessor is named" "expected addition is missing: .*tightvncprocessor"
@@ -74,6 +135,12 @@ for linux in builder-config.yaml builder-edge.yaml builder-edge-static.yaml buil
 		failures=$((failures + 1))
 	else
 		echo "PASS: $linux has no fswatch entry"
+	fi
+	if grep -q "windiskhealth" "$ROOT/$linux"; then
+		echo "FAIL: $linux lists windiskhealth; only the Windows edge manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $linux has no windiskhealth entry"
 	fi
 	if grep -q "tightvnc" "$ROOT/$linux"; then
 		echo "FAIL: $linux lists tightvnc; only the Windows edge manifest may"
@@ -193,8 +260,8 @@ expect_exit_code "ethtoolreceiver on the Windows edge fails" 1 \
 	"$CHECK" "$SCRATCH/windows-with-ethtool.yaml" "$STATIC"
 expect_output "the Windows ethtool is named" "ethtoolreceiver"
 
-# The smart receiver and the two modules it imports are Linux only.
-for name in smartreceiver smartdecode hwschema; do
+# The smart receiver is Linux only; the two modules it imports are shared with windiskhealthreceiver.
+for name in smartreceiver; do
 	grep -v "$name" "$STATIC" >"$SCRATCH/static-no-$name.yaml"
 	expect_exit_code "$name no longer removed from static fails" 1 \
 		"$CHECK" "$WINDOWS" "$SCRATCH/static-no-$name.yaml"
@@ -243,6 +310,12 @@ sed -i.bak '/^receivers:/a\
 expect_exit_code "netflowreceiver on the Windows edge fails" 1 \
 	"$CHECK" "$SCRATCH/windows-with-netflow.yaml" "$STATIC"
 expect_output "the Windows netflow is named" "netflowreceiver"
+
+# The patched netflow receiver is a local copy: its replace line leaves with the receiver.
+grep -v "netflowreceiver =>" "$STATIC" >"$SCRATCH/static-no-netflow-replace.yaml"
+expect_exit_code "the netflow replace no longer removed from static fails" 1 \
+	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-netflow-replace.yaml"
+expect_output "the missing netflow replace removal is named" "expected removal is missing: replace:.*netflowreceiver"
 
 grep -v "zfskstatreceiver" "$STATIC" >"$SCRATCH/static-no-zfskstat.yaml"
 expect_exit_code "zfskstatreceiver no longer removed from static fails" 1 \
@@ -364,19 +437,15 @@ check_linux_edge_only hwmon
 check_linux_edge_only iscsi
 check_linux_edge_only idrac
 
-# hwschema is the library idrac builds on: its replace line is in the Linux edge manifests and not on Windows.
-for linux in builder-edge.yaml builder-edge-static.yaml; do
-	if grep -q "receiver/hwschema => ../../receiver/hwschema" "$ROOT/$linux"; then
-		echo "PASS: $linux replaces hwschema"
+# hwschema is the library idrac and windiskhealth build on: its replace line is in the Linux and Windows edge manifests.
+for edge in builder-edge.yaml builder-edge-static.yaml builder-edge-windows.yaml; do
+	if grep -q "receiver/hwschema => ../../receiver/hwschema" "$ROOT/$edge"; then
+		echo "PASS: $edge replaces hwschema"
 	else
-		echo "FAIL: $linux does not replace hwschema"
+		echo "FAIL: $edge does not replace hwschema"
 		failures=$((failures + 1))
 	fi
 done
-grep -v "receiver/hwschema" "$STATIC" >"$SCRATCH/static-no-hwschema.yaml"
-expect_exit_code "hwschema no longer removed from static fails" 1 \
-	"$CHECK" "$WINDOWS" "$SCRATCH/static-no-hwschema.yaml"
-expect_output "the missing hwschema removal is named" "expected removal is missing: .*hwschema"
 
 # The ipmi receiver is in the scrape manifest only, with go-ipmi pinned.
 if grep -q "otelcol-custom/receiver/ipmireceiver v0.0.0" "$ROOT/builder-scrape.yaml"; then
@@ -401,6 +470,24 @@ for other in builder-config.yaml builder-gateway.yaml builder-edge.yaml builder-
 done
 
 check_linux_edge_only megaraid
+
+# The inventory receiver is in the Linux, static Linux and Windows edge manifests and in no other.
+for listed in builder-edge.yaml builder-edge-static.yaml builder-edge-windows.yaml; do
+	if grep -q "otelcol-custom/receiver/inventoryreceiver v0.0.0" "$ROOT/$listed"; then
+		echo "PASS: $listed lists inventoryreceiver"
+	else
+		echo "FAIL: $listed does not list inventoryreceiver"
+		failures=$((failures + 1))
+	fi
+done
+for other in builder-config.yaml builder-gateway.yaml builder-scrape.yaml builder-edge-freebsd.yaml; do
+	if grep -q "inventoryreceiver" "$ROOT/$other"; then
+		echo "FAIL: $other lists inventoryreceiver; the Linux and Windows edge manifests only may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no inventoryreceiver entry"
+	fi
+done
 
 expect_exit_code "a missing manifest is a usage error" 2 "$CHECK" "$SCRATCH/absent.yaml"
 expect_output "usage error names the file" "absent.yaml"

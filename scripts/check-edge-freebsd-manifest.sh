@@ -33,6 +33,7 @@ readonly REMOVED=(
 	"replace:$LOCAL/receiver/pvereceiver"
 	"$CONTRIB/receiver/snmpreceiver"
 	"$CONTRIB/receiver/netflowreceiver"
+	"replace:$CONTRIB/receiver/netflowreceiver"
 	"$CONTRIB/extension/observer/k8sobserver"
 	"$CONTRIB/receiver/receivercreator"
 	"$CONTRIB/receiver/mongodbreceiver"
@@ -50,6 +51,10 @@ readonly REMOVED=(
 	"replace:$LOCAL/receiver/idracreceiver"
 	"$LOCAL/receiver/megaraidreceiver"
 	"replace:$LOCAL/receiver/megaraidreceiver"
+	"$LOCAL/receiver/inventoryreceiver"
+	"replace:$LOCAL/receiver/inventoryreceiver"
+	"$LOCAL/receiver/ksmreceiver"
+	"replace:$LOCAL/receiver/ksmreceiver"
 	"replace:$LOCAL/receiver/hwschema"
 )
 

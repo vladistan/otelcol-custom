@@ -64,6 +64,8 @@ type NVMeIdentify struct {
 	Serial    string
 	Firmware  string
 	SizeBytes uint64
+	// VendorID is the PCI vendor id, bytes 0 and 1 of the answer.
+	VendorID uint16
 }
 
 func trimField(b []byte) string { return strings.Trim(string(b), " \x00") }
@@ -74,6 +76,7 @@ func ParseNVMeIdentify(buf []byte) (NVMeIdentify, error) {
 		return NVMeIdentify{}, fmt.Errorf("%w: Identify Controller gave %d bytes, want 4096", ErrShortBuffer, len(buf))
 	}
 	return NVMeIdentify{
+		VendorID:  binary.LittleEndian.Uint16(buf[0:2]),
 		Serial:    trimField(buf[4:24]),
 		Model:     trimField(buf[24:64]),
 		Firmware:  trimField(buf[64:72]),

@@ -44,10 +44,12 @@ spec:
     spec:
       containers:
         - name: otelcol-scrape
-          image: ghcr.io/vladistan/otelcol-scrape:v0.3.16
+          image: ghcr.io/vladistan/otelcol-scrape:v0.3.17
           args: ["--config", "/etc/otel/config.yaml"]
           securityContext:
             runAsNonRoot: true
+            runAsUser: 10001 # the otel user of the image
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:

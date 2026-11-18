@@ -1,0 +1,23 @@
+# Linux or Windows edge reporting the hardware of a physical host once a day.
+#
+# Validate: otelcol-edge validate --config test/configs/edge-inventory.yaml
+# On Linux the SMBIOS table (/sys/firmware/dmi/tables/DMI) and the serial number files in /sys/class/dmi/id
+# are readable by root only; without root those facts are left out. Serial numbers are sent as read.
+# Virtual machines and containers send nothing. See docs/otel-metrics.md.
+
+receivers:
+  inventory:
+    collection_interval: 24h
+    max_drives: 64
+processors:
+  batch:
+    timeout: 10s
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    metrics:
+      receivers: [inventory]
+      processors: [batch]
+      exporters: [debug]

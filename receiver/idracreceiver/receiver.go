@@ -5,12 +5,15 @@ package idracreceiver
 
 import (
 	"context"
+	"fmt"
 	"hash/fnv"
+	"slices"
 	"sync"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/receiver"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -40,35 +43,33 @@ type idracReceiver struct {
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	sem    chan struct{}
+	sem    chan struct{} // limits the base scrapes
+	// storageSem limits the storage reads on its own, so a slow storage read never holds a slot a base scrape needs.
+	storageSem chan struct{}
 }
 
 func newReceiver(settings receiver.Settings, cfg *Config, next consumer.Metrics) (*idracReceiver, error) {
 	counter, err := settings.MeterProvider.Meter(scopeName).Int64Counter(authFailuresMetric,
 		metric.WithDescription("Failed BMC logins, by target"), metric.WithUnit("{login}"))
 	if err != nil {
-		settings.Logger.Warn("Cannot create the authentication failure counter", zap.Error(err))
+		return nil, fmt.Errorf("create %s: %w", authFailuresMetric, err)
 	}
 	skips, err := settings.MeterProvider.Meter(scopeName).Int64Counter(skippedReadsMetric,
 		metric.WithDescription("Parts of a BMC read left out because the BMC answered an error, by target and part"), metric.WithUnit("{read}"))
 	if err != nil {
-		settings.Logger.Warn("Cannot create the skipped read counter", zap.Error(err))
+		return nil, fmt.Errorf("create %s: %w", skippedReadsMetric, err)
 	}
 	r := &idracReceiver{
 		logger: settings.Logger, interval: cfg.CollectionInterval, consumer: next, offset: startOffset,
-		sem: make(chan struct{}, cfg.MaxConcurrent),
+		sem: make(chan struct{}, cfg.MaxConcurrent), storageSem: make(chan struct{}, cfg.MaxConcurrent),
 	}
 	e := &env{
 		now: time.Now, logger: settings.Logger,
 		authFailed: func(name string) {
-			if counter != nil {
-				counter.Add(context.Background(), 1, metric.WithAttributes(attribute.String("bmc", name)))
-			}
+			counter.Add(context.Background(), 1, metric.WithAttributes(attribute.String("bmc", name)))
 		},
 		skipped: func(name, part string) {
-			if skips != nil {
-				skips.Add(context.Background(), 1, metric.WithAttributes(attribute.String("bmc", name), attribute.String("part", part)))
-			}
+			skips.Add(context.Background(), 1, metric.WithAttributes(attribute.String("bmc", name), attribute.String("part", part)))
 		},
 	}
 	for _, tc := range cfg.Targets {
@@ -86,6 +87,10 @@ func (r *idracReceiver) Start(ctx context.Context, _ component.Host) error {
 	for _, t := range r.targets {
 		r.wg.Add(1)
 		go r.run(ctx, t)
+		if slices.Contains(t.cfg.Resources, "storage") {
+			r.wg.Add(1)
+			go r.runStorage(ctx, t)
+		}
 	}
 	r.logger.Info("idrac receiver started", zap.Int("targets", len(r.targets)), zap.Duration("collection_interval", r.interval))
 	return nil
@@ -120,15 +125,41 @@ func (r *idracReceiver) run(ctx context.Context, t *target) {
 	}
 }
 
+// runStorage reads the storage resources of a target on its own timer, apart from the base scrape.
+func (r *idracReceiver) runStorage(ctx context.Context, t *target) {
+	defer r.wg.Done()
+	every := t.cfg.storageInterval(r.interval)
+	timer := time.NewTimer(r.offset(t.cfg.Name, r.interval))
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			r.storageAndSend(ctx, t)
+			timer.Reset(every)
+		}
+	}
+}
+
 func (r *idracReceiver) scrapeAndSend(ctx context.Context, t *target) {
+	r.send(ctx, t, t.scrape, r.sem)
+}
+
+func (r *idracReceiver) storageAndSend(ctx context.Context, t *target) {
+	r.send(ctx, t, t.scrapeStorage, r.storageSem)
+}
+
+// send runs one read under the concurrency limit sem and passes the points on; a read with no points sends nothing.
+func (r *idracReceiver) send(ctx context.Context, t *target, read func(context.Context) pmetric.Metrics, sem chan struct{}) {
 	select {
-	case r.sem <- struct{}{}:
+	case sem <- struct{}{}:
 	case <-ctx.Done():
 		return
 	}
-	md := t.scrape(ctx)
-	<-r.sem
-	if ctx.Err() != nil {
+	md := read(ctx)
+	<-sem
+	if ctx.Err() != nil || md.DataPointCount() == 0 {
 		return
 	}
 	if err := r.consumer.ConsumeMetrics(ctx, md); err != nil {

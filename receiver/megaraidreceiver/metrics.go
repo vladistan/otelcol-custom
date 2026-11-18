@@ -56,6 +56,14 @@ const (
 
 	errorOther      = "other"
 	errorPredictive = "predictive_failure"
+	errorRead       = "read"
+	errorWrite      = "write"
+	errorVerify     = "verify"
+
+	// errorUncorrected is the error.type of the SAS uncorrected totals; attrDirection says which
+	// error page a count came from.
+	errorUncorrected = "uncorrected"
+	attrDirection    = "raid.error.direction"
 )
 
 // states are the hw.state values a status metric emits; needs_cleaning does not apply to drives.

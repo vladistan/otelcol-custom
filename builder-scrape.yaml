@@ -20,6 +20,9 @@ replaces:
   # go-ipmi is pre-1.0: the version is pinned here, and a bump is a deliberate change.
   - github.com/bougou/go-ipmi => github.com/bougou/go-ipmi v0.9.2
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awscloudwatchreceiver => ../../receiver/awscloudwatchreceiver
+  # AWS logs encoding with a local patch: an ALB line with an unbracketed IPv6 address no longer fails the object
+  # yamllint disable-line rule:line-length
+  - github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/awslogsencodingextension => ../../extension/encoding/awslogsencodingextension
   # yamllint disable-line rule:line-length
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver => ../../receiver/googlecloudmonitoringreceiver
   - github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor

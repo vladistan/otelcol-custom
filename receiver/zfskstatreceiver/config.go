@@ -39,6 +39,9 @@ type Config struct {
 	// Source is auto, proc or sysctl; auto means sysctl on FreeBSD and proc elsewhere.
 	// KstatPath applies to the proc source only.
 	Source string `mapstructure:"source"`
+	// IoctlDevice is the ZFS control device the space series are read from with read-only ioctls;
+	// empty turns the space series off.
+	IoctlDevice string `mapstructure:"ioctl_device"`
 }
 
 const (

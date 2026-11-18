@@ -9,16 +9,19 @@ import (
 	"go.opentelemetry.io/collector/component"
 )
 
-// Config defines configuration for the resourceversion processor.
 type Config struct {
-	// Role is the collector role (e.g., "edge", "gateway", "scrape")
-	// The version attribute will be named "collector.{role}.version"
+	// Role is the collector role (e.g., "edge", "gateway", "scrape").
+	// The version attribute is named "collector.{role}.version".
 	Role string `mapstructure:"role"`
+
+	// ShortHostName cuts host.name of each resource at its first dot, unless the
+	// value is an IP address or has no dot. Off by default.
+	ShortHostName bool `mapstructure:"short_host_name"`
 }
 
 var _ component.Config = (*Config)(nil)
 
-// Validate checks if the processor configuration is valid.
+// Validate requires a role because it names the version attribute.
 func (cfg *Config) Validate() error {
 	if cfg.Role == "" {
 		return errors.New("role must be specified")

@@ -6,7 +6,9 @@ package pvereceiver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
@@ -58,11 +60,11 @@ func newReceiver(settings receiver.Settings, cfg *Config) (*pveReceiver, error) 
 		node := cfg.Guests.Node
 		r.nodeSource = "guests.node"
 		if node == "" {
-			node = localNode()
+			var err error
+			if node, err = localNode(); err != nil {
+				return nil, fmt.Errorf("guests.node is empty and the host name is unknown; set guests.node: %w", err)
+			}
 			r.nodeSource = "host name"
-		}
-		if node == "" {
-			return nil, errors.New("guests.node is empty and the host name is unknown; set guests.node")
 		}
 		r.clients = append(r.clients, client)
 		r.guests = newGuestsScraper(settings.Logger, cfg, client, node)
@@ -207,10 +209,10 @@ func (r *pveReceiver) logScrapeError(scraper string, err error) {
 	var apiErr *apiError
 	if errors.As(err, &apiErr) {
 		switch apiErr.Status {
-		case 401:
+		case http.StatusUnauthorized:
 			r.logger.Warn("PVE rejected the token (HTTP 401)", zap.String("scraper", scraper), zap.Error(err))
 			return
-		case 403:
+		case http.StatusForbidden:
 			hint := "the resources token needs the PVEAuditor role on /"
 			if scraper == "guests" {
 				hint = privilegeMessage(apiErr)

@@ -95,6 +95,11 @@ receivers:
 - An empty `api_version` lets the Docker client negotiate with the daemon. It was run
   against Docker 24.0.9 (API 1.43), 28 and 29. On Docker 24.0.9 it starts and exports
   the same container metrics, limits included, as a pinned `api_version: "1.43"`.
+- `docker_stats` puts `container.name` on the resource of each container and sets no
+  `service.name`. List the `containername` processor in the metrics pipeline that
+  holds `docker_stats` and the metrics get `service.name` from `container.name`, by
+  the same rule as the log records above. A pipeline without the processor keeps them
+  without a service name.
 - `container.cpu.limit` appears only for containers that have a CPU limit.
   `container.memory.usage.limit` appears for every container; a value near the host
   total means no limit.

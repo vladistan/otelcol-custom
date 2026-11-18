@@ -35,9 +35,11 @@ type fakeBus struct {
 	nvme    map[string]smartdecode.NVMeTransport
 	openErr map[string]error
 	opened  []string
+	// discoverErr is returned with the devices; wrap errPartialList for an incomplete listing.
+	discoverErr error
 }
 
-func (b *fakeBus) discover() ([]device, error) { return b.devs, nil }
+func (b *fakeBus) discover() ([]device, error) { return b.devs, b.discoverErr }
 
 func (b *fakeBus) openATA(name string, _ time.Duration) (smartdecode.ATATransport, io.Closer, error) {
 	b.opened = append(b.opened, name)
@@ -64,12 +66,12 @@ func newBus() *fakeBus {
 }
 
 func (b *fakeBus) addATA(name string, tr smartdecode.ATATransport) {
-	b.devs = append(b.devs, device{name, kindSATA})
+	b.devs = append(b.devs, device{name: name, kind: kindSATA})
 	b.ata[name] = tr
 }
 
 func (b *fakeBus) addNVMe(name string, tr smartdecode.NVMeTransport) {
-	b.devs = append(b.devs, device{name, kindNVMe})
+	b.devs = append(b.devs, device{name: name, kind: kindNVMe})
 	b.nvme[name] = tr
 }
 
@@ -522,7 +524,7 @@ func TestSATA_StandbyIsReadWhenSkipIfStandbyIsOff(t *testing.T) {
 
 	md := scrapeSATA(t, d, func(c *Config) { c.SkipIfStandby = false })
 
-	assert.NotZero(t, md.MetricCount())
+	assert.NotEmpty(t, points(md, "hw.temperature"), "a drive in standby is read when the option is off")
 }
 
 func TestSATA_UnsupportedAndDisabledSmartAreCountedAndNeverEnabled(t *testing.T) {
@@ -567,8 +569,42 @@ func TestTimeoutSkipsOneDeviceAndTheNextIsRead(t *testing.T) {
 
 	md := h.scrape()
 
-	assert.NotZero(t, len(points(md, "hw.temperature")))
+	assert.NotEmpty(t, points(md, "hw.temperature"), "the NVMe disk after the timeout is read")
 	assert.Equal(t, map[string]int64{"timeout": 1}, h.skipped(t))
+}
+
+func TestAPartialDiskListIsReadAndWarnedOncePerEpisode(t *testing.T) {
+	bus := newBus()
+	bus.addNVMe("nvme0", smarttest.HealthyNVMe("SN9"))
+	bus.discoverErr = fmt.Errorf("%w: list /sys/class/nvme: permission denied", errPartialList)
+	h := newHarness(t, bus)
+
+	md := h.scrape()
+	h.scrape()
+
+	assert.NotEmpty(t, points(md, "hw.temperature"), "the disks found are still read")
+	warns := h.logs.FilterLevelExact(zapcore.WarnLevel).All()
+	require.Len(t, warns, 1, "one warning for the two intervals")
+	assert.Contains(t, fmt.Sprint(warns[0].ContextMap()), "permission denied")
+
+	bus.discoverErr = nil
+	h.scrape()
+	bus.discoverErr = fmt.Errorf("%w: list /sys/class/nvme: permission denied", errPartialList)
+	h.scrape()
+	assert.Len(t, h.logs.FilterLevelExact(zapcore.WarnLevel).All(), 2, "a new episode warns again")
+}
+
+func TestAFailedDiskListGivesNoMetricsAndOneWarningPerEpisode(t *testing.T) {
+	bus := newBus()
+	bus.addNVMe("nvme0", smarttest.HealthyNVMe("SN9"))
+	bus.discoverErr = errors.New("list /sys/block: gone")
+	h := newHarness(t, bus)
+
+	md := h.scrape()
+	h.scrape()
+
+	assert.Zero(t, md.MetricCount())
+	assert.Len(t, h.logs.FilterLevelExact(zapcore.WarnLevel).All(), 1)
 }
 
 func TestPermissionErrorNamesTheDeviceAndTheCapabilityOncePerEpisode(t *testing.T) {
@@ -588,7 +624,7 @@ func TestPermissionErrorNamesTheDeviceAndTheCapabilityOncePerEpisode(t *testing.
 	assert.Contains(t, text, "CAP_SYS_ADMIN")
 	assert.Contains(t, text, "sda")
 	assert.Contains(t, text, "CAP_SYS_RAWIO")
-	assert.NotZero(t, len(points(first, "hw.physical_disk.size")), "the third device is still read")
+	assert.NotEmpty(t, points(first, "hw.physical_disk.size"), "the third device is still read")
 }
 
 func TestPermissionEpisodeEndsWhenTheDeviceReadsAgain(t *testing.T) {
@@ -775,7 +811,7 @@ func TestHwIDFallsBackToTheWWNThenTheKernelName(t *testing.T) {
 		ids[p.attrs["hw.name"]] = p.attrs["hw.id"]
 		assert.NotContains(t, p.attrs, "hw.parent")
 	}
-	assert.Equal(t, map[string]string{"sda": "SNX", "sdb": "5000c5001234abcd", "sdc": "sdc"}, ids)
+	assert.Equal(t, map[string]string{"sda": "SNX", "sdb": "5000c5001234abcd", "sdc": "sdc"}, ids) // pragma: allowlist secret
 }
 
 func TestEveryMetricNameStartsWithHW(t *testing.T) {
@@ -813,7 +849,7 @@ func TestAReadErrorOfAnotherKindIsCountedAndTheScrapeContinues(t *testing.T) {
 
 	md := h.scrape()
 
-	assert.NotZero(t, len(points(md, "hw.temperature")))
+	assert.NotEmpty(t, points(md, "hw.temperature"), "the NVMe disk after the failing one is read")
 	assert.Equal(t, map[string]int64{"error": 1}, h.skipped(t))
 	assert.Len(t, h.logs.FilterLevelExact(zapcore.WarnLevel).All(), 1)
 }

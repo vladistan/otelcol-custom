@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -68,7 +69,7 @@ func newGuests(t *testing.T, f *fakePVE, mutate func(*Config)) *guestsHarness {
 	return &guestsHarness{s: newGuestsScraper(zap.New(core), cfg, c, "pve1"), logs: logs}
 }
 
-// factsOf returns the change-event records as vmid -> fact -> value, in order.
+// factRecords returns the change-event records in order, each as its attributes plus the body.
 func factRecords(logs plog.Logs) []map[string]string {
 	var out []map[string]string
 	rls := logs.ResourceLogs()
@@ -361,7 +362,40 @@ func TestStartOffsetsDifferBetweenScrapers(t *testing.T) {
 func TestLocalNodeIsTheShortHostname(t *testing.T) {
 	assert.Equal(t, "pve12", shortHostname("pve12.lab.example"))
 	assert.Equal(t, "pve12", shortHostname("pve12"))
-	assert.NotEmpty(t, localNode())
+}
+
+func TestLocalNodeReadsTheHostNameAndRejectsAFailureOrAnEmptyName(t *testing.T) {
+	cases := []struct {
+		name     string
+		host     string
+		hostErr  error
+		wantNode string
+		wantErr  string
+	}{
+		{name: "fqdn", host: "pve12.lab.example", wantNode: "pve12"},
+		{name: "short", host: "pve12", wantNode: "pve12"},
+		{name: "read fails", hostErr: errors.New("no host name"), wantErr: "no host name"},
+		{name: "empty", host: "", wantErr: "empty"},
+		{name: "leading dot", host: ".lab.example", wantErr: "empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			old := hostnameFn
+			hostnameFn = func() (string, error) { return tc.host, tc.hostErr }
+			t.Cleanup(func() { hostnameFn = old })
+
+			node, err := localNode()
+
+			if tc.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				assert.Empty(t, node)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantNode, node)
+		})
+	}
 }
 
 func TestLoopbackAndLinkLocalAddressesAreDropped(t *testing.T) {
@@ -454,4 +488,208 @@ func TestPathsEscapeTheNodeName(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, f.escapedList(), "/api2/json/nodes/a%2Fb/qemu")
+}
+
+func lockFake(t *testing.T, qemu, lxc string) *fakePVE {
+	t.Helper()
+	f := newFakePVE(t, false)
+	f.ok(prefix+"/qemu", qemu)
+	f.ok(prefix+"/lxc", lxc)
+	return f
+}
+
+func lockPoints(t *testing.T, f *fakePVE) []point {
+	t.Helper()
+	pts, _ := sweep(t, newGuests(t, f, nil), t0)
+	return find(pts, "pve.guest.lock")
+}
+
+func TestLockedGuestGivesOneSeriesAndUnlockedGuestNone(t *testing.T) {
+	f := lockFake(t,
+		`{"data":[{"vmid":100,"status":"running","lock":"backup"},{"vmid":101,"status":"running"}]}`,
+		`{"data":[]}`)
+
+	got := lockPoints(t, f)
+
+	require.Len(t, got, 1)
+	assert.InDelta(t, 1, got[0].value, 1e-9)
+	assert.Equal(t, "1", got[0].unit)
+	assert.Equal(t, pmetric.MetricTypeGauge, got[0].kind)
+	assert.Equal(t, map[string]string{"pve.vmid": "100", "pve.node": "pve1", "type": "qemu", "state": "backup"}, got[0].attrs)
+}
+
+func TestLockSeriesPerStateAndForUnknownValues(t *testing.T) {
+	for _, state := range []string{"backup", "migrate", "clone", "snapshot", "snapshot-delete", "rollback", "create", "suspending", "suspended", "foo"} {
+		t.Run(state, func(t *testing.T) {
+			f := lockFake(t, `{"data":[{"vmid":100,"status":"stopped","lock":"`+state+`"}]}`, `{"data":[]}`)
+
+			got := lockPoints(t, f)
+
+			require.Len(t, got, 1)
+			assert.Equal(t, state, got[0].attrs["state"])
+		})
+	}
+}
+
+func TestLockOddValuesGiveNoSeriesOrTheTrimmedValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+		want  []string
+	}{
+		{"empty string", `{"vmid":100,"status":"running","lock":""}`, nil},
+		{"blank string", `{"vmid":100,"status":"running","lock":"  "}`, nil},
+		{"null", `{"vmid":100,"status":"running","lock":null}`, nil},
+		{"field missing", `{"vmid":100,"status":"running"}`, nil},
+		{"padded", `{"vmid":100,"status":"running","lock":" backup "}`, []string{"backup"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lockPoints(t, lockFake(t, `{"data":[`+tt.entry+`]}`, `{"data":[]}`))
+
+			var states []string
+			for _, p := range got {
+				states = append(states, p.attrs["state"])
+			}
+			assert.Equal(t, tt.want, states)
+		})
+	}
+}
+
+func TestLockOfQemuAndLxcGuestsWithDifferentStates(t *testing.T) {
+	f := lockFake(t,
+		`{"data":[{"vmid":100,"status":"running","lock":"backup"},{"vmid":101,"status":"stopped","lock":"migrate"},{"vmid":102,"status":"running"}]}`,
+		`{"data":[{"vmid":200,"status":"running","lock":"snapshot"},{"vmid":201,"status":"stopped"}]}`)
+
+	got := lockPoints(t, f)
+
+	require.Len(t, got, 3)
+	assert.Equal(t, "qemu", find(got, "pve.guest.lock", "pve.vmid", "100")[0].attrs["type"])
+	assert.Equal(t, "backup", find(got, "pve.guest.lock", "pve.vmid", "100")[0].attrs["state"])
+	assert.Equal(t, "migrate", find(got, "pve.guest.lock", "pve.vmid", "101")[0].attrs["state"], "a stopped guest holds a lock too")
+	lxc := find(got, "pve.guest.lock", "pve.vmid", "200")
+	require.Len(t, lxc, 1)
+	assert.Equal(t, "lxc", lxc[0].attrs["type"])
+	assert.Equal(t, "snapshot", lxc[0].attrs["state"])
+}
+
+func TestLockStateChangeMovesTheSeries(t *testing.T) {
+	f := lockFake(t, `{"data":[{"vmid":100,"status":"running","lock":"snapshot"}]}`, `{"data":[]}`)
+	h := newGuests(t, f, nil)
+
+	sweep(t, h, t0)
+	f.ok(prefix+"/qemu", `{"data":[{"vmid":100,"status":"running","lock":"backup"}]}`)
+	second, _ := sweep(t, h, t0.Add(time.Minute))
+
+	got := find(second, "pve.guest.lock")
+	require.Len(t, got, 1)
+	assert.Equal(t, "backup", got[0].attrs["state"])
+}
+
+func TestLockNeedsNoRequestBeyondTheGuestLists(t *testing.T) {
+	f := lockFake(t, `{"data":[{"vmid":100,"status":"stopped","lock":"backup"}]}`,
+		`{"data":[{"vmid":200,"status":"stopped","lock":"backup"}]}`)
+
+	lockPoints(t, f)
+
+	assert.ElementsMatch(t, []string{prefix + "/qemu", prefix + "/lxc"}, f.hitList())
+}
+
+func TestLockOfQemuGuestsSurvivesAFailedContainerList(t *testing.T) {
+	f := newFakePVE(t, false)
+	f.ok(prefix+"/qemu", `{"data":[{"vmid":100,"status":"stopped","lock":"backup"}]}`)
+	f.set(prefix+"/lxc", http.StatusInternalServerError, "boom")
+	h := newGuests(t, f, nil)
+
+	md, _, err := h.s.sweep(context.Background(), t0)
+
+	require.Error(t, err)
+	assert.Len(t, find(flatten(md), "pve.guest.lock"), 1)
+}
+
+func TestLockIsGivenWhileAGuestIsBackedOff(t *testing.T) {
+	f := guestsFake(t)
+	f.ok(prefix+"/qemu", `{"data":[{"vmid":102,"name":"noagent","status":"running","lock":"backup"}]}`)
+	h := newGuests(t, f, nil)
+
+	first, _ := sweep(t, h, t0)
+	require.Equal(t, 1, f.countOf(prefix+"/qemu/102/agent/get-osinfo"), "the agent call failed once")
+	require.Equal(t, 1, h.s.state[102].failures)
+	nextTry := h.s.state[102].nextTry
+	require.True(t, nextTry.After(t0.Add(time.Minute)), "the guest is in backoff")
+	second, _ := sweep(t, h, t0.Add(time.Minute))
+
+	assert.Equal(t, 1, f.countOf(prefix+"/qemu/102/agent/get-osinfo"), "the read was skipped in backoff")
+	assert.Equal(t, nextTry, h.s.state[102].nextTry)
+	assert.Len(t, find(first, "pve.guest.lock", "pve.vmid", "102"), 1)
+	assert.Len(t, find(second, "pve.guest.lock", "pve.vmid", "102"), 1, "the lock is given while the agent reads are skipped")
+}
+
+func TestLockOfNonStringTypeGivesNoPointAndOtherGuestsStillReport(t *testing.T) {
+	f := guestsFake(t)
+	f.ok(prefix+"/qemu", `{"data":[`+
+		`{"vmid":100,"status":"running","lock":true},`+
+		`{"vmid":102,"status":"running","lock":"backup"},`+
+		`{"vmid":103,"status":"stopped","lock":5},`+
+		`{"vmid":104,"status":"stopped","lock":{"a":1}},`+
+		`{"vmid":105,"status":"stopped","lock":[1]},`+
+		`{"vmid":106,"status":"stopped","lock":null},`+
+		`{"vmid":107,"status":"stopped","lock":"migrate"}]}`)
+	f.ok(prefix+"/lxc", `{"data":[{"vmid":200,"status":"running","lock":true},{"vmid":201,"status":"stopped","lock":"snapshot"}]}`)
+	h := newGuests(t, f, nil)
+
+	pts, recs := sweep(t, h, t0)
+
+	locks := find(pts, "pve.guest.lock")
+	var got []string
+	for _, p := range locks {
+		got = append(got, p.attrs["pve.vmid"]+"="+p.attrs["state"])
+	}
+	assert.ElementsMatch(t, []string{"102=backup", "107=migrate", "201=snapshot"}, got)
+	assert.Len(t, find(pts, "pve.guest.filesystem.usage", "pve.vmid", "100"), 3, "the guest with a bad lock still reports")
+	assert.Equal(t, "10.0.0.9,fd00::9", factsFor(recs, "200")["addresses"])
+	assert.Empty(t, h.logs.FilterLevelExact(zapcore.WarnLevel).All())
+	assert.Empty(t, h.logs.FilterLevelExact(zapcore.ErrorLevel).All())
+}
+
+func TestLockPointsSurviveAnAuthFailureMidLoop(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusUnauthorized} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			f := guestsFake(t)
+			f.ok(prefix+"/qemu", `{"data":[{"vmid":100,"status":"running","lock":"backup"},{"vmid":101,"status":"running","lock":"migrate"},{"vmid":103,"status":"stopped","lock":"clone"}]}`)
+			f.ok(prefix+"/lxc", `{"data":[{"vmid":200,"status":"running","lock":"snapshot"},{"vmid":201,"status":"stopped","lock":"backup"}]}`)
+			f.set(prefix+"/qemu/100/agent/get-osinfo", status, "denied")
+			h := newGuests(t, f, nil)
+
+			md, _, err := h.s.sweep(context.Background(), t0)
+
+			var apiErr *apiError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, status, apiErr.Status)
+			var got []string
+			for _, p := range find(flatten(md), "pve.guest.lock") {
+				got = append(got, p.attrs["type"]+"/"+p.attrs["pve.vmid"]+"="+p.attrs["state"])
+			}
+			assert.ElementsMatch(t, []string{"qemu/100=backup", "qemu/101=migrate", "qemu/103=clone", "lxc/200=snapshot", "lxc/201=backup"}, got)
+		})
+	}
+}
+
+func TestSecondSweepOfTheSameScraperHasNoLockOnceItClears(t *testing.T) {
+	f := lockFake(t,
+		`{"data":[{"vmid":100,"status":"running","lock":"backup"},{"vmid":101,"status":"running","lock":"snapshot"}]}`,
+		`{"data":[{"vmid":200,"status":"stopped","lock":"backup"}]}`)
+	h := newGuests(t, f, nil)
+
+	first, _ := sweep(t, h, t0)
+	f.ok(prefix+"/qemu", `{"data":[{"vmid":100,"status":"running"},{"vmid":101,"status":"running","lock":"snapshot"}]}`)
+	f.ok(prefix+"/lxc", `{"data":[{"vmid":200,"status":"stopped"}]}`)
+	second, _ := sweep(t, h, t0.Add(time.Minute))
+
+	assert.Len(t, find(first, "pve.guest.lock"), 3)
+	assert.Empty(t, find(second, "pve.guest.lock", "pve.vmid", "100"), "the cleared lock is not carried over")
+	assert.Empty(t, find(second, "pve.guest.lock", "pve.vmid", "200"))
+	got := find(second, "pve.guest.lock")
+	require.Len(t, got, 1, "nothing of the first sweep leaks")
+	assert.Equal(t, "101", got[0].attrs["pve.vmid"])
 }

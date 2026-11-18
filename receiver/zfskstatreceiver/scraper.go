@@ -126,11 +126,7 @@ func newEpisodes(logger *zap.Logger) *episodes {
 }
 
 func (e *episodes) warn(key, msg string, fields ...zap.Field) {
-	if e.warned[key] {
-		return
-	}
-	e.warned[key] = true
-	e.logger.Warn(msg, fields...)
+	e.once(zapcore.WarnLevel, key, msg, fields...)
 }
 
 // once logs msg at level the first time the key is seen since it last cleared.
@@ -148,28 +144,76 @@ func (e *episodes) clear(key string) { delete(e.warned, key) }
 
 // scraper turns source reads into metrics; it is used from one goroutine only.
 type scraper struct {
-	cfg     *Config
-	src     kstatSource
-	ep      *episodes
-	resets  *resetTracker
-	started time.Time // receiver start
-	start   time.Time // start time of the cumulative sums
+	cfg      *Config
+	source   kstatSource
+	episodes *episodes
+	resets   *resetTracker
+	started  time.Time // receiver start
+	start    time.Time // start time of the cumulative sums
+	space    *spaceSource
 }
 
 // newScraper picks the source named by the config; auto means sysctl on FreeBSD and proc elsewhere.
+// The space series are read when ioctl_device is set.
 func newScraper(logger *zap.Logger, cfg *Config) *scraper {
+	var s *scraper
 	if cfg.resolvedSource() == sourceSysctl {
-		return newScraperWith(logger, cfg, newSysctlSource(logger, cfg, realSysctl()))
+		s = newScraperWith(logger, cfg, newSysctlSource(logger, cfg, realSysctl()))
+	} else {
+		s = newScraperWith(logger, cfg, newProcSource(logger, cfg))
 	}
-	return newScraperWith(logger, cfg, newProcSource(logger, cfg))
+	if cfg.IoctlDevice != "" {
+		s.space = newSpaceSource(logger, cfg, openZFS)
+	}
+	return s
+}
+
+func (s *scraper) close() {
+	if s.space != nil {
+		s.space.close()
+	}
+}
+
+// readSpace reads the ioctl space series for the pools of a snapshot; nil when there is nothing to read.
+func (s *scraper) readSpace(pools []poolStats) *spaceResult {
+	if s.space == nil || len(pools) == 0 {
+		return nil
+	}
+	names := make([]string, len(pools))
+	for i, p := range pools {
+		names[i] = p.name
+	}
+	r, err := s.space.scan(names)
+	if err != nil {
+		s.episodes.warn("space-scan", "ZFS space series skipped for this scrape", zap.Error(err))
+		return nil
+	}
+	s.episodes.clear("space-scan")
+	return r
+}
+
+// dropCoveredStatfs removes the statfs root-dataset points of pools whose root dataset the ioctl read gave.
+func dropCoveredStatfs(pools []poolStats, r *spaceResult) {
+	if r == nil {
+		return
+	}
+	read := map[string]bool{}
+	for _, d := range r.datasets {
+		read[d.name] = true
+	}
+	for i := range pools {
+		if read[pools[i].name] {
+			pools[i].space = nil
+		}
+	}
 }
 
 // newScraperWith starts the cumulative sums at host boot, or at the receiver start when boot time is unknown.
-func newScraperWith(logger *zap.Logger, cfg *Config, src kstatSource) *scraper {
+func newScraperWith(logger *zap.Logger, cfg *Config, source kstatSource) *scraper {
 	now := time.Now()
 	return &scraper{
-		cfg: cfg, src: src, ep: newEpisodes(logger), resets: newResetTracker(),
-		started: now, start: src.bootTime(now),
+		cfg: cfg, source: source, episodes: newEpisodes(logger), resets: newResetTracker(),
+		started: now, start: source.bootTime(now),
 	}
 }
 
@@ -209,7 +253,27 @@ func (t *resetTracker) endScrape() {
 
 const capKey = "max_datasets"
 
-// capDatasets keeps the first max datasets in sorted order and warns once per episode when it drops some.
+// capSorted sorts the datasets by name and then pool, and returns the first limit of them.
+// It warns once per episode when it drops some; a limit of 0 or less keeps all.
+func capSorted[T any](ep *episodes, limit int, all []T, id func(T) (pool, name string)) []T {
+	sort.Slice(all, func(i, j int) bool {
+		pi, ni := id(all[i])
+		pj, nj := id(all[j])
+		if ni != nj {
+			return ni < nj
+		}
+		return pi < pj
+	})
+	if limit <= 0 || len(all) <= limit {
+		ep.clear(capKey)
+		return all
+	}
+	ep.warn(capKey, "ZFS datasets above max_datasets are not reported",
+		zap.Int("datasets", len(all)), zap.Int("max_datasets", limit))
+	return all[:limit]
+}
+
+// capDatasets keeps the first max datasets in sorted order across all pools.
 func (s *scraper) capDatasets(pools []poolStats) {
 	limit := s.cfg.MaxDatasets
 	total := 0
@@ -217,21 +281,16 @@ func (s *scraper) capDatasets(pools []poolStats) {
 		total += len(p.datasets)
 	}
 	if limit <= 0 || total <= limit {
-		s.ep.clear(capKey)
+		s.episodes.clear(capKey)
 		return
 	}
 	all := make([]datasetStats, 0, total)
 	for _, p := range pools {
 		all = append(all, p.datasets...)
 	}
-	sort.Slice(all, func(i, j int) bool {
-		if all[i].name != all[j].name {
-			return all[i].name < all[j].name
-		}
-		return all[i].pool < all[j].pool
-	})
+	kept := capSorted(s.episodes, limit, all, func(d datasetStats) (string, string) { return d.pool, d.name })
 	keep := make(map[[2]string]bool, limit)
-	for _, d := range all[:limit] {
+	for _, d := range kept {
 		keep[[2]string{d.pool, d.name}] = true
 	}
 	for i := range pools {
@@ -243,8 +302,6 @@ func (s *scraper) capDatasets(pools []poolStats) {
 		}
 		pools[i].datasets = kept
 	}
-	s.ep.warn(capKey, "ZFS datasets above max_datasets are not reported",
-		zap.Int("datasets", total), zap.Int("max_datasets", limit))
 }
 
 // scrape returns no resource when there is nothing to report, so a host without ZFS sends nothing.
@@ -252,7 +309,7 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	if err := ctx.Err(); err != nil {
 		return pmetric.NewMetrics(), err
 	}
-	snap, err := s.src.read()
+	snap, err := s.source.read()
 	if err != nil {
 		return pmetric.NewMetrics(), err
 	}
@@ -270,7 +327,10 @@ func (s *scraper) scrape(ctx context.Context) (pmetric.Metrics, error) {
 	if s.cfg.Txg {
 		emitTxg(sm, snap.pools, now)
 	}
+	sp := s.readSpace(snap.pools)
+	dropCoveredStatfs(snap.pools, sp)
 	emitSpace(sm, snap.pools, now)
+	emitIoctlSpace(sm, sp, s.resets, start, now)
 	if s.cfg.Datasets {
 		emitIO(sm, datasetMetrics, datasetSeries(snap.pools), s.resets, start, now)
 	}
@@ -340,20 +400,20 @@ func setValue(dp pmetric.NumberDataPoint, v uint64, scale float64) {
 	dp.SetIntValue(int64(min(v, math.MaxInt64)))
 }
 
-func emitIO(sm pmetric.ScopeMetrics, metrics []ioMetric, all []series, tr *resetTracker, boot, now pcommon.Timestamp) {
+func emitIO(scopeMetrics pmetric.ScopeMetrics, metrics []ioMetric, all []series, tracker *resetTracker, boot, now pcommon.Timestamp) {
 	for _, m := range metrics {
-		var dps pmetric.NumberDataPointSlice
-		created := false
+		var points pmetric.NumberDataPointSlice
+		hasMetric := false
 		for _, s := range all {
 			for _, pt := range m.points {
 				v, ok := s.fields[pt.field]
 				if !ok {
 					continue
 				}
-				if !created {
-					dps, created = newMetric(sm, m.name, m.unit, m.description, m.gauge), true
+				if !hasMetric {
+					points, hasMetric = newMetric(scopeMetrics, m.name, m.unit, m.description, m.gauge), true
 				}
-				dp := dps.AppendEmpty()
+				dp := points.AppendEmpty()
 				for _, a := range s.attrs {
 					dp.Attributes().PutStr(a[0], a[1])
 				}
@@ -361,7 +421,7 @@ func emitIO(sm pmetric.ScopeMetrics, metrics []ioMetric, all []series, tr *reset
 					dp.Attributes().PutStr(pt.attr, pt.value)
 				}
 				if !m.gauge {
-					dp.SetStartTimestamp(tr.startFor(seriesKey(m.name, s.attrs, pt), v, boot, now))
+					dp.SetStartTimestamp(tracker.startFor(seriesKey(m.name, s.attrs, pt), v, boot, now))
 				}
 				dp.SetTimestamp(now)
 				setValue(dp, v, pt.scale)
@@ -370,17 +430,17 @@ func emitIO(sm pmetric.ScopeMetrics, metrics []ioMetric, all []series, tr *reset
 	}
 }
 
-func emitState(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
-	var dps pmetric.NumberDataPointSlice
-	created := false
+func emitState(scopeMetrics pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
+	var points pmetric.NumberDataPointSlice
+	hasMetric := false
 	for _, p := range pools {
 		if p.state == "" {
 			continue
 		}
-		if !created {
-			dps, created = newMetric(sm, "zfs.pool.state", "1", "Pool health as an info metric; the state is an attribute.", true), true
+		if !hasMetric {
+			points, hasMetric = newMetric(scopeMetrics, "zfs.pool.state", "1", "Pool health as an info metric; the state is an attribute.", true), true
 		}
-		dp := dps.AppendEmpty()
+		dp := points.AppendEmpty()
 		dp.Attributes().PutStr("zfs.pool", p.name)
 		dp.Attributes().PutStr("state", p.state)
 		dp.SetTimestamp(now)
@@ -392,28 +452,28 @@ func emitState(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp
 var txgMetrics = []struct {
 	name, unit, description string
 	value                   func(txgRow) float64
-	whole                   bool
+	isWhole                 bool
 }{
 	{"zfs.pool.txg.dirty", "By", "Dirty data in the newest closed transaction group.", func(r txgRow) float64 { return float64(r.dirty) }, true},
 	{"zfs.pool.txg.written", "By", "Data written by the newest closed transaction group.", func(r txgRow) float64 { return float64(r.written) }, true},
 	{"zfs.pool.txg.sync.time", "s", "Time the newest closed transaction group took to sync.", func(r txgRow) float64 { return float64(r.syncNanos) * 1e-9 }, false},
 }
 
-func emitTxg(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
+func emitTxg(scopeMetrics pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
 	for _, m := range txgMetrics {
-		var dps pmetric.NumberDataPointSlice
-		created := false
+		var points pmetric.NumberDataPointSlice
+		hasMetric := false
 		for _, p := range pools {
 			if p.txg == nil {
 				continue
 			}
-			if !created {
-				dps, created = newMetric(sm, m.name, m.unit, m.description, true), true
+			if !hasMetric {
+				points, hasMetric = newMetric(scopeMetrics, m.name, m.unit, m.description, true), true
 			}
-			dp := dps.AppendEmpty()
+			dp := points.AppendEmpty()
 			dp.Attributes().PutStr("zfs.pool", p.name)
 			dp.SetTimestamp(now)
-			if m.whole {
+			if m.isWhole {
 				setValue(dp, uint64(m.value(*p.txg)), 1)
 			} else {
 				dp.SetDoubleValue(m.value(*p.txg))
@@ -431,18 +491,18 @@ var spaceMetrics = []struct {
 	{"zfs.dataset.space.available", "Space the root dataset of the pool can still use, from statfs. Not the pool FREE of zpool list.", func(s spaceStats) uint64 { return s.available }},
 }
 
-func emitSpace(sm pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
+func emitSpace(scopeMetrics pmetric.ScopeMetrics, pools []poolStats, now pcommon.Timestamp) {
 	for _, m := range spaceMetrics {
-		var dps pmetric.NumberDataPointSlice
-		created := false
+		var points pmetric.NumberDataPointSlice
+		hasMetric := false
 		for _, p := range pools {
 			if p.space == nil {
 				continue
 			}
-			if !created {
-				dps, created = newMetric(sm, m.name, "By", m.description, true), true
+			if !hasMetric {
+				points, hasMetric = newMetric(scopeMetrics, m.name, "By", m.description, true), true
 			}
-			dp := dps.AppendEmpty()
+			dp := points.AppendEmpty()
 			dp.Attributes().PutStr("zfs.pool", p.name)
 			dp.Attributes().PutStr("zfs.dataset", p.name)
 			dp.SetTimestamp(now)

@@ -144,8 +144,6 @@ func byID(t *testing.T, md pmetric.Metrics, metric, fragment string) pmetric.Num
 	return pmetric.NumberDataPoint{}
 }
 
-// Login and requests.
-
 func TestOneSessionPostThenTokenOnEveryRequestAndNeverAnAuthorizationHeader(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
@@ -316,8 +314,6 @@ func TestPowerSubsystemWhenTheBMCServesIt(t *testing.T) {
 	assert.Equal(t, 1, f.count("GET", chassis+"/Power"), "the legacy Power is asked first and answered 404")
 }
 
-// TLS.
-
 func TestAnUntrustedCertificateGivesUpZeroReasonTLSAndNoInsecureRetry(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
@@ -365,8 +361,6 @@ func TestABadCAFileFailsAtCreation(t *testing.T) {
 	assert.Contains(t, err.Error(), "no certificate")
 }
 
-// Back-off.
-
 func TestAuthFailureBacksOff15Then30MinutesAndStopsAfterTheThirdUntilRestart(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
@@ -399,8 +393,6 @@ func TestAuthBackoffDoublesToACeilingOfSixHours(t *testing.T) {
 	assert.Equal(t, 30*time.Minute, authBackoff(2))
 	assert.Equal(t, 6*time.Hour, authBackoff(9))
 }
-
-// Metrics.
 
 func pointCount(md pmetric.Metrics, name string) int { return dataPoints(md, name).Len() }
 
@@ -489,12 +481,13 @@ func TestDriveSizeAndEndurance(t *testing.T) {
 	defer f.close()
 	r := newRig(t, f, nil)
 
-	md := r.scrape(t)
+	md := r.scrapeStorage(t)
 
-	assert.InDelta(t, 480103981056, dataPoints(md, "hw.physical_disk.size").At(0).DoubleValue(), 1)
-	end := dataPoints(md, "hw.physical_disk.endurance_utilization").At(0)
-	assert.InDelta(t, 0.2, end.DoubleValue(), 1e-9)
-	assert.Equal(t, "used", attr(end, "hw.physical_disk.state"))
+	assert.InDelta(t, 480103981056, pointFor(t, md, "hw.physical_disk.size", "Disk.Bay.0").v, 1)
+	end := pointFor(t, md, "hw.physical_disk.endurance_utilization", "Disk.Bay.0")
+	assert.InDelta(t, 0.2, end.v, 1e-9)
+	assert.Equal(t, "used", end.attrs["hw.physical_disk.state"])
+	assert.Equal(t, 0, pointCount(r.scrape(t), "hw.physical_disk.size"), "drives are read on the storage interval, not in the base scrape")
 }
 
 func TestDIMMSizeInBytesAndAnAbsentDIMMGivesNothing(t *testing.T) {
@@ -509,7 +502,7 @@ func TestDIMMSizeInBytesAndAnAbsentDIMMGivesNothing(t *testing.T) {
 	assert.Equal(t, "By", metricUnit(md, "hw.memory.size"))
 }
 
-func TestStatusForEachOfTheEightTypesWithOnePointPerState(t *testing.T) {
+func TestStatusForEachOfTheSevenBaseTypesWithOnePointPerState(t *testing.T) {
 	f := newFakeRedfish()
 	defer f.close()
 	r := newRig(t, f, nil)
@@ -529,7 +522,7 @@ func TestStatusForEachOfTheEightTypesWithOnePointPerState(t *testing.T) {
 			current[typ][name] = attr(dps.At(i), "hw.state")
 		}
 	}
-	for _, typ := range []string{"host", "enclosure", "fan", "power_supply", "physical_disk", "memory", "cpu", "bmc"} {
+	for _, typ := range []string{"host", "enclosure", "fan", "power_supply", "memory", "cpu", "bmc"} {
 		assert.NotEmpty(t, current[typ], typ)
 	}
 	for key, n := range perComponent {
@@ -592,8 +585,6 @@ func TestDurationIsTheClockDifference(t *testing.T) {
 	assert.GreaterOrEqual(t, dur.At(0).DoubleValue(), 0.0)
 }
 
-// Secrets.
-
 func TestNeitherThePasswordNorTheTokenReachesALogLine(t *testing.T) {
 	cases := map[string]func(*fakeRedfish){
 		"good scrape":   func(*fakeRedfish) {},
@@ -612,8 +603,8 @@ func TestNeitherThePasswordNorTheTokenReachesALogLine(t *testing.T) {
 			tlsRig := newRig(t, f, func(c *TargetConfig) { c.CAFile = "" })
 			tlsRig.scrape(t)
 
+			require.Equal(t, 1, tlsRig.logs.FilterMessageSnippet("certificate").Len(), "the TLS rig logs the certificate warning, so the loop below reads a line")
 			for _, l := range []*observer.ObservedLogs{r.logs, tlsRig.logs} {
-				require.NotZero(t, l.Len()+1)
 				for _, e := range l.All() {
 					assert.NotContains(t, e.Message, "secret")
 					assert.NotContains(t, e.Message, sessionToken)

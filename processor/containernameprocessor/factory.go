@@ -22,6 +22,8 @@ func NewFactory() processor.Factory {
 		component.MustNewType(typeStr),
 		createDefaultConfig,
 		processor.WithLogs(createLogsProcessor, stability),
+		processor.WithMetrics(createMetricsProcessor, stability),
+		processor.WithTraces(createTracesProcessor, stability),
 	)
 }
 
@@ -34,4 +36,22 @@ func createLogsProcessor(
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
 	return &processorImpl{next: nextConsumer}, nil
+}
+
+func createMetricsProcessor(
+	_ context.Context,
+	_ processor.Settings,
+	_ component.Config,
+	nextConsumer consumer.Metrics,
+) (processor.Metrics, error) {
+	return &metricsImpl{next: nextConsumer}, nil
+}
+
+func createTracesProcessor(
+	_ context.Context,
+	_ processor.Settings,
+	_ component.Config,
+	nextConsumer consumer.Traces,
+) (processor.Traces, error) {
+	return &tracesImpl{next: nextConsumer}, nil
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -67,12 +68,17 @@ func shortHostname(host string) string {
 // hostnameFn is os.Hostname; a variable so a test can make it fail.
 var hostnameFn = os.Hostname
 
-func localNode() string {
+// localNode is the short host name; it is an error when the host name cannot be read or is empty.
+func localNode() (string, error) {
 	host, err := hostnameFn()
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("read the host name: %w", err)
 	}
-	return shortHostname(host)
+	node := shortHostname(host)
+	if node == "" {
+		return "", errors.New("the host name is empty")
+	}
+	return node, nil
 }
 
 type guestState struct {
@@ -90,9 +96,19 @@ type guestPending struct {
 }
 
 type guestEntry struct {
-	VMID   int    `json:"vmid"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	VMID   int             `json:"vmid"`
+	Name   string          `json:"name"`
+	Status string          `json:"status"`
+	Lock   json.RawMessage `json:"lock"` // config lock held by a task such as backup; absent when none
+}
+
+// lockState returns the trimmed lock name, or "" when there is none or the value is not a string.
+func (g guestEntry) lockState() string {
+	var s string
+	if json.Unmarshal(g.Lock, &s) != nil {
+		return ""
+	}
+	return strings.TrimSpace(s)
 }
 
 type guestsScraper struct {
@@ -181,12 +197,12 @@ type observation struct {
 
 func isAuthError(err error) bool {
 	var apiErr *apiError
-	return errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403)
+	return errors.As(err, &apiErr) && (apiErr.Status == http.StatusUnauthorized || apiErr.Status == http.StatusForbidden)
 }
 
 func isAgentNotRunning(err error) bool {
 	var apiErr *apiError
-	return errors.As(err, &apiErr) && apiErr.Status == 500 && strings.Contains(strings.ToLower(apiErr.Message), "not running")
+	return errors.As(err, &apiErr) && apiErr.Status == http.StatusInternalServerError && strings.Contains(strings.ToLower(apiErr.Message), "not running")
 }
 
 // agentGet reads one guest agent call; the answer holds the payload under data.result.
@@ -244,8 +260,8 @@ func (s *guestsScraper) readAgent(ctx context.Context, vmid int) (observation, e
 		return obs, err
 	}
 	var addrs []string
-	for _, i := range ifaces {
-		for _, a := range i.Addresses {
+	for _, iface := range ifaces {
+		for _, a := range iface.Addresses {
 			addrs = append(addrs, a.IP)
 		}
 	}
@@ -292,8 +308,8 @@ func (s *guestsScraper) readLXC(ctx context.Context, vmid int) (observation, err
 		return obs, err
 	}
 	var addrs []string
-	for _, i := range out.Data {
-		addrs = append(addrs, i.Inet, i.Inet6)
+	for _, iface := range out.Data {
+		addrs = append(addrs, iface.Inet, iface.Inet6)
 	}
 	if joined := joinAddresses(addrs); joined != "" {
 		obs.facts["addresses"] = joined
@@ -302,7 +318,7 @@ func (s *guestsScraper) readLXC(ctx context.Context, vmid int) (observation, err
 }
 
 // sweep reads the running guests of the node, one request at a time. It returns the filesystem metrics and
-// the change-event records. A 401 or 403 stops the sweep and is returned; any other failure only backs
+// the change-event records, and the lock series of every locked guest. A 401 or 403 stops the sweep and is returned; any other failure only backs
 // that guest off.
 func (s *guestsScraper) sweep(ctx context.Context, now time.Time) (pmetric.Metrics, plog.Logs, error) {
 	md := pmetric.NewMetrics()
@@ -319,12 +335,22 @@ func (s *guestsScraper) sweep(ctx context.Context, now time.Time) (pmetric.Metri
 	sm := lg.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
 	sm.Scope().SetName(scopeName)
 
-	for _, kind := range []struct {
+	kinds := []struct {
 		name   string
 		guests []guestEntry
 		read   func(context.Context, int) (observation, error)
-	}{{"qemu", qemu, s.readAgent}, {"lxc", lxc, s.readLXC}} {
+	}{{"qemu", qemu, s.readAgent}, {"lxc", lxc, s.readLXC}}
+	// The lock comes with the guest list, so it costs no request. It is read for every guest, running or
+	// not, in a pass of its own so that a failing guest read cannot drop it.
+	for _, kind := range kinds {
 		sort.Slice(kind.guests, func(i, j int) bool { return kind.guests[i].VMID < kind.guests[j].VMID })
+		for _, g := range kind.guests {
+			if lock := g.lockState(); lock != "" {
+				b.gauge("pve.guest.lock", "1", 1, "pve.vmid", strconv.Itoa(g.VMID), "pve.node", s.node, "type", kind.name, "state", lock)
+			}
+		}
+	}
+	for _, kind := range kinds {
 		for _, g := range kind.guests {
 			if g.Status != "running" {
 				continue

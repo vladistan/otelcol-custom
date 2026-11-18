@@ -71,6 +71,22 @@ The receiver loads `nvml.dll` from System32. If the driver keeps it elsewhere, s
 
 The Windows driver may not support every NVML call for every GPU mode (WDDM or TCC); a call that is not supported drops that metric for that GPU and logs one info line, `GPU call not supported`.
 
+## Disk health
+
+The `windiskhealth` receiver (own module, development stability) reads physical disks through `DeviceIoControl` from the collector process. It runs no external program, and every request passes one allow list of read requests before it is sent. The Windows build of 0.3.16 and earlier has no disk SMART receiver; this receiver is in the Windows edge build from 0.3.17.
+
+The receiver needs LocalSystem. The service account of the role is LocalSystem, so no change is needed there. Another account gets one error per disk and episode that names the missing privilege, and the other disks are still read.
+
+Options: `collection_interval` (default 5m), `command_timeout` (default 5s, at least 100ms, per command, one disk at a time; a call that does not end is cancelled), `include` and `exclude` (regular expressions on the disk name, such as `PhysicalDrive0`) and `max_devices` (default 64, must be above 0). Start sends no command to a disk; the first read comes after a short delay.
+
+Each disk gives `hw.status` (`hw.type` `physical_disk`: `ok` or `predicted_failure`), `hw.temperature` and the `hw.physical_disk.*` series, with the same names, units and attributes as the Linux `smart` receiver, so one query covers both systems. The temperature comes from the storage temperature property; the status from the failure prediction and, for a SATA disk, SMART RETURN STATUS. A SATA disk is read through ATA pass-through and an NVMe disk through the protocol-specific query for the SMART/Health log page. The decoders are the ones of the Linux receiver.
+
+A step that a disk or its driver does not answer is skipped and counted in `otelcol_windiskhealth_devices_skipped` with a reason (`unsupported`, `timeout`, `permission`, `error`), and the later steps still run. A virtual disk and a RAID virtual drive are skipped with reason `unsupported`. A disk behind a RAID board or Intel RST (VMD) may not pass the query; it is skipped and counted, with one info line per episode. A command that exceeds `command_timeout` skips the disk until the next interval.
+
+The receiver emits no I/O rate or queue series. I/O rate comes from the `windowsperfcounters` PhysicalDisk counters (`windows.physicaldisk.*`). Join the two on the disk number: `windows.physicaldisk.*` carries the instance name `0 C:`, and `hw.name` carries `PhysicalDrive0`.
+
+The interim path for hosts that do not run the receiver reads `windowsperfcounters` PhysicalDisk counters and the `windowseventlog` System sources `disk`, `Ntfs`, `stornvme` and `Virtual Disk Service`. `test/configs/windows-disk-health.yaml` has the receiver and this path together. No `disk` or `stornvme` event has been seen yet on the Windows hosts that run this collector.
+
 ## New-file records
 
 The `fswatch` receiver reports each new file under a watched directory as one log record. It is in the Windows edge build only, and it is alpha. It reads no file contents.
@@ -100,6 +116,8 @@ receivers:
 Each record has the body `file created`, severity INFO, the file creation time as its timestamp, and the time the receiver saw it as its observed timestamp. Attributes: `file.path`, `file.name`, `file.extension` (no dot), `file.size`, `file.dir_relative` (backslashes, `.` for a file directly under the root), `file.root`, `file.size_final` (on the second record only) and `file.catchup`. `file.catchup` is `true` for a file found by a scan and `false` for a live event.
 
 The second record has the body `file write complete`, the time of the stable-size check as its timestamp, and `file.size` and `file.size_final` both set to the final size. A catch-up file whose last write is already older than `settle` gets one record with `file.size_final` and no second record. After a restart, files created within `settle_timeout` whose last record is not out are checked again: a stable one gets its second record at once, with `file.catchup=true`, and a file still being written is watched as usual. A second record that cannot be delivered is retried; after 10 failed attempts, or `settle_timeout` after the first failure, it is dropped with one warning and counted in `otelcol_fswatch_writes_dropped`.
+
+The receiver is create-only: it reports a file when it is created and, once the size settles, a second record when the write is complete. An append to an existing file and a deletion emit nothing. A file renamed while the collector is down is reported under its final name only. On a Windows host after a 2 minute collector outage the receiver sent no duplicate records and replayed nothing.
 
 A file counts as new when it is created in the tree or moved into it. Writes, deletions and renames within one directory are ignored. A file moved from one directory of the tree to another is reported again as new, because Windows sends it as a removal and an addition. The exception is a rename from an excluded name, such as `~run.tmp` to `run.dx`, which reports the final name.
 
@@ -171,6 +189,24 @@ The processor sets these attributes when the event has the value.
 | `winlog.event_data.<Name>` | string | one per named `Data` element; unnamed elements are `param1`, `param2`, ... |
 
 Severity comes from the numeric `<Level>` and the `<Keywords>` mask in the event XML, read before the XML is cut. Without the XML it falls back to the body `level`, either the rendered name (`Verbose`) or a raw digit (`"5"`). Both give DEBUG. A digit-only severity text left by the receiver, such as `"5"`, is replaced by the mapped text, or cleared when the level is unknown.
+
+### Service name per event
+
+Every Windows event log record leaves the receiver with the collector's own `service.name` (`otelcol-edge`, set by the `resource/host` processor), so a log viewer shows the collector and not the subsystem that wrote the event. With `service_name_from_provider: true` the processor gives each event the name of its provider instead. The option is off in code, so the default config is unchanged; the Windows edge sample turns it on.
+
+```yaml
+winlog:
+  service_name_from_provider: true
+```
+
+- The name is `winlog.provider_name` with the leading `Microsoft-Windows-` removed: `Microsoft-Windows-Security-Auditing` gives `Security-Auditing`, `Microsoft-Windows-GroupPolicy` gives `GroupPolicy`, `Microsoft-Windows-PowerShell` gives `PowerShell`.
+- A provider name without the prefix is used as is: `Service Control Manager`, `NETLOGON`. A name that is only the prefix is used as is. The prefix match is case-sensitive.
+- `service.name` is a resource attribute, so the processor splits each batch into one resource per name. Each new resource copies the attributes of the resource the record came from. Records of one provider keep their order; the order between providers in one batch can change.
+- A non-empty provider replaces any `service.name` the record already had, including the `otelcol-edge` fallback. An event with no provider keeps its `service.name`, and so does a record that is not a Windows event (no channel).
+- Nothing else changes: the record count and every record attribute stay the same.
+- Keep `winlog` before `resource/host` in the pipeline. `resource/host` uses `insert`, so it leaves the provider name alone.
+
+A mixed batch of 1000 events from five providers takes about 0.39 microseconds more per event with the option on (Xeon W-3245, `go test -bench Mixed`).
 
 ### Drop rules
 
@@ -422,6 +458,7 @@ File logs are held open only while read. Upstream documents that Move/Create rot
 
 ## Not verified without a Windows host
 
+- The `windiskhealth` receiver on a host with real disks: the temperature against the vendor tool, the SATA and NVMe reads, and the NVMe disks behind Intel RST. The request layouts are tested with recorded buffers on another system only.
 - The `include_fs_types` filter on `NTFS` and `ReFS` as the fixed-drive rule.
 - The `host.ip` resource attribute from the system detector.
 - The `gpu` receiver on other GPU models and driver modes. It has run on one Windows host with an NVIDIA GPU; the adapter's tests run without a GPU.

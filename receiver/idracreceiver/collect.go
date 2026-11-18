@@ -7,67 +7,68 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/vladistan/otelcol-custom/receiver/hwschema"
 )
 
-const bytesPerMiB = 1 << 20
+const (
+	bytesPerMiB = 1 << 20
+	kindMember  = "member"
+)
 
-// emit adds points to a builder; collect gathers them first so a read that
+// pointAdder adds points to a builder; collect gathers them first so a read that
 // fails halfway sends nothing.
-type emit func(*hwschema.Builder)
+type pointAdder func(*hwschema.Builder)
 
-// info is what the BMC says about itself, for the resource attributes.
-type info struct{ model, serial, firmware string }
+// bmcInfo is what the BMC says about itself, for the resource attributes.
+type bmcInfo struct{ model, serial, firmware string }
 
 type status struct {
 	Health *string `json:"Health"`
 	State  string  `json:"State"`
 }
 
-func (s status) absent() bool { return s.State == "Absent" }
+func (s status) isAbsent() bool { return absentState(s.State) }
 
 // stateOf maps a Status.Health to an hw.state; a null or unknown health has none.
 func (s status) stateOf() (string, bool) {
-	if s.Health == nil {
-		return "", false
-	}
-	return hwschema.StateFromHealth(*s.Health)
+	return stateFor(s.Health)
 }
 
-func addStatus(out *[]emit, hwType, id, name string, s status) {
+func addStatus(out *[]pointAdder, hwType, id, name string, s status) {
 	if state, ok := s.stateOf(); ok {
 		*out = append(*out, func(b *hwschema.Builder) { b.Status(hwType, id, name, state) })
 	}
 }
 
-// collect reads the selected resources. A path the BMC does not serve is
-// skipped; any other failure ends the read.
-func (t *target) collect(ctx context.Context) ([]emit, info, error) {
+// collect reads the selected resources except storage, which has its own read. A path the BMC does not
+// serve is skipped; any other failure ends the read.
+func (t *target) collect(ctx context.Context) ([]pointAdder, bmcInfo, error) {
 	var (
-		out []emit
-		inf info
+		out []pointAdder
+		inf bmcInfo
 	)
 	has := func(r string) bool { return slices.Contains(t.cfg.Resources, r) }
 	steps := []struct {
 		resource string
-		run      func(context.Context, *[]emit, *info) error
+		run      func(context.Context, *[]pointAdder, *bmcInfo) error
 	}{
 		{"bmc", t.readManager},
 		{"system", t.readSystem},
 		{"thermal", t.readThermal},
 		{"power", t.readPower},
-		{"storage", t.readStorage},
-		{"memory", func(ctx context.Context, o *[]emit, _ *info) error {
+		{"memory", func(ctx context.Context, o *[]pointAdder, _ *bmcInfo) error {
 			return t.readMembers(ctx, o, t.profile.Memory(), "memory", hwschema.TypeMemory, memoryPoints)
 		}},
-		{"processors", func(ctx context.Context, o *[]emit, _ *info) error {
+		{"processors", func(ctx context.Context, o *[]pointAdder, _ *bmcInfo) error {
 			return t.readMembers(ctx, o, t.profile.Processors(), "cpu", hwschema.TypeCPU, nil)
 		}},
 	}
@@ -75,14 +76,17 @@ func (t *target) collect(ctx context.Context) ([]emit, info, error) {
 		if !has(s.resource) {
 			continue
 		}
+		if t.onDecode != nil {
+			t.onDecode(s.resource)
+		}
 		if err := s.run(ctx, &out, &inf); err != nil && !errors.Is(err, errAbsent) {
-			return nil, info{}, err
+			return nil, bmcInfo{}, err
 		}
 	}
 	return out, inf, nil
 }
 
-func (t *target) readManager(ctx context.Context, out *[]emit, inf *info) error {
+func (t *target) readManager(ctx context.Context, out *[]pointAdder, inf *bmcInfo) error {
 	var m struct {
 		FirmwareVersion string `json:"FirmwareVersion"`
 		Status          status `json:"Status"`
@@ -95,7 +99,7 @@ func (t *target) readManager(ctx context.Context, out *[]emit, inf *info) error 
 	return nil
 }
 
-func (t *target) readSystem(ctx context.Context, out *[]emit, inf *info) error {
+func (t *target) readSystem(ctx context.Context, out *[]pointAdder, inf *bmcInfo) error {
 	var s struct {
 		Model        string `json:"Model"`
 		SerialNumber string `json:"SerialNumber"`
@@ -119,8 +123,6 @@ func (t *target) readSystem(ctx context.Context, out *[]emit, inf *info) error {
 	addStatus(out, hwschema.TypeEnclosure, "chassis", "Chassis", c.Status)
 	return nil
 }
-
-// Thermal.
 
 type temperature struct {
 	MemberID      string   `json:"MemberId"`
@@ -147,7 +149,7 @@ type fan struct {
 // readThermal reads the legacy Thermal resource, which carries the readings, the thresholds and the fans, and
 // falls back to ThermalSubsystem only when the BMC no longer serves it. Dell keeps both; reading the legacy one
 // first keeps the metric set the same before and after a firmware update.
-func (t *target) readThermal(ctx context.Context, out *[]emit, _ *info) error {
+func (t *target) readThermal(ctx context.Context, out *[]pointAdder, _ *bmcInfo) error {
 	err := t.readLegacyThermal(ctx, out)
 	if errors.Is(err, errAbsent) {
 		return t.readThermalSubsystem(ctx, out)
@@ -155,7 +157,7 @@ func (t *target) readThermal(ctx context.Context, out *[]emit, _ *info) error {
 	return err
 }
 
-func (t *target) readThermalSubsystem(ctx context.Context, out *[]emit) error {
+func (t *target) readThermalSubsystem(ctx context.Context, out *[]pointAdder) error {
 	var sub struct {
 		Metrics *struct {
 			ID string `json:"@odata.id"`
@@ -186,28 +188,30 @@ func (t *target) readThermalSubsystem(ctx context.Context, out *[]emit) error {
 			// to the position.
 			id := r.Device
 			if id == "" || seen[id] {
-				id = itoa(i)
+				id = strconv.Itoa(i)
 			}
 			seen[id] = true
 			addTemperature(out, temperature{MemberID: id, Name: r.Device, Reading: r.Reading})
 		}
 	}
 	if sub.Fans != nil {
-		members, err := t.members(ctx, sub.Fans.ID)
+		members, _, err := t.members(ctx, sub.Fans.ID, collOpts{soft: t.isSoft})
 		if err != nil {
 			return err
 		}
 		for _, raw := range members {
 			var f fan
-			if json.Unmarshal(raw, &f) == nil {
-				addFan(out, f)
+			if err := json.Unmarshal(raw, &f); err != nil {
+				t.skipUndecodable("fan", err)
+				continue
 			}
+			addFan(out, f)
 		}
 	}
 	return nil
 }
 
-func (t *target) readLegacyThermal(ctx context.Context, out *[]emit) error {
+func (t *target) readLegacyThermal(ctx context.Context, out *[]pointAdder) error {
 	var th struct {
 		Temperatures []temperature `json:"Temperatures"`
 		Fans         []fan         `json:"Fans"`
@@ -226,7 +230,7 @@ func (t *target) readLegacyThermal(ctx context.Context, out *[]emit) error {
 	return nil
 }
 
-func addTemperature(out *[]emit, tmp temperature) {
+func addTemperature(out *[]pointAdder, tmp temperature) {
 	id := "temperature/" + tmp.MemberID
 	name := tmp.Name
 	reading := *tmp.Reading
@@ -241,7 +245,7 @@ func addTemperature(out *[]emit, tmp temperature) {
 	})
 }
 
-func addFan(out *[]emit, f fan) {
+func addFan(out *[]pointAdder, f fan) {
 	member := firstOf(f.MemberID, f.ID)
 	id, name := "fan/"+member, firstOf(f.FanName, f.Name)
 	switch {
@@ -264,8 +268,6 @@ func addFan(out *[]emit, f fan) {
 	addStatus(out, hwschema.TypeFan, id, name, f.Status)
 }
 
-// Power.
-
 type powerSupply struct {
 	MemberID string   `json:"MemberId"`
 	ID       string   `json:"Id"`
@@ -280,7 +282,7 @@ type powerSupply struct {
 
 // readPower reads the legacy Power resource first (host power, supplies, voltages) and falls back to
 // PowerSubsystem only when the BMC no longer serves it. That resource has no host power or voltages.
-func (t *target) readPower(ctx context.Context, out *[]emit, _ *info) error {
+func (t *target) readPower(ctx context.Context, out *[]pointAdder, _ *bmcInfo) error {
 	err := t.readLegacyPower(ctx, out)
 	if errors.Is(err, errAbsent) {
 		return t.readPowerSubsystem(ctx, out)
@@ -288,7 +290,7 @@ func (t *target) readPower(ctx context.Context, out *[]emit, _ *info) error {
 	return err
 }
 
-func (t *target) readPowerSubsystem(ctx context.Context, out *[]emit) error {
+func (t *target) readPowerSubsystem(ctx context.Context, out *[]pointAdder) error {
 	var sub struct {
 		Supplies *struct {
 			ID string `json:"@odata.id"`
@@ -300,24 +302,29 @@ func (t *target) readPowerSubsystem(ctx context.Context, out *[]emit) error {
 	if sub.Supplies == nil {
 		return nil
 	}
-	members, err := t.members(ctx, sub.Supplies.ID)
+	members, _, err := t.members(ctx, sub.Supplies.ID, collOpts{soft: t.isSoft})
 	if err != nil {
 		return err
 	}
 	for _, raw := range members {
 		var p powerSupply
-		if json.Unmarshal(raw, &p) != nil {
+		if err := json.Unmarshal(raw, &p); err != nil {
+			t.skipUndecodable("power_supply", err)
 			continue
 		}
 		if p.Output == nil && p.Metrics != nil {
-			p.Output = t.supplyOutput(ctx, p.Metrics.ID)
+			output, err := t.supplyOutput(ctx, p.Metrics.ID)
+			if err != nil && !t.isSoft("power_supply", p.Metrics.ID, err) {
+				return err
+			}
+			p.Output = output
 		}
 		addSupply(out, p)
 	}
 	return nil
 }
 
-func (t *target) readLegacyPower(ctx context.Context, out *[]emit) error {
+func (t *target) readLegacyPower(ctx context.Context, out *[]pointAdder) error {
 	var p struct {
 		Control []struct {
 			Consumed *float64 `json:"PowerConsumedWatts"`
@@ -350,20 +357,23 @@ func (t *target) readLegacyPower(ctx context.Context, out *[]emit) error {
 }
 
 // supplyOutput reads the output power of a supply from its Metrics resource, where newer Redfish
-// schemas keep it. A Metrics resource that does not answer gives no value.
-func (t *target) supplyOutput(ctx context.Context, path string) *float64 {
+// schemas keep it. A Metrics resource without the value gives nil.
+func (t *target) supplyOutput(ctx context.Context, path string) (*float64, error) {
 	var m struct {
 		Output *struct {
 			Reading *float64 `json:"Reading"`
 		} `json:"OutputPowerWatts"`
 	}
-	if err := t.client.get(ctx, path, &m); err != nil || m.Output == nil {
-		return nil
+	if err := t.client.get(ctx, path, &m); err != nil {
+		return nil, err
 	}
-	return m.Output.Reading
+	if m.Output == nil {
+		return nil, nil
+	}
+	return m.Output.Reading, nil
 }
 
-func addSupply(out *[]emit, p powerSupply) {
+func addSupply(out *[]pointAdder, p powerSupply) {
 	id, name := "power_supply/"+firstOf(p.MemberID, p.ID), p.Name
 	if p.Output != nil {
 		usage := *p.Output
@@ -380,55 +390,6 @@ func addSupply(out *[]emit, p powerSupply) {
 	addStatus(out, hwschema.TypePowerSupply, id, name, p.Status)
 }
 
-// Storage, memory and processors.
-
-func (t *target) readStorage(ctx context.Context, out *[]emit, _ *info) error {
-	controllers, err := t.members(ctx, t.profile.Storage())
-	if err != nil {
-		return err
-	}
-	for _, raw := range controllers {
-		var c struct {
-			Drives []struct {
-				ID string `json:"@odata.id"`
-			} `json:"Drives"`
-		}
-		if json.Unmarshal(raw, &c) != nil {
-			continue
-		}
-		for _, d := range c.Drives {
-			var drive struct {
-				ID       string   `json:"Id"`
-				Name     string   `json:"Name"`
-				Capacity *float64 `json:"CapacityBytes"`
-				LifeLeft *float64 `json:"PredictedMediaLifeLeftPercent"`
-				Status   status   `json:"Status"`
-			}
-			if err := t.client.get(ctx, d.ID, &drive); err != nil {
-				if t.soft("drive", d.ID, err) {
-					continue
-				}
-				return err
-			}
-			addDrive(out, drive.ID, drive.Name, drive.Capacity, drive.LifeLeft, drive.Status)
-		}
-	}
-	return nil
-}
-
-func addDrive(out *[]emit, idPart, name string, capacity, lifeLeft *float64, s status) {
-	id := "physical_disk/" + idPart
-	if capacity != nil {
-		size := *capacity
-		*out = append(*out, func(b *hwschema.Builder) { b.PhysicalDiskSize(id, name, "", size) })
-	}
-	if lifeLeft != nil {
-		used := 1 - *lifeLeft/100
-		*out = append(*out, func(b *hwschema.Builder) { b.PhysicalDiskEndurance(id, name, "", used) })
-	}
-	addStatus(out, hwschema.TypePhysicalDisk, id, name, s)
-}
-
 type member struct {
 	ID          string   `json:"Id"`
 	Name        string   `json:"Name"`
@@ -437,7 +398,7 @@ type member struct {
 }
 
 // memoryPoints adds the size of a DIMM.
-func memoryPoints(out *[]emit, id, name string, m member) {
+func memoryPoints(out *[]pointAdder, id, name string, m member) {
 	if m.CapacityMiB != nil {
 		size := *m.CapacityMiB * bytesPerMiB
 		*out = append(*out, func(b *hwschema.Builder) { b.MemorySize(id, name, "", size) })
@@ -446,14 +407,18 @@ func memoryPoints(out *[]emit, id, name string, m member) {
 
 // readMembers reads a collection of DIMMs or processors: one status each, and
 // extra points through the callback. A member whose state is Absent is skipped.
-func (t *target) readMembers(ctx context.Context, out *[]emit, path, prefix, hwType string, extra func(*[]emit, string, string, member)) error {
-	members, err := t.members(ctx, path)
+func (t *target) readMembers(ctx context.Context, out *[]pointAdder, path, prefix, hwType string, extra func(*[]pointAdder, string, string, member)) error {
+	members, _, err := t.members(ctx, path, collOpts{soft: t.isSoft})
 	if err != nil {
 		return err
 	}
 	for _, raw := range members {
 		var m member
-		if json.Unmarshal(raw, &m) != nil || m.Status.absent() {
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.skipUndecodable(prefix, err)
+			continue
+		}
+		if m.Status.isAbsent() {
 			continue
 		}
 		id := prefix + "/" + m.ID
@@ -465,30 +430,52 @@ func (t *target) readMembers(ctx context.Context, out *[]emit, path, prefix, hwT
 	return nil
 }
 
+// softFunc decides whether a failed read of one member is skipped; it may count and log the failure.
+type softFunc func(kind, path string, err error) bool
+
+// collOpts shapes the read of a collection: soft decides whether a failed read of a linked member is skipped;
+// allow, when set, refuses a link that it does not accept; a limit above 0 keeps the first members only.
+type collOpts struct {
+	soft  softFunc
+	allow func(path string) bool
+	limit int
+	latch time.Duration // how long a 404 keeps a path absent; 0 is reprobeAfter, neverLatch asks every read
+}
+
 // members reads a collection with $expand. A BMC that answers 400 or 501 to the query is read once more
-// without it and is not sent the query again. A member the BMC left as a bare link is read on its own.
-func (t *target) members(ctx context.Context, path string) ([]json.RawMessage, error) {
+// without it and is not sent the query again. A member the BMC left as a bare link is read on its own. The
+// second result is the number of members the BMC listed.
+func (t *target) members(ctx context.Context, path string, opts collOpts) ([]json.RawMessage, int, error) {
 	var coll struct {
 		Members []json.RawMessage `json:"Members"`
 	}
 	query := expandQuery
-	if t.env.now().Before(t.noExpandUntil) {
+	if t.env.now().Before(t.noExpandUntilTime()) {
 		query = ""
 	}
-	err := t.client.get(ctx, path+query, &coll)
+	latch := opts.latch
+	if latch == 0 {
+		latch = reprobeAfter
+	}
+	err := t.client.getFor(ctx, path+query, &coll, latch)
 	if query != "" && isStatus(err, http.StatusBadRequest, http.StatusNotImplemented) {
-		t.noExpandUntil = t.env.now().Add(reprobeAfter)
+		t.setNoExpandUntil(t.env.now().Add(reprobeAfter))
 		t.env.logger.Info("The BMC does not accept $expand; collections are read member by member",
 			zap.String("target", t.cfg.Name))
-		err = t.client.get(ctx, path, &coll)
+		err = t.client.getFor(ctx, path, &coll, latch)
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	listed := len(coll.Members)
+	if opts.limit > 0 && listed > opts.limit {
+		coll.Members = coll.Members[:opts.limit]
 	}
 	out := make([]json.RawMessage, 0, len(coll.Members))
 	for _, raw := range coll.Members {
 		var probe map[string]json.RawMessage
-		if json.Unmarshal(raw, &probe) != nil {
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			opts.soft(kindMember, "", fmt.Errorf("%w: %v", errUndecodable, err))
 			continue
 		}
 		if len(probe) > 1 {
@@ -498,19 +485,30 @@ func (t *target) members(ctx context.Context, path string) ([]json.RawMessage, e
 		var link struct {
 			ID string `json:"@odata.id"`
 		}
-		if json.Unmarshal(raw, &link) != nil || link.ID == "" {
+		if err := json.Unmarshal(raw, &link); err != nil {
+			opts.soft(kindMember, "", fmt.Errorf("%w: %v", errUndecodable, err))
 			continue
 		}
-		var full json.RawMessage
-		if err := t.client.get(ctx, link.ID, &full); err != nil {
-			if t.soft("member", link.ID, err) {
+		if link.ID == "" {
+			opts.soft(kindMember, "", fmt.Errorf("%w: a member has no fields and no link", errUndecodable))
+			continue
+		}
+		if opts.allow != nil && !opts.allow(link.ID) {
+			if opts.soft(kindMember, "", errNotAllowed) {
 				continue
 			}
-			return nil, err
+			return nil, listed, errNotAllowed
+		}
+		var full json.RawMessage
+		if err := t.client.getFor(ctx, link.ID, &full, latch); err != nil {
+			if opts.soft(kindMember, link.ID, err) {
+				continue
+			}
+			return nil, listed, err
 		}
 		out = append(out, full)
 	}
-	return out, nil
+	return out, listed, nil
 }
 
 // isStatus reports whether err is an unexpected HTTP status with one of the codes.
@@ -527,5 +525,3 @@ func firstOf(values ...string) string {
 	}
 	return ""
 }
-
-func itoa(i int) string { return strconv.Itoa(i) }

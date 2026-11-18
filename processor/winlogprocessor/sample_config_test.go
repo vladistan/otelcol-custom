@@ -61,3 +61,9 @@ func TestSampleDropListMatchesTheBuiltInDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestSampleWinlogBlockTurnsOnTheServiceNameOption(t *testing.T) {
+	if !loadSampleWinlogConfig(t).ServiceNameFromProvider {
+		t.Error("the Windows edge sample must set service_name_from_provider: true")
+	}
+}

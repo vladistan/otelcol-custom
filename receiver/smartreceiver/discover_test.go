@@ -4,6 +4,7 @@
 package smartreceiver
 
 import (
+	"io/fs"
 	"testing"
 	"testing/fstest"
 
@@ -80,6 +81,47 @@ func TestDiscover_MissingNVMeClassDirIsNotAnError(t *testing.T) {
 	assert.Equal(t, []string{"sda"}, names(devs))
 }
 
+// denyDir is a file system whose listing of one directory fails with an error that is not "not exist".
+type denyDir struct {
+	fs.FS
+	dir string
+}
+
+func (d denyDir) ReadDir(name string) ([]fs.DirEntry, error) {
+	if name == d.dir {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+	return fs.ReadDir(d.FS, name)
+}
+
+func TestDiscover_AnNVMeClassDirThatCannotBeListedGivesThePartialListAndTheCause(t *testing.T) {
+	fsys := denyDir{FS: sysfsWith([]string{"sda"}, []string{"nvme0"}), dir: "class/nvme"}
+
+	devs, err := discover(fsys)
+
+	require.ErrorIs(t, err, errPartialList)
+	assert.ErrorIs(t, err, fs.ErrPermission, "the cause is kept")
+	assert.Equal(t, []string{"sda"}, names(devs), "the SATA disks are still listed")
+}
+
+func TestDiscover_ANamespaceDirThatCannotBeListedIsReportedAndTheControllerStays(t *testing.T) {
+	fsys := denyDir{FS: sysfsWith([]string{"sda"}, []string{"nvme0"}), dir: "class/nvme/nvme0"}
+
+	devs, err := discover(fsys)
+
+	require.ErrorIs(t, err, errPartialList)
+	assert.ErrorContains(t, err, "nvme0")
+	assert.Equal(t, []string{"nvme0", "sda"}, names(devs))
+}
+
+func TestSelect_AnInvalidPatternNamesTheListItCameFrom(t *testing.T) {
+	_, err := newSelector([]string{"("}, nil)
+	assert.ErrorContains(t, err, "include pattern")
+
+	_, err = newSelector(nil, []string{"("})
+	assert.ErrorContains(t, err, "exclude pattern")
+}
+
 func TestDiscover_MissingBlockDirIsAnError(t *testing.T) {
 	_, err := discover(fstest.MapFS{})
 
@@ -87,7 +129,7 @@ func TestDiscover_MissingBlockDirIsAnError(t *testing.T) {
 }
 
 func TestSelect_IncludeAndExclude(t *testing.T) {
-	devs := []device{{"nvme0", kindNVMe}, {"nvme1", kindNVMe}, {"sda", kindSATA}, {"sdb", kindSATA}}
+	devs := []device{{name: "nvme0", kind: kindNVMe}, {name: "nvme1", kind: kindNVMe}, {name: "sda", kind: kindSATA}, {name: "sdb", kind: kindSATA}}
 	cases := map[string]struct {
 		include, exclude []string
 		want             []string

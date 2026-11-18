@@ -5,6 +5,8 @@ package syslogprocessor
 
 import (
 	"testing"
+
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
 func TestDetectFormat(t *testing.T) {
@@ -324,85 +326,100 @@ func TestMapPriorityToSeverity(t *testing.T) {
 	tests := []struct {
 		name           string
 		priority       string
-		expectedNumber int32
+		expectedNumber plog.SeverityNumber
 		expectedText   string
+		expectedOK     bool
 	}{
 		{
 			name:           "Emergency (priority 0 = facility 0 + severity 0)",
 			priority:       "0",
-			expectedNumber: 24, // SEVERITY_NUMBER_FATAL4
+			expectedNumber: plog.SeverityNumberFatal4,
 			expectedText:   "FATAL",
+			expectedOK:     true,
 		},
 		{
 			name:           "Alert (priority 1)",
 			priority:       "1",
-			expectedNumber: 21, // SEVERITY_NUMBER_FATAL
+			expectedNumber: plog.SeverityNumberFatal,
 			expectedText:   "FATAL",
+			expectedOK:     true,
 		},
 		{
 			name:           "Critical (priority 2)",
 			priority:       "2",
-			expectedNumber: 17, // SEVERITY_NUMBER_ERROR
+			expectedNumber: plog.SeverityNumberError,
 			expectedText:   "ERROR",
+			expectedOK:     true,
 		},
 		{
 			name:           "Error (priority 3)",
 			priority:       "3",
-			expectedNumber: 17, // SEVERITY_NUMBER_ERROR
+			expectedNumber: plog.SeverityNumberError,
 			expectedText:   "ERROR",
+			expectedOK:     true,
 		},
 		{
 			name:           "Warning (priority 4)",
 			priority:       "4",
-			expectedNumber: 13, // SEVERITY_NUMBER_WARN
+			expectedNumber: plog.SeverityNumberWarn,
 			expectedText:   "WARN",
+			expectedOK:     true,
 		},
 		{
 			name:           "Notice (priority 5)",
 			priority:       "5",
-			expectedNumber: 9, // SEVERITY_NUMBER_INFO
+			expectedNumber: plog.SeverityNumberInfo,
 			expectedText:   "INFO",
+			expectedOK:     true,
 		},
 		{
 			name:           "Info (priority 6)",
 			priority:       "6",
-			expectedNumber: 9, // SEVERITY_NUMBER_INFO
+			expectedNumber: plog.SeverityNumberInfo,
 			expectedText:   "INFO",
+			expectedOK:     true,
 		},
 		{
 			name:           "Debug (priority 7)",
 			priority:       "7",
-			expectedNumber: 5, // SEVERITY_NUMBER_DEBUG
+			expectedNumber: plog.SeverityNumberDebug,
 			expectedText:   "DEBUG",
+			expectedOK:     true,
 		},
 		{
 			name:           "User facility + Error (priority 11 = facility 1 * 8 + severity 3)",
 			priority:       "11",
-			expectedNumber: 17, // SEVERITY_NUMBER_ERROR
+			expectedNumber: plog.SeverityNumberError,
 			expectedText:   "ERROR",
+			expectedOK:     true,
 		},
 		{
 			name:           "Local0 facility + Warning (priority 132 = facility 16 * 8 + severity 4)",
 			priority:       "132",
-			expectedNumber: 13, // SEVERITY_NUMBER_WARN
+			expectedNumber: plog.SeverityNumberWarn,
 			expectedText:   "WARN",
+			expectedOK:     true,
 		},
 		{
 			name:           "Invalid priority",
 			priority:       "invalid",
-			expectedNumber: 0,
+			expectedNumber: plog.SeverityNumberUnspecified,
 			expectedText:   "",
+			expectedOK:     false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotNumber, gotText := MapPriorityToSeverity(tt.priority)
+			gotNumber, gotText, gotOK := MapPriorityToSeverity(tt.priority)
 			if gotNumber != tt.expectedNumber {
-				t.Errorf("MapPriorityToSeverity(%q) number = %d, want %d", tt.priority, gotNumber, tt.expectedNumber)
+				t.Errorf("MapPriorityToSeverity(%q) number = %v, want %v", tt.priority, gotNumber, tt.expectedNumber)
 			}
 			if gotText != tt.expectedText {
 				t.Errorf("MapPriorityToSeverity(%q) text = %q, want %q", tt.priority, gotText, tt.expectedText)
+			}
+			if gotOK != tt.expectedOK {
+				t.Errorf("MapPriorityToSeverity(%q) ok = %v, want %v", tt.priority, gotOK, tt.expectedOK)
 			}
 		})
 	}

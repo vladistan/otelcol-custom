@@ -52,6 +52,7 @@ func createLogsProcessor(
 		tel:              tel,
 		maxOriginalBytes: config.OriginalMessageMaxBytes,
 		logger:           set.Logger,
+		serviceFromEvent: config.ServiceNameFromProvider,
 	}
 	if config.DropSummary.Enabled {
 		p.summary = newDropSummary()

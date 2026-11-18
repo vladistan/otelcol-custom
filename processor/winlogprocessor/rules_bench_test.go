@@ -62,3 +62,44 @@ func benchmarkConsume(b *testing.B, rules []DropRule) {
 func BenchmarkConsumeNoRules(b *testing.B)      { benchmarkConsume(b, nil) }
 func BenchmarkConsumeTwentyRules(b *testing.B)  { benchmarkConsume(b, twentyRules()) }
 func BenchmarkConsumeDefaultRules(b *testing.B) { benchmarkConsume(b, DefaultDropRules()) }
+
+// mixedProviderBatch cycles five providers so every record sits next to a different one.
+func mixedProviderBatch(n int) plog.Logs {
+	providers := []string{
+		"Microsoft-Windows-Security-Auditing", "Service Control Manager", "Microsoft-Windows-GroupPolicy",
+		"NETLOGON", "Microsoft-Windows-PowerShell",
+	}
+	logs := plog.NewLogs()
+	rl := logs.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "otelcol-edge")
+	records := rl.ScopeLogs().AppendEmpty().LogRecords()
+	for i := 0; i < n; i++ {
+		testEvent{channel: "Application", id: int64(i), provider: providers[i%len(providers)]}.
+			toLogRecord().CopyTo(records.AppendEmpty())
+	}
+	return logs
+}
+
+func benchmarkServiceName(b *testing.B, on bool) {
+	set := processortest.NewNopSettings(component.MustNewType(typeStr))
+	cfg := &Config{ServiceNameFromProvider: on}
+	proc, err := NewFactory().CreateLogs(context.Background(), set, cfg, consumertest.NewNop())
+	if err != nil {
+		b.Fatalf("create processor: %v", err)
+	}
+	template := mixedProviderBatch(1000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		logs := plog.NewLogs()
+		template.CopyTo(logs)
+		b.StartTimer()
+		if err := proc.ConsumeLogs(context.Background(), logs); err != nil {
+			b.Fatalf("consume: %v", err)
+		}
+	}
+}
+
+func BenchmarkConsumeMixedProvidersServiceNameOff(b *testing.B) { benchmarkServiceName(b, false) }
+func BenchmarkConsumeMixedProvidersServiceNameOn(b *testing.B)  { benchmarkServiceName(b, true) }

@@ -25,6 +25,7 @@ type winlogProcessor struct {
 	tel              *telemetry
 	maxOriginalBytes int
 	logger           *zap.Logger
+	serviceFromEvent bool // service.name per event from winlog.provider_name
 
 	summary *dropSummary // nil when the summary is off
 	stop    chan struct{}
@@ -98,6 +99,9 @@ func (p *winlogProcessor) ConsumeLogs(ctx context.Context, logs plog.Logs) error
 	p.tel.flush(ctx, &t)
 	if logs.ResourceLogs().Len() == 0 {
 		return nil
+	}
+	if p.serviceFromEvent {
+		logs = splitByProvider(logs)
 	}
 	return p.next.ConsumeLogs(ctx, logs)
 }

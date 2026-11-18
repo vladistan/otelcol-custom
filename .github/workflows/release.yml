@@ -65,6 +65,10 @@ jobs:
             exit 1
           fi
           echo "tag $actual matches VERSION file"
+      # Every release build passes -trimpath, so the checksum does not depend
+      # on the directory the build ran in.
+      - name: Check that every build passes -trimpath
+        run: just check-trimpath
       - name: "FreeBSD edge: vet the custom modules (a failure here stops the release)"
         run: just vet-edge-freebsd
       - name: Stage public artifacts

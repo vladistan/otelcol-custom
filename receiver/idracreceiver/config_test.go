@@ -72,6 +72,12 @@ func TestConfigValidate(t *testing.T) {
 		"unknown resource":        {func(c *Config) { c.Targets[0].Resources = []string{"gpu"} }, `unknown resource "gpu"`},
 		"negative timeout":        {func(c *Config) { c.Targets[0].RequestTimeout = -time.Second }, "request_timeout must not be negative"},
 		"scrape under request":    {func(c *Config) { c.Targets[0].RequestTimeout = time.Minute }, "scrape_timeout must not be below request_timeout"},
+		"storage below base":      {func(c *Config) { c.Targets[0].StorageInterval = 30 * time.Second }, "storage_interval must not be below collection_interval"},
+		"storage equal to base":   {func(c *Config) { c.Targets[0].StorageInterval = time.Minute }, ""},
+		"storage above base":      {func(c *Config) { c.Targets[0].StorageInterval = time.Hour }, ""},
+		"negative storage":        {func(c *Config) { c.Targets[0].StorageInterval = -time.Second }, "storage_interval must not be negative"},
+		"negative drive cap":      {func(c *Config) { c.Targets[0].StorageMaxDrives = -1 }, "storage_max_drives must not be negative"},
+		"long base, default":      {func(c *Config) { c.CollectionInterval = time.Hour }, ""},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -105,4 +111,22 @@ func TestConfigRejectsAnUnknownKey(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tls_insecure")
+}
+
+func TestStorageKeysLoadAndDefault(t *testing.T) {
+	cfg := createDefaultConfig().(*Config)
+	cm := confmap.NewFromStringMap(map[string]any{
+		"targets": []any{map[string]any{
+			"name": "db-1", "address": "https://192.0.2.5", "username": "ro", "password": "secret", // pragma: allowlist secret
+			"storage_interval": "2m", "storage_max_drives": 24,
+		}, map[string]any{"name": "db-2", "address": "https://192.0.2.6", "username": "ro", "password": "secret"}}, // pragma: allowlist secret
+	})
+
+	require.NoError(t, cm.Unmarshal(cfg))
+	require.NoError(t, cfg.Validate())
+
+	assert.Equal(t, 2*time.Minute, cfg.Targets[0].StorageInterval)
+	assert.Equal(t, 24, cfg.Targets[0].resolved().StorageMaxDrives)
+	assert.Equal(t, 256, cfg.Targets[1].resolved().StorageMaxDrives)
+	assert.Equal(t, 5*time.Minute, cfg.Targets[1].storageInterval(cfg.CollectionInterval))
 }

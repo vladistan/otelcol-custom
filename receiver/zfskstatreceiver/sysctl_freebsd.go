@@ -6,6 +6,7 @@
 package zfskstatreceiver
 
 import (
+	"encoding/binary"
 	"slices"
 	"time"
 	"unsafe"
@@ -33,7 +34,8 @@ func realSysctl() sysctlFns {
 		nextOID:   nextOID,
 		oidName:   oidName,
 		getUint64: func(name string) (uint64, error) { return unix.SysctlUint64(name) },
-		getString: unix.Sysctl,
+		getString: rawString,
+		oidType:   oidType,
 		bootTime: func() (time.Time, error) {
 			tv, err := unix.SysctlTimeval("kern.boottime")
 			if err != nil {
@@ -43,6 +45,33 @@ func realSysctl() sysctlFns {
 		},
 		getfsstat: listMounts,
 	}
+}
+
+// ctlOIDFmt is the meta sysctl that returns the kind and format of an OID.
+var ctlOIDFmt = []int32{0, 4}
+
+// rawString reads a sysctl as text with a buffer of its own: a raw kstat node answers a size
+// probe with nothing, which makes unix.Sysctl return an empty string.
+func rawString(name string) (string, error) {
+	oid, err := lookupOID(name)
+	if err != nil {
+		return "", err
+	}
+	return readRawString(func(old []byte) (int, error) { return rawSysctl(oid, old, nil) })
+}
+
+// oidType returns the sysctl type name of a node, from its kind word.
+func oidType(name string) (string, error) {
+	oid, err := lookupOID(name)
+	if err != nil {
+		return "", err
+	}
+	buf := make([]byte, 64)
+	n, err := rawSysctl(append(append([]int32{}, ctlOIDFmt...), oid...), buf, nil)
+	if err != nil || n < 4 {
+		return "", err
+	}
+	return kindName(binary.NativeEndian.Uint32(buf)), nil
 }
 
 // listMounts returns the mounted file systems from getfsstat, without asking each one to refresh.

@@ -2,10 +2,11 @@
 # Guards builder-edge-windows.yaml: its components may differ from
 # builder-edge-static.yaml only by the REMOVED and ADDED lists below. Extend
 # ADDED when a component is added to the Windows edge (winlogprocessor,
-# windowhistprocessor, gpureceiver, fswatchreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
+# windowhistprocessor, gpureceiver, fswatchreceiver, windiskhealthreceiver, sqlserverreceiver, tightvncprocessor). Extend REMOVED when a Linux-only
 # component joins the static edge (journald, psi, containername, kthread, processlifetime, openvpnstatus,
 # docker_stats, k8sattributes, ethtool, pve, zfskstat, k8s_observer, receiver_creator, the six
-# application receivers, hwmon, iscsi, smart with its decoder and schema modules).
+# application receivers, hwmon, iscsi, smart). The decoder and schema modules smartdecode and hwschema are shared with
+# windiskhealthreceiver and stay in both manifests.
 # Components are the "gomod:" module paths and the "replace:" left sides.
 #
 # Usage: check-edge-windows-manifest.sh [WINDOWS_MANIFEST [STATIC_MANIFEST]]
@@ -27,6 +28,7 @@ readonly REMOVED=(
 	"$CONTRIB/receiver/dockerstatsreceiver"
 	"$CONTRIB/receiver/snmpreceiver"
 	"$CONTRIB/receiver/netflowreceiver"
+	"replace:$CONTRIB/receiver/netflowreceiver"
 	"$CONTRIB/processor/k8sattributesprocessor"
 	"$CONTRIB/extension/observer/k8sobserver"
 	"$CONTRIB/receiver/receivercreator"
@@ -58,16 +60,22 @@ readonly REMOVED=(
 	"replace:$LOCAL/receiver/iscsireceiver"
 	"$LOCAL/receiver/smartreceiver"
 	"replace:$LOCAL/receiver/smartreceiver"
-	"replace:$LOCAL/receiver/smartdecode"
 	"$LOCAL/receiver/idracreceiver"
 	"replace:$LOCAL/receiver/idracreceiver"
 	"$LOCAL/receiver/megaraidreceiver"
 	"replace:$LOCAL/receiver/megaraidreceiver"
-	"replace:$LOCAL/receiver/hwschema"
+	"$LOCAL/receiver/ksmreceiver"
+	"replace:$LOCAL/receiver/ksmreceiver"
 )
 readonly ADDED=(
 	"$CONTRIB/receiver/windowseventlogreceiver"
 	"$CONTRIB/receiver/windowsperfcountersreceiver"
+	"$CONTRIB/receiver/sqlserverreceiver"
+	"go.opentelemetry.io/collector/confmap/provider/envprovider"
+	"go.opentelemetry.io/collector/confmap/provider/fileprovider"
+	"go.opentelemetry.io/collector/confmap/provider/httpprovider"
+	"go.opentelemetry.io/collector/confmap/provider/httpsprovider"
+	"go.opentelemetry.io/collector/confmap/provider/yamlprovider"
 	"$LOCAL/processor/winlogprocessor"
 	"replace:$LOCAL/processor/winlogprocessor"
 	"$LOCAL/receiver/gpureceiver"
@@ -76,6 +84,8 @@ readonly ADDED=(
 	"replace:$LOCAL/processor/tightvncprocessor"
 	"$LOCAL/receiver/fswatchreceiver"
 	"replace:$LOCAL/receiver/fswatchreceiver"
+	"$LOCAL/receiver/windiskhealthreceiver"
+	"replace:$LOCAL/receiver/windiskhealthreceiver"
 )
 
 die() {
@@ -121,6 +131,25 @@ report() {
 }
 report "removal" "$removed_components" "$(sort_lines "${REMOVED[@]}")"
 report "addition" "$added_components" "$(sort_lines "${ADDED[@]}")"
+
+
+# The providers section must name every provider the entrypoint imports: an explicit section replaces the
+# builder default, and a provider left out loses its pinned version in the generated go.mod.
+main_go="$ROOT/cmd/otelcol-custom/main.go"
+[ -f "$main_go" ] || die "$main_go does not exist"
+wanted_providers="$(sed -nE 's#^[[:space:]]*([a-z]+[[:space:]]+)?"go\.opentelemetry\.io/collector/confmap/provider/([a-z]+provider)".*#\2#p' "$main_go" | LC_ALL=C sort -u)"
+listed_providers="$(awk '/^providers:/ {f = 1; next} /^[a-z]/ {f = 0} f' "$windows_manifest" | sed -nE 's#.*confmap/provider/([a-z]+provider)[[:space:]].*#\1#p' | LC_ALL=C sort -u)"
+[ -n "$wanted_providers" ] || die "no config provider imports found in $main_go"
+while IFS= read -r provider; do
+	[ -n "$provider" ] || continue
+	echo "FAIL: provider $provider is imported by the entrypoint and missing from providers:"
+	status=1
+done < <(comm -23 <(printf '%s\n' "$wanted_providers") <(printf '%s\n' "$listed_providers"))
+while IFS= read -r provider; do
+	[ -n "$provider" ] || continue
+	echo "FAIL: provider $provider is listed in providers: and not imported by the entrypoint"
+	status=1
+done < <(comm -13 <(printf '%s\n' "$wanted_providers") <(printf '%s\n' "$listed_providers"))
 
 [ "$status" -eq 0 ] && echo "PASS: edge-windows differs from edge-static only by the allowed list"
 exit "$status"

@@ -48,14 +48,18 @@ type sensorReading struct {
 
 type deviceInfo struct{ firmware string }
 
-// IPMI completion codes the receiver reacts to.
+// IPMI completion codes the receiver reacts to; 0x81 and 0x82 are the refusals of
+// Set Session Privilege Level, 0xCB is "requested data not present".
 const (
-	ccInvalidCommand        = 0xC1
-	ccInitializing          = 0xD2
-	ccInsufficientPrivilege = 0xD4
+	completionRequestedLevelUnavailable = 0x81
+	completionAboveChannelLimit         = 0x82
+	completionNoData                    = 0xCB
+	completionInvalidCommand            = 0xC1
+	completionInitializing              = 0xD2
+	completionInsufficientPrivilege     = 0xD4
 )
 
-// completionError is a non-zero completion code of a BMC answer.
+// completionError stays typed so callers can branch on the code; the text alone would not do.
 type completionError struct{ code uint8 }
 
 func (e completionError) Error() string { return fmt.Sprintf("ipmi completion code 0x%02x", e.code) }
@@ -69,11 +73,28 @@ var (
 	errRole    = errors.New("role refused")
 	errRefused = errors.New("connection refused")
 	errTimeout = errors.New("timed out")
+	// errMalformed marks a reply the BMC sent that is too short or is not a DCMI answer.
+	errMalformed = errors.New("malformed reply")
 )
 
-// bmcSession is the whole of what the receiver asks of a BMC: the four reads
-// and the close. The adapter (adapter.go) is the only file that speaks go-ipmi.
+// fruDevice is a FRU device the SDR lists: a DIMM or a processor.
+type fruDevice struct {
+	id   uint8
+	name string
+	kind string // hwschema.FRUDIMM or hwschema.FRUCPU
+	// isRemote: another controller than the BMC holds the device; the adapter cannot bridge to it.
+	isRemote bool
+	// isSPD: the SDR says the device holds a DIMM memory ID (JEDEC SPD), not an IPMI FRU image.
+	isSPD bool
+}
+
+// bmcSession is the whole of what the receiver asks of a BMC. The adapter is the
+// only file that speaks go-ipmi.
 type bmcSession interface {
+	// ListFRUDevices lists the DIMM and processor FRU devices of the SDR, at most fruMaxDevices.
+	ListFRUDevices(ctx context.Context) ([]fruDevice, error)
+	// ReadFRU reads the areas of one FRU device; a device that is not there gives errNotPresent.
+	ReadFRU(ctx context.Context, deviceID uint8) ([]byte, error)
 	GetDeviceID(ctx context.Context) (deviceInfo, error)
 	// GetSDRsMap reads the sensor records unless the repository timestamp equals
 	// known (a zero known always reads); unchanged is true when it does.

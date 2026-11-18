@@ -50,6 +50,7 @@ func (r *zfsReceiver) Shutdown(context.Context) error {
 		r.cancel()
 	}
 	r.wg.Wait()
+	r.scraper.close()
 	return nil
 }
 

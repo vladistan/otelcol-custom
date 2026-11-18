@@ -1,5 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
+// cspell:ignore eempt xkworker
 
 package kthreadprocessor
 
@@ -7,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +32,8 @@ type thread struct {
 	user, system float64
 	read, write  int64
 	start, at    time.Time
+	// attrs are extra resource attributes, set after the defaults.
+	attrs map[string]any
 }
 
 func (th thread) times() (time.Time, time.Time) {
@@ -54,6 +58,18 @@ func scrape(threads ...thread) pmetric.Metrics {
 		attrs.PutStr("process.executable.name", th.name)
 		if th.owner != "" {
 			attrs.PutStr("process.owner", th.owner)
+		}
+		for k, v := range th.attrs {
+			switch val := v.(type) {
+			case string:
+				attrs.PutStr(k, val)
+			case int64:
+				attrs.PutInt(k, val)
+			case float64:
+				attrs.PutDouble(k, val)
+			case bool:
+				attrs.PutBool(k, val)
+			}
 		}
 		sm := rm.ScopeMetrics().AppendEmpty()
 		sm.Scope().SetName("hostmetrics")
@@ -208,7 +224,7 @@ func TestConsumeMetricsNonMatchingResourcesAreUnchanged(t *testing.T) {
 	want := map[string]string{}
 	for i := 0; i < in.ResourceMetrics().Len(); i++ {
 		rm := in.ResourceMetrics().At(i)
-		if name := executableName(rm); len(name) >= 8 && name[:8] == "userproc" {
+		if name := executableName(rm); strings.HasPrefix(name, "userproc") {
 			want[name] = snapshot(t, rm)
 		}
 	}
@@ -359,7 +375,7 @@ func TestConsumeMetricsResourceWithoutAnExecutableNameIsUnchanged(t *testing.T) 
 func TestConsumeMetricsOutputKeepsOtherResourcesFirstAndTheAggregateLast(t *testing.T) {
 	in := scrape(
 		thread{name: "kworker/0:1", pid: 1},
-		thread{name: "sshd", pid: 2},
+		thread{name: "sshd", pid: 2, attrs: map[string]any{"process.parent_pid": int64(1)}},
 		thread{name: "ksoftirqd/0", pid: 3},
 		thread{name: "nginx", pid: 4},
 	)
@@ -374,7 +390,7 @@ func TestConsumeMetricsOutputKeepsOtherResourcesFirstAndTheAggregateLast(t *test
 }
 
 func TestConsumeMetricsBatchWithNoKernelThreadsEmitsNoAggregate(t *testing.T) {
-	in := scrape(thread{name: "sshd", pid: 2}, thread{name: "nginx", pid: 4})
+	in := scrape(thread{name: "sshd", pid: 2, attrs: map[string]any{"process.parent_pid": int64(1)}}, thread{name: "nginx", pid: 4})
 
 	out := run(t, defaultConfig(), in)
 
@@ -654,10 +670,9 @@ func TestMatchesTreatsStarAndQuestionMarkAsWildcardsOnly(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.pattern+" vs "+tt.name, func(t *testing.T) {
-			p, err := newProcessor(&Config{Patterns: []string{tt.pattern}, AggregateName: "kernel_threads"}, new(consumertest.MetricsSink))
-			require.NoError(t, err)
+			cfg := &Config{Patterns: []string{tt.pattern}, AggregateName: "kernel_threads"}
 
-			assert.Equal(t, tt.want, p.matches(tt.name))
+			assert.Equal(t, tt.want, nameMatches(t, cfg, tt.name))
 		})
 	}
 }

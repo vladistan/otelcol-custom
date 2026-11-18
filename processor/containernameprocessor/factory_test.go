@@ -5,11 +5,10 @@ package containernameprocessor
 
 import (
 	"context"
-	"errors"
 	"testing"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
-	"go.opentelemetry.io/collector/pipeline"
 	"go.opentelemetry.io/collector/processor/processortest"
 )
 
@@ -30,14 +29,29 @@ func TestNewFactory_DefaultConfigHasNoKeys(t *testing.T) {
 	}
 }
 
-func TestNewFactory_OnlyLogsAreSupported(t *testing.T) {
+func TestNewFactory_LogsMetricsAndTracesAreSupported(t *testing.T) {
 	f := NewFactory()
 	set := processortest.NewNopSettings(f.Type())
 
-	if _, err := f.CreateMetrics(context.Background(), set, f.CreateDefaultConfig(), consumertest.NewNop()); !errors.Is(err, pipeline.ErrSignalNotSupported) {
-		t.Errorf("metrics error = %v, want ErrSignalNotSupported", err)
+	if _, err := f.CreateLogs(context.Background(), set, f.CreateDefaultConfig(), consumertest.NewNop()); err != nil {
+		t.Errorf("logs error = %v", err)
 	}
-	if _, err := f.CreateTraces(context.Background(), set, f.CreateDefaultConfig(), consumertest.NewNop()); !errors.Is(err, pipeline.ErrSignalNotSupported) {
-		t.Errorf("traces error = %v, want ErrSignalNotSupported", err)
+	if _, err := f.CreateMetrics(context.Background(), set, f.CreateDefaultConfig(), consumertest.NewNop()); err != nil {
+		t.Errorf("metrics error = %v", err)
+	}
+	if _, err := f.CreateTraces(context.Background(), set, f.CreateDefaultConfig(), consumertest.NewNop()); err != nil {
+		t.Errorf("traces error = %v", err)
+	}
+}
+
+func TestNewFactory_StabilityIsDevelopment(t *testing.T) {
+	if got := NewFactory().LogsStability(); got != component.StabilityLevelDevelopment {
+		t.Errorf("logs stability = %v, want development", got)
+	}
+	if got := NewFactory().MetricsStability(); got != component.StabilityLevelDevelopment {
+		t.Errorf("metrics stability = %v, want development", got)
+	}
+	if got := NewFactory().TracesStability(); got != component.StabilityLevelDevelopment {
+		t.Errorf("traces stability = %v, want development", got)
 	}
 }

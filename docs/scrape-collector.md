@@ -97,6 +97,26 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 | `awscloudwatch` | `metrics.queries[].namespace` | `awscloudwatchreceiver/config.go:78` |
 | `awscloudwatch` | `metrics.queries[].metric_name` | `awscloudwatchreceiver/config.go:79` |
 | `awscloudwatch` | `metrics.queries[].stats` | `awscloudwatchreceiver/config.go:81` |
+| `cloudwatchmetrics` | `storage` | `cloudwatchmetricsreceiver/config.go:21`, optional; names a storage extension that keeps the end of the last window, and without it the state is lost at restart |
+| `cloudwatchmetrics` | `max_catchup` | `cloudwatchmetricsreceiver/config.go:23`, default 72h (`config.go:16`), must not be negative (`config.go:54`) |
+| `cloudwatchmetrics` | `accounts[].name` | `cloudwatchmetricsreceiver/config.go:31`, required and unique (`config.go:78-84`) |
+| `cloudwatchmetrics` | `accounts[].role_arn` | `cloudwatchmetricsreceiver/config.go:32`, optional role to assume |
+| `cloudwatchmetrics` | `accounts[].external_id` | `cloudwatchmetricsreceiver/config.go:33`, needs `role_arn` (`config.go:98`) |
+| `cloudwatchmetrics` | `accounts[].regions` | `cloudwatchmetricsreceiver/config.go:34`, a non-empty list without empty or repeated names (`config.go:85-97`) |
+| `cloudwatchmetrics` | `tiers.operational.collection_interval` | `cloudwatchmetricsreceiver/config.go:39`, positive, not below `period` and a multiple of it (`config.go:108,114,116`) |
+| `cloudwatchmetrics` | `tiers.operational.period` | `cloudwatchmetricsreceiver/config.go:40`, whole seconds and 1, 5, 10 or 30 seconds or a multiple of 60 seconds (`config.go:106-113,155-163`) |
+| `cloudwatchmetrics` | `tiers.operational.delay` | `cloudwatchmetricsreceiver/config.go:41`, not negative (`config.go:118`) |
+| `cloudwatchmetrics` | `tiers.operational.stats` | `cloudwatchmetricsreceiver/config.go:43`, never defaulted: a non-empty list of CloudWatch statistic names without empty or repeated entries (`config.go:122,127-136`) |
+| `cloudwatchmetrics` | `tiers.operational.limit` | `cloudwatchmetricsreceiver/config.go:45`, most series read per account and region, must be positive (`config.go:120`); the rest are counted, not read |
+| `cloudwatchmetrics` | `tiers.operational.namespaces.AWS/EC2` | `cloudwatchmetricsreceiver/config.go:47`, the metric names to read in the namespace; an empty list reads the whole namespace; the map must not be empty and names must not repeat (`config.go:124,137-150`) |
+| `cloudwatchmetrics` | `tiers.operational.namespaces.AWS/RDS` | same rule as `AWS/EC2` (`cloudwatchmetricsreceiver/config.go:47`) |
+| `cloudwatchmetrics` | `tiers.operational.namespaces.AWS/Lambda` | same rule as `AWS/EC2` (`cloudwatchmetricsreceiver/config.go:47`) |
+| `cloudwatchmetrics` | `tiers.operational.namespaces.AWS/ApplicationELB` | same rule as `AWS/EC2` (`cloudwatchmetricsreceiver/config.go:47`) |
+| `cloudwatchmetrics` | `tiers.daily.collection_interval` | same rule as `tiers.operational.collection_interval` (`cloudwatchmetricsreceiver/config.go:39`); tiers are keyed by name and every tier is read for every account and region (`config.go:25-26`) |
+| `cloudwatchmetrics` | `tiers.daily.period` | same rule as `tiers.operational.period` (`cloudwatchmetricsreceiver/config.go:40`) |
+| `cloudwatchmetrics` | `tiers.daily.delay` | same rule as `tiers.operational.delay` (`cloudwatchmetricsreceiver/config.go:41`) |
+| `cloudwatchmetrics` | `tiers.daily.stats` | same rule as `tiers.operational.stats` (`cloudwatchmetricsreceiver/config.go:43`) |
+| `cloudwatchmetrics` | `tiers.daily.limit` | same rule as `tiers.operational.limit` (`cloudwatchmetricsreceiver/config.go:45`) |
 | `googlecloudpubsub` | `project` | `googlecloudpubsubreceiver/config.go:20` |
 | `googlecloudpubsub` | `subscription` | `googlecloudpubsubreceiver/config.go:31`, must match `projects/<project>/subscriptions/<name>` (`config.go:72`) |
 | `googlecloudpubsub` | `encoding` | `googlecloudpubsubreceiver/config.go:33` |
@@ -104,6 +124,9 @@ Every receiver key in the reference config has a row. Sources are v0.154.0 files
 | `googlecloudmonitoring` | `project_id` | `googlecloudmonitoringreceiver/config.go:23` |
 | `googlecloudmonitoring` | `collection_interval` | `scraperhelper.ControllerConfig`; default 5m, at least 60s (`googlecloudmonitoringreceiver/config.go:15-16,42`) |
 | `googlecloudmonitoring` | `metrics_list[].metric_name` | `googlecloudmonitoringreceiver/config.go:31,35`, list required (`config.go:46`) |
+| `googlecloudmonitoring` | `projects` | `receiver/googlecloudmonitoringreceiver/config.go:27` (local copy), more projects for the same instance, added to `project_id`; no empty name, and one of `project_id` or `projects` is required (`config.go:62-70`) |
+| `googlecloudmonitoring` | `aggregation.alignment_period` | `receiver/googlecloudmonitoringreceiver/aggregation.go:49` (local copy), at least 1 minute (`aggregation.go:57`) and not longer than `collection_interval` (`config.go:82`) |
+| `googlecloudmonitoring` | `aggregation.per_series_aligners` | `receiver/googlecloudmonitoringreceiver/aggregation.go:52` (local copy), a non-empty list of `ALIGN_MIN`, `ALIGN_MAX`, `ALIGN_MEAN`, `ALIGN_SUM`, `ALIGN_COUNT` and `ALIGN_PERCENTILE_50` without repeats (`aggregation.go:60-72`); the percentile aligner reads distribution metrics only |
 | `azure_event_hub` | `connection` | `azureeventhubreceiver/config.go:28`, needs `SharedAccessKeyName` |
 | `azure_event_hub` | `storage` | `azureeventhubreceiver/config.go:32` |
 | `azure_event_hub` | `format` | `azureeventhubreceiver/config.go:34` |
@@ -125,7 +148,7 @@ The receiver type is `aws_s3`. The old name `awss3` still loads and logs a depre
 
 ### Source tagging
 
-The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
+The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The processor also sets the resource `cloud.service.name` from `log.source` when every sourced record of the resource agrees on one source and the resource has none (`cloudtrail`, `s3`, `elasticloadbalancing`, `eks`, `logs` and `auth0` on AWS; `cloudaudit.googleapis.com`, `run.googleapis.com` and `loadbalancing.googleapis.com` on GCP; `monitor` on Azure). The `auth0` receiver sets `cloud.provider` to `auth0`, with `cloud.account.id` and `cloud.region` from the envelope when it has them. `sourcetag/gcp` takes `cloud.region` from `gcp.label.location`, then `gcp.label.region`, then `gcp.label.zone` with the one-letter zone suffix dropped (`europe-west3-b` gives `europe-west3`, `global` stays), for every GCP source including `gcp.audit` and `gcp.lb`, and gives a record with no severity INFO; `sourcetag/azure` does the same for severity. Load balancer logs from S3 (ALB and NLB) get `cloud.region` and `cloud.account.id` from the target group or certificate ARN in their lines; a classic load balancer line holds no ARN, so those two stay out. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
 
 ```yaml
 processors:
@@ -291,6 +314,7 @@ ipmi:
       privilege_level: user      # user (default), operator or administrator
       dcmi_power: false          # default
       power_interval: 5m         # default
+      fru_interval: 24h          # default, at least 1h; reads the BMC FRU inventory
 ```
 
 | Metric | Unit | Source |
@@ -303,6 +327,8 @@ ipmi:
 | `hw.host.power` | `W` | DCMI power, only with `dcmi_power: true` |
 | `hw.bmc.up` | `1` | 1 when the scrape worked; 0 with a `reason` (`timeout`, `auth`, `refused`, `backoff`) when not |
 | `hw.bmc.scrape.duration` | `s` | Time of the scrape |
+| `inventory.bmc.fru.info` | `1` | FRU board, product and chassis records, and the DIMM and processor FRU devices, once per `fru_interval`; attributes in `docs/otel-metrics.md` |
+| `inventory.collection.status` | `1` | 1 when the FRU read worked, 0 when it did not (`inventory.source` `fru`), once per `fru_interval` |
 
 Every resource has `host.name` (the BMC `name`), `hw.vendor`, `server.address` (the BMC address without the port),
 `hw.bmc.protocol` (`ipmi`) and `hw.firmware_version` from the device ID. The collector's own telemetry has the counter
@@ -325,7 +351,8 @@ How a scrape runs:
   with 1.5 a wrong user name or password is answered with a completion code, not recognised as a login failure, so
   the receiver tries again at every interval and counts no authentication failure (not tested on a real board).
   Check the account before you use 1.5 on a shared board.
-- The receiver sends no chassis, power, user or configuration command, and its own requests are reads. The go-ipmi
+- The receiver sends no chassis, power, user or configuration command, and its own requests are reads (the FRU read uses Get FRU Inventory Area Info and Read FRU Data of the storage
+  network function, and the SDR read for the FRU device records). The go-ipmi
   library itself sends the session setup and close commands (Set Session Privilege Level, Close Session) as part of
   connecting, and those are the only other commands on the wire.
 - DCMI power needs an administrator session on the lab boards (it is denied at user and operator level). With
@@ -342,6 +369,7 @@ How a scrape runs:
 | Failed scrape | Only `hw.bmc.up` 0 and `hw.bmc.scrape.duration` are sent: no value of an earlier scrape is sent again |
 | DCMI power: invalid command | The BMC has no DCMI power; the receiver does not ask again until restart |
 | DCMI power: `0xD2` (initializing) | Tried again at the next `power_interval` |
+| DCMI power: a reply that is too short or is not a DCMI answer | One warning for the BMC until restart; no power point for that interval; read again at the next `power_interval` |
 | DCMI power: `0xD4` (insufficient privilege), or a role refusal when the administrator session opens | One warning that the account is not an administrator; power reads stop until restart; a role refusal is not counted as a failed login |
 
 Alert rules: `hw.bmc.up` equal to 0 for 15 minutes, and no `hw.bmc.up` series at all for three collection intervals (a
@@ -367,6 +395,17 @@ one more hop. That forwarding is PVE behaviour that this receiver relies on and 
 here. A token is cluster-wide, so one guests token serves every instance. Enable `resources` on one instance only:
 it reads the whole cluster, and a second instance doubles the series.
 
+**Secret and Deployment example.** `test/configs/scrape-pve-deployment.yaml` holds a Secret with the two API
+tokens (placeholders), a Deployment that reads them into `PVE_RESOURCES_TOKEN` and `PVE_GUESTS_TOKEN`, the PVE CA
+mounted at `/etc/otelcol/pve-ca.pem`, and a network policy that allows TCP 8006 to the PVE nodes and DNS. Create the
+real Secret from a parameter store or with `kubectl create secret`; do not commit token values.
+
+**Proxmox VE API permissions.** On PVE 8 the guest scrape (`guests`) needs `VM.Audit` and `VM.Monitor` on `/vms`:
+without `VM.Monitor` the guest agent calls answer 403 (seen on PVE 8.0.3). An ACL set on `/vms` replaces the role the
+user inherits from `/`; it does not add to it. The role on `/vms` must therefore include `VM.Audit` itself, or the
+guest information and the I/O metrics disappear while the node metrics stay. Check the grant with the token you
+give the receiver, not with an administrator account.
+
 **`snmp`.** One instance per device, as on the edge. Secrets (`community`, `auth_password`, `privacy_password`)
 come from `${env:NAME}`; `scripts/check-snmp-secrets.sh` fails the build when a sample holds a literal value.
 
@@ -385,7 +424,7 @@ The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metri
 
 The scrape image carries a local copy of the receiver, `receiver/googlecloudmonitoringreceiver`, joined by a `replace` in `builder-scrape.yaml`. It adds three keys. Without them the receiver behaves as the upstream v0.164.1 code, with one `project_id`, one request per metric and a window of at most 23 h.
 
-- `projects` is a list of project names. It adds to `project_id`, so one instance covers every project and no per-project instance is needed. At least one of `project_id` and `projects` is required. Metric descriptors are read from each project.
+- `projects` is a list of project names. It adds to `project_id`, so one instance covers every project and no per-project instance is needed. At least one of `project_id` and `projects` is required. Metric descriptors are read from each project and kept for that project, so one metric type with different descriptors in two projects is handled for each, and a type found in one project only is asked for in that project only.
 - `aggregation.alignment_period` is the width of the bucket Cloud Monitoring aligns each series over, at least one minute and not longer than `collection_interval`. `24h` gives one point per series for a daily window.
 - `aggregation.per_series_aligners` lists the aligners, each sent as its own request: `ALIGN_MIN`, `ALIGN_MAX`, `ALIGN_MEAN`, `ALIGN_SUM`, `ALIGN_COUNT` and `ALIGN_PERCENTILE_50`. Any other value is refused at startup. The receiver sends one `ListTimeSeries` request per project, metric type and aligner, and emits each aligned result as a gauge with the attribute `stat` set to `min`, `max`, `mean`, `sum`, `count` or `p50`. A `count` result has the unit `1`.
 - With `aggregation` set, `collection_interval` can be longer than 23 h; the window is the whole interval, ending at the metric's ingest delay (60 s when the descriptor gives none). Without `aggregation`, a `collection_interval` above 23 h is refused at startup.

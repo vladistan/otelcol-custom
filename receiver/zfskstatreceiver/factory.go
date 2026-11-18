@@ -34,6 +34,7 @@ func createDefaultConfig() component.Config {
 		MaxDatasets:        100,
 		Txg:                true,
 		Source:             sourceAuto,
+		IoctlDevice:        "/dev/zfs",
 	}
 }
 

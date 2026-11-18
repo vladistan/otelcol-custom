@@ -23,6 +23,8 @@ receivers:
         resources: [system, thermal, power, storage, memory, processors, bmc]
         request_timeout: 10s # one request
         scrape_timeout: 30s # the whole read
+        storage_interval: 5m # controllers, volumes and drives; not below collection_interval
+        storage_max_drives: 256 # most drives read in one storage read
 processors:
   memory_limiter:
     check_interval: 1s

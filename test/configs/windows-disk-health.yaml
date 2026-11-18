@@ -1,0 +1,81 @@
+# Windows disk health sample. Every component in this file is valid on the Windows edge build.
+# windiskhealth reads SMART health and temperature through DeviceIoControl and needs LocalSystem.
+# The performance-counter and event-log parts are the I/O and event path: windiskhealth emits no I/O
+# rate, queue or event series. Placeholder gateway host; the role writes the real value.
+
+extensions:
+  file_storage:
+    directory: C:\ProgramData\otelcol-edge\storage
+    create_directory: true
+receivers:
+  windiskhealth:
+    collection_interval: 5m
+    command_timeout: 5s
+    include: []
+    exclude: []
+    max_devices: 64
+  windowsperfcounters:
+    collection_interval: 60s
+    metrics:
+      windows.physicaldisk.queue_length:
+        description: Current disk queue length
+        gauge:
+      windows.physicaldisk.idle_time:
+        description: Percent of time the disk was idle
+        unit: "%"
+        gauge:
+      windows.physicaldisk.io:
+        description: Bytes read or written per second
+        unit: By/s
+        gauge:
+    perfcounters:
+      - object: PhysicalDisk
+        instances: ["*"]
+        counters:
+          - name: Current Disk Queue Length
+            metric: windows.physicaldisk.queue_length
+          - name: "% Idle Time"
+            metric: windows.physicaldisk.idle_time
+          - name: Disk Read Bytes/sec
+            metric: windows.physicaldisk.io
+            attributes:
+              disk.io.direction: read
+          - name: Disk Write Bytes/sec
+            metric: windows.physicaldisk.io
+            attributes:
+              disk.io.direction: write
+  windows_event_log/disk:
+    channel: System
+    start_at: end
+    storage: file_storage
+    raw: false
+    ignore_channel_errors: true
+    query: |
+      <QueryList>
+        <Query Id="0" Path="System">
+          <Select Path="System">
+            *[System[Provider[@Name='disk' or @Name='Ntfs' or @Name='stornvme' or
+            @Name='Virtual Disk Service']]]
+          </Select>
+        </Query>
+      </QueryList>
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 150
+    spike_limit_mib: 30
+exporters:
+  otlp_http:
+    endpoint: http://otel-main.example.invalid:4318
+    compression: gzip
+service:
+  extensions: [file_storage]
+  pipelines:
+    metrics/disk:
+      receivers: [windiskhealth, windowsperfcounters]
+      processors: [memory_limiter]
+      exporters: [otlp_http]
+    logs/disk:
+      receivers: [windows_event_log/disk]
+      processors: [memory_limiter]
+      exporters: [otlp_http]

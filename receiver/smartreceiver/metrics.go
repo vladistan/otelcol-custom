@@ -85,7 +85,7 @@ func clampInt64(v uint64) int64 {
 
 // ident is what every series of one disk carries.
 type ident struct {
-	id, name, model, serial, firmware, diskType string
+	id, name, model, serial, firmware, diskType, vendor string
 }
 
 func (i ident) put(attrs pcommon.Map) {
@@ -96,11 +96,22 @@ func (i ident) put(attrs pcommon.Map) {
 		hwschema.AttrSerialNumber:     i.serial,
 		hwschema.AttrFirmwareVersion:  i.firmware,
 		hwschema.AttrPhysicalDiskType: i.diskType,
+		hwschema.AttrVendor:           i.vendor,
 	} {
 		if value != "" {
 			attrs.PutStr(key, value)
 		}
 	}
+}
+
+// firstNonZero returns the first argument that is not 0.
+func firstNonZero(values ...uint64) uint64 {
+	for _, v := range values {
+		if v != 0 {
+			return v
+		}
+	}
+	return 0
 }
 
 // firstNonEmpty returns the first argument that is not empty.

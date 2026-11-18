@@ -30,6 +30,7 @@ type fakeRedfish struct {
 
 	mu          sync.Mutex
 	routes      map[string]any
+	raw         map[string][]byte        // exact body per path, sent as it is (for broken JSON)
 	status      map[string]int           // forced status per path
 	statusOnce  map[string]int           // forced status for the next request to the path only
 	stall       map[string]time.Duration // delay before answering
@@ -46,7 +47,7 @@ type fakeRedfish struct {
 }
 
 func newFakeRedfish() *fakeRedfish {
-	f := &fakeRedfish{routes: dellFixture(), status: map[string]int{}, statusOnce: map[string]int{}, stall: map[string]time.Duration{}}
+	f := &fakeRedfish{routes: dellFixture(), raw: map[string][]byte{}, status: map[string]int{}, statusOnce: map[string]int{}, stall: map[string]time.Duration{}}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	return f
 }
@@ -127,6 +128,7 @@ func (f *fakeRedfish) get(w http.ResponseWriter, r *http.Request, path string) {
 		forced, hasForced = code, true
 	}
 	body, found := f.routes[path]
+	rawBody, isRaw := f.raw[path]
 	reject := f.rejectQuery
 	f.mu.Unlock()
 	if reject != 0 && r.URL.RawQuery != "" {
@@ -135,6 +137,11 @@ func (f *fakeRedfish) get(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if hasForced {
 		w.WriteHeader(forced)
+		return
+	}
+	if isRaw {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(rawBody)
 		return
 	}
 	if !found {
@@ -174,6 +181,12 @@ func (f *fakeRedfish) set(path string, body any) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.routes[path] = body
+}
+
+func (f *fakeRedfish) setRaw(path string, body []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.raw[path] = body
 }
 
 func (f *fakeRedfish) forceStatus(path string, code int) {

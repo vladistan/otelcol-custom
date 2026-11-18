@@ -194,6 +194,9 @@ receivers:
 - The `guests` scraper polls every 15 minutes by default because the facts change rarely and the agent
   calls take PVE API worker time. It runs one request at a time, skips guests that are not running and
   backs off a guest that fails.
+- `pve.guest.lock` (value 1, attribute `state`) is sent for a guest only while it holds a lock such as
+  `backup` or `migrate`; an unlocked guest has no series. It comes from the guest lists the `guests`
+  scraper already reads, so it adds no request. See the metrics page for an alert query.
 - The metrics and the `pve guest fact` change-event logs come from the same receiver; wire it into a
   metrics pipeline and a logs pipeline.
 
@@ -357,13 +360,15 @@ namespace, so the DaemonSet needs `hostNetwork: true` to see the host's ENA inte
 
 ### Container names in Docker logs
 
-The `containername` processor is in the Linux and static Linux edge builds. Docker
-containers that log through the journald driver reach the collector with
+The `containername` processor is in the Linux, static Linux and FreeBSD edge builds.
+Docker containers that log through the journald driver reach the collector with
 `service.name` set to `docker.service`, the unit that runs the daemon. When a
 resource has a non-empty `container.name`, the processor sets `service.name` to that
 value, replacing whatever was there. A resource without `container.name`, or with an
 empty one, is left as it was, and running the processor twice changes nothing. It has
-no settings:
+no settings. The same rule applies to logs, metrics and traces: the `container.*`
+series of `docker_stats` carry `container.name` on the resource and no `service.name`,
+so list the processor in the metrics pipeline that holds `docker_stats` to give them one:
 
 ```yaml
 processors:
@@ -372,6 +377,9 @@ processors:
 service:
   pipelines:
     logs:
+      processors: [memory_limiter, containername, batch]
+    metrics:
+      receivers: [docker_stats]
       processors: [memory_limiter, containername, batch]
 ```
 
@@ -539,6 +547,7 @@ processors:
   kthread:
     patterns: [kworker*, ksoftirqd*, migration*]   # defaults
     aggregate_name: kernel_threads                  # default
+    kernel_parent: true                             # default
 
 service:
   pipelines:
@@ -548,7 +557,26 @@ service:
 
 `*` matches any run of characters, `/` included, so `kworker*` matches
 `kworker/0:1H-kblockd`; `?` matches one character. A user process whose name matches
-a pattern is merged as well. The aggregate resource has `process.executable.name`
+a pattern is merged as well.
+
+With `kernel_parent` (default `true`) the processor also merges a resource that has no
+`process.command_line` and no `process.executable.path` (empty or absent) and whose
+`process.parent_pid` is 2, or whose `process.pid` is 2 with a `process.parent_pid` of 0
+or none (`kthreadd` itself). Those are the threads `kthreadd` starts, such as
+`rcu_preempt`, `khugepaged`, `jbd2/sda1-8`, `scsi_eh_0` and the ZFS `z_*` threads. The
+rule applies only when `os.type` is absent or `linux`. An absent command line alone is
+no proof, because operators switch it off, so a process that has either attribute stays
+unchanged, and so does a pid 2 with a live parent (a container's own pid 2). A pid
+counts only as an integer or the plain decimal string `2` (`+2`, `02` and ` 2` do not).
+With a configuration that removes both `process.command_line` and
+`process.executable.path`, a child of a container's pid 2 looks like a kernel thread;
+set `kernel_parent: false` there. With `kernel_parent` on, `patterns` may be empty.
+Set `kernel_parent: false` to merge by name patterns only, as before. The kernel keeps
+the first 15 bytes of a process name, so `rcu_tasks_rude_kthread` arrives as
+`rcu_tasks_rude_`. A pattern without a wildcard in its first 15 bytes also matches that
+cut name, but only for a resource that has no command line and no executable path, so a
+real process named like the first 15 bytes of a longer pattern is not merged. A pattern
+whose first 15 bytes end inside a multibyte character has no cut name. The aggregate resource has `process.executable.name`
 set to `aggregate_name`. It has no per-process attributes (`process.pid`,
 `process.parent_pid`, `process.command`, `process.command_line`,
 `process.executable.path`), and keeps any other attribute that all merged resources
@@ -631,8 +659,12 @@ operations by direction, the time the wait and run queues were busy (in seconds,
 latency), queue lengths and the pool state; it also reports the ARC size, hits and
 misses. With `datasets: true` it adds I/O bytes, operations and unlinks per dataset, and
 by default it reports the newest closed transaction group of each pool (`zfs.pool.txg.*`).
-On FreeBSD it also reports the space of the root dataset of each pool. The metric names,
-types and units are in `docs/otel-metrics.md`.
+On Linux and FreeBSD it also reads pool and dataset space (size, allocated, free,
+fragmentation, health, quota, referenced and more) through read-only ioctls on `/dev/zfs`
+in the collector process, with no `zfs` or `zpool` command; the series match `zpool list`
+and `zfs list`. The pool series are always on, the dataset series follow `dataset_include`.
+The metric names, types and units are in `docs/otel-metrics.md`, which also maps each
+series of `zfs_exporter` 2.3.4 to its receiver series.
 
 ```yaml
 receivers:
@@ -644,8 +676,9 @@ receivers:
     exclude_pools: []
     arcstats: true                        # default
     datasets: false                       # default; true adds zfs.dataset.io.* and zfs.dataset.unlinks
-    dataset_include: []                   # globs on <pool>/<dataset>; empty reads every dataset
+    dataset_include: []                   # globs on <pool>/<dataset>; empty reads every dataset of the I/O series and none of the space series
     dataset_exclude: []                   # globs on <pool>/<dataset>, applied after the include list
+    ioctl_device: /dev/zfs                # default; read-only ioctls for the space series; empty turns them off
     max_datasets: 100                     # default; datasets above it are dropped in sorted order, 0 is no cap
     txg: true                             # default; false turns off zfs.pool.txg.*
 
@@ -738,7 +771,10 @@ sessions of an initiator host from `/sys/class/iscsi_session` and
 `/sys/class/iscsi_connection`: a session gauge per session (with its state, target,
 portal and portal group tag), a count and a gauge per connection. With `luns` on (the
 default) it also reports each LUN as `hw.status`, `hw.logical_disk.limit` and
-`iscsi.lun.state`, from `/sys/class/scsi_device` and the block device of each path. It
+`iscsi.lun.state`, from `/sys/class/scsi_device` and the block device of each path:
+`iscsi.lun.state` exists for every LUN, `hw.status` only for a LUN whose SCSI state is
+known (a LUN with no block device or an unreadable `state` file has state `unknown`), and
+`hw.logical_disk.limit` only for a LUN with a block device whose size can be read. It
 opens only the files `targetname`, `tpgt`, `state`, `persistent_address`,
 `persistent_port`, `type` and `size` and never a credential file such as `password`.
 
@@ -765,6 +801,37 @@ each path is reported under its own device, never the `dm-N` device. Beyond `max
 rest are left out with one info line. See `docs/otel-metrics.md`. The Windows edge, the
 gateway and the scrape collector do not include the receiver, and the receiver cannot
 be created off Linux.
+
+### Hardware inventory
+
+The `inventory` receiver is in the Linux, static Linux and Windows edge builds. Once a day it reports the hardware
+of a physical host as info gauges (value 1, the facts as attributes): CPU, total RAM, memory modules, board, BIOS,
+system, drives and GPU, plus `inventory.collection.status` for each source. It reads `/proc`, `/sys` and the SMBIOS table
+on Linux, and the SMBIOS firmware table, the registry and the physical drives on Windows, in process, with no
+external command. The series go to the existing gauge table. Names and attributes are in `docs/otel-metrics.md`.
+
+```yaml
+receivers:
+  inventory:
+    collection_interval: 24h          # default; collects once at start, then at each interval
+    max_drives: 64                    # default; at most 1024
+
+service:
+  pipelines:
+    metrics:
+      receivers: [inventory]
+```
+
+A virtual machine or a container (Docker, Podman, LXD, systemd-nspawn, Kubernetes) reports nothing and logs one info
+line; a Xen control domain (`initdomain` in `/sys/hypervisor/start_flags`) counts as physical; an ARM guest booted through ACPI has no device tree and counts as physical. The video controller of a BMC (ASPEED, Matrox G200e) is not reported as
+a GPU. A fact the host does not give is left out;
+firmware placeholders such as `To be filled by O.E.M.` count as absent. The SMBIOS table and the serial number files
+need root on Linux; without them those facts are left out and `inventory.collection.status` shows `0`. Serial numbers
+are sent as read and are sensitive. Queries on these series need a window of at least 25 h, because the series
+arrive once a day. There is no uptime series. The first version does not cover network cards, power supplies or
+firmware versions. The `ipmi` receiver of the scrape image adds `inventory.bmc.fru.info` from the BMC FRU, once
+per `fru_interval` (default `24h`); FRU devices on other controllers, read by words, or holding JEDEC SPD are not
+read and do not make the status `0`. `test/configs/edge-inventory.yaml` is a sample.
 
 ### MegaRAID controllers
 
@@ -802,6 +869,22 @@ non-root user needs both (in a container, the device node and the capability). O
 that use the node queue behind a scrape. The 2208 and 3108 controllers are the declared generations;
 others are read best-effort. The tests ran on buffers built from the driver headers, not on a
 controller; the metric table and what is unverified are in `docs/otel-metrics.md`.
+
+### KSM (Kernel Samepage Merging)
+
+The `ksm` receiver reads `/sys/kernel/mm/ksm` in process and reports the page counters of KSM
+(`linux.ksm.stats.pages_shared`, `pages_sharing`, `pages_unshared`, `pages_volatile`,
+`stable_node_chains`, `stable_node_dups`) and the `full_scans` sum. It is in the Linux and static
+Linux edge builds; list it on PVE hypervisors only. It opens seven files read-only and runs no
+command. The names, units and the sample config `test/configs/edge-ksm.yaml` are in
+`docs/otel-metrics.md`.
+
+```yaml
+receivers:
+  ksm:
+    collection_interval: 60s       # default
+    ksm_path: /sys/kernel/mm/ksm   # default
+```
 
 ### Disk health (SMART)
 
@@ -856,6 +939,8 @@ receivers:
         resources: [system, thermal, power, storage, memory, processors, bmc]   # default: all
         request_timeout: 10s                # default
         scrape_timeout: 30s                 # default
+        storage_interval: 5m                # default; 5m, or collection_interval if that is longer; not below it
+        storage_max_drives: 256             # default; most drives read in one storage read
 ```
 
 Use an iDRAC account with a read-only role: the Login and ReadOnly privileges and nothing else. The password comes from
@@ -868,10 +953,28 @@ the fallback for firmware that no longer serves them, and give readings, fans an
 BMC that answers 400 or 501 to `$expand` is read member by member for 6 hours, then asked again. One drive or member that
 answers an error is skipped with one warning until a scrape without one, and `otelcol_hw_bmc_skipped_reads` counts each
 skip by target and part (the scrape still reports `hw.bmc.up` 1); a timeout, a login or a TLS failure still ends the scrape.
-A scrape makes about 10 requests plus one per drive, so a chassis with many drives on a slow iDRAC needs a longer
-`scrape_timeout`; `max_concurrent` (default 8) limits the targets read at once. After a failed login the iDRAC is not
+A scrape makes about 10 requests; `max_concurrent` (default 8) limits the targets read at once. After a failed login the iDRAC is not
 contacted for 15 minutes, then 30, doubling to 6 hours, and after three in a row not again until restart. The Windows
 edge, the FreeBSD edge, the gateway and the scrape collector do not include the receiver.
+
+Storage controllers, volumes and drives are read apart from the other resources, on their own timer every
+`storage_interval` (default 5m; it may equal `collection_interval` and may not be below it). The base scrape takes
+about 3.8 s on the iDRAC this was measured on, and a slow storage read does not delay it or take a `max_concurrent`
+slot of a base scrape. The storage read sends
+`hw.status` for the storage rollup, each controller, volume and drive, the drive size and life left, the
+controller speed, the volume capacity and span count, the drive count of each storage, the locate LED and the
+predicted-failure flag of each drive, with the same names as the other hardware receivers (see
+`docs/otel-metrics.md`). A drive state follows `Status.Health` only; `hw.physical_disk.predicted_failure` carries the
+flag. Every Redfish read of the storage resources is a `GET` on a path under the system's `Storage`
+resource; a link that points elsewhere is not requested. A path that fails (401, 403, 404, 5xx, a timeout, a body
+that is not JSON or a field of the wrong type) is skipped, counted in `hw.bmc.scrape.errors` by path group (all four
+groups are sent from the first read, at 0), and
+logged once until a read without a failure; the other storage paths and the base scrape go on, and `hw.bmc.up` is
+unchanged. A path below the `Storage` collection that answers 404 is asked again at the next read; the collection
+itself is asked again after an hour. A storage read has `scrape_timeout` plus 1 second for each drive it finds, up
+to 10 minutes; one that runs out of time sends what it read and counts one error. `storage_max_drives` (default 256)
+limits the drives read in one storage read; past it the rest are skipped with one warning and one count.
+Drive serial numbers are resource attributes of the drive series and are not written to any log.
 
 ### OpenVPN client traffic
 
@@ -947,7 +1050,8 @@ Linux edge only), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
 `hwmonreceiver` (own module, temperature, fan and voltage sensors, Linux edge; FreeBSD by build tag),
 `iscsireceiver` (own module, iSCSI initiator sessions from sysfs, Linux edge only),
 `idracreceiver` (own module, Dell iDRAC health and sensors through Redfish, Linux edge only),
-`ipmireceiver` (own module, BMC sensors over IPMI, scrape image only),
+`inventoryreceiver` (own module, daily hardware facts as info gauges, Linux and Windows edge),
+`ipmireceiver` (own module, BMC sensors and FRU inventory over IPMI, scrape image only),
 `hwschema` (own module, the `hw.*` vocabulary and metric builder of the two BMC receivers),
 `megaraidreceiver` (own module, MegaRAID status and events through the megaraid_sas ioctl node, Linux edge only),
 `openvpnstatusreceiver` (own module, OpenVPN client traffic from the status file, Linux edge only),

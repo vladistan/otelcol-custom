@@ -39,6 +39,7 @@ func wantStr(t *testing.T, m pcommon.Map, key, want string) {
 func TestMapLiveFailureEvent(t *testing.T) {
 	res, rec := mapOne(t, sampleBody(t, 0))
 	wantStr(t, res, "service.name", "auth0")
+	wantStr(t, res, "cloud.provider", "auth0")
 	wantStr(t, res, "cloud.account.id", "111122223333")
 	wantStr(t, res, "cloud.region", "eu-central-1")
 

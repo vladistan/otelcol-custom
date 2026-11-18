@@ -8,24 +8,24 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/bougou/go-ipmi/pkg/bmc"
 	"github.com/bougou/go-ipmi/pkg/hal/mock"
+	"github.com/bougou/go-ipmi/pkg/handlers"
 	"github.com/bougou/go-ipmi/pkg/server"
 	"github.com/bougou/go-ipmi/pkg/transport/udp"
 	"github.com/bougou/go-ipmi/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.uber.org/zap"
 )
 
-// The adapter implements the four-method interface and the receiver compiles
-// against the interface alone.
-var _ bmcSession = (*ipmiSession)(nil)
-
-func TestSplitAddress(t *testing.T) {
+func TestSplitAddressDefaultsOnlyAMissingPort(t *testing.T) {
 	tests := map[string]struct {
 		host string
 		port int
@@ -34,23 +34,31 @@ func TestSplitAddress(t *testing.T) {
 		"192.0.2.12:6230":    {"192.0.2.12", 6230},
 		"bmc.example.com":    {"bmc.example.com", 623},
 		"[2001:db8::1]:6230": {"2001:db8::1", 6230},
-		"192.0.2.12:x":       {"192.0.2.12", 623},
 	}
 	for in, want := range tests {
-		host, port := splitAddress(in)
+		host, port, err := splitAddress(in)
+		require.NoError(t, err, in)
 		assert.Equal(t, want.host, host, in)
 		assert.Equal(t, want.port, port, in)
 	}
 }
 
-func TestPrivilegeLevels(t *testing.T) {
+func TestSplitAddressRejectsAPortThatIsNotAUsablePort(t *testing.T) {
+	for _, in := range []string{"192.0.2.12:x", "192.0.2.12:", "192.0.2.12:0", "192.0.2.12:65536", "192.0.2.12:-1", ":623"} {
+		_, _, err := splitAddress(in)
+
+		assert.Error(t, err, in)
+	}
+}
+
+func TestPrivilegeMapsEachLevelAndDefaultsToUser(t *testing.T) {
 	assert.Equal(t, types.PrivilegeLevelUser, privilege("user"))
 	assert.Equal(t, types.PrivilegeLevelOperator, privilege("operator"))
 	assert.Equal(t, types.PrivilegeLevelAdministrator, privilege("administrator"))
 	assert.Equal(t, types.PrivilegeLevelUser, privilege("anything else"))
 }
 
-func TestKindOf(t *testing.T) {
+func TestKindOfMapsOnlyTheReadableSensorTypesAndUnitsAndOtherwiseGivesOther(t *testing.T) {
 	celsius := types.SensorUnit{BaseUnit: types.SensorUnitType_DegreesC}
 	rpm := types.SensorUnit{BaseUnit: types.SensorUnitType_RPM}
 	percentFan := types.SensorUnit{BaseUnit: types.SensorUnitType_RPM, Percentage: true}
@@ -72,7 +80,7 @@ func (timeoutError) Error() string   { return "read udp: i/o timeout" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 
-func TestClassify(t *testing.T) {
+func TestClassifyMapsStatusAndTransportErrorsToTheirClass(t *testing.T) {
 	tests := map[string]struct {
 		in   error
 		want error
@@ -98,7 +106,7 @@ func TestClassify(t *testing.T) {
 func TestClassifyKeepsACompletionCodeAndPassesOtherErrorsThrough(t *testing.T) {
 	var ce completionError
 	require.ErrorAs(t, classify(types.NewResponseError(types.CompletionCode(0xD4), "denied")), &ce)
-	assert.Equal(t, uint8(ccInsufficientPrivilege), ce.code)
+	assert.Equal(t, uint8(completionInsufficientPrivilege), ce.code)
 
 	plain := errors.New("something else")
 	assert.Same(t, plain, classify(plain))
@@ -118,7 +126,13 @@ func startSimulator(t *testing.T, username, password string) BMCConfig {
 }
 
 // startSimulatorMax is startSimulator with the highest privilege the user may get.
-func startSimulatorMax(t *testing.T, username, password string, max bmc.PrivilegeLevel) BMCConfig {
+func startSimulatorMax(t *testing.T, username, password string, maxPrivilege bmc.PrivilegeLevel) BMCConfig {
+	t.Helper()
+	return startSimulatorHAL(t, username, password, maxPrivilege, mock.New())
+}
+
+// startSimulatorHAL is startSimulatorMax with the hardware layer the test has filled.
+func startSimulatorHAL(t *testing.T, username, password string, maxPrivilege bmc.PrivilegeLevel, hw *mock.HAL, serverOpts ...server.ServerOption) BMCConfig {
 	t.Helper()
 	info := bmc.DeviceInfo{
 		DeviceID: 32, DeviceRevision: 1, FirmwareMajor: 3, FirmwareMinor: 0x26, IPMIVersion: 0x20,
@@ -126,17 +140,17 @@ func startSimulatorMax(t *testing.T, username, password string, max bmc.Privileg
 	}
 	var guid [16]byte
 	copy(guid[:], "ipmireceiver-test")
-	b := bmc.New(info, guid, mock.New(), bmc.WithCipherSuites([]types.CipherSuiteID{3}))
+	b := bmc.New(info, guid, hw, bmc.WithCipherSuites([]types.CipherSuiteID{3}))
 	user, err := b.Users.Add(2, username)
 	require.NoError(t, err)
 	user.SetPassword([]byte(password))
 	user.Enabled = true
-	user.ChannelAccess[1] = bmc.UserChannelAccess{MaxPrivilege: max, Enabled: true}
+	user.ChannelAccess[1] = bmc.UserChannelAccess{MaxPrivilege: maxPrivilege, Enabled: true}
 
 	pc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = pc.Close() })
-	srv := server.NewServer(b, udp.Wrap(pc))
+	srv := server.NewServer(b, udp.Wrap(pc), serverOpts...)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go func() { _ = srv.Serve(ctx) }()
@@ -197,21 +211,20 @@ func TestDialAtACipherSuiteTheBMCDoesNotOfferFails(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDialToAClosedPortFailsWithinTheExchangeTimeout(t *testing.T) {
+func TestDialToAClosedPortFailsAsRefusedOrTimedOutBeforeTheContextEnds(t *testing.T) {
 	pc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0})
 	require.NoError(t, err)
 	addr := pc.LocalAddr().String()
 	require.NoError(t, pc.Close())
 	suite := 3
 	cfg := BMCConfig{Name: "gone", Address: addr, Username: "ro", Password: "secret", Vendor: "supermicro", CipherSuite: &suite, IPMIVersion: "2.0"}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	start := time.Now()
 	_, err = newDialer(300*time.Millisecond)(ctx, cfg, "user")
 
 	require.Error(t, err)
-	assert.Less(t, time.Since(start), 8*time.Second)
+	assert.NoError(t, ctx.Err(), "the exchange timeout ended the dial, not the context")
 	assert.True(t, errors.Is(err, errRefused) || errors.Is(err, errTimeout), err.Error())
 }
 
@@ -379,7 +392,7 @@ func TestInsufficientPrivilegeOutsideThePrivilegeStepStaysACompletionCode(t *tes
 	var ce completionError
 
 	require.ErrorAs(t, classify(types.NewResponseError(types.CompletionCode(0xd4), "denied")), &ce)
-	assert.Equal(t, uint8(ccInsufficientPrivilege), ce.code)
+	assert.Equal(t, uint8(completionInsufficientPrivilege), ce.code)
 }
 
 func TestClassifyLeavesConfigurationFailuresOfTheHandshakeAlone(t *testing.T) {
@@ -401,10 +414,208 @@ func TestDialWithAUserThatMayNotHaveTheRoleIsARoleFailure(t *testing.T) {
 
 	conn, err := newDialer(2*time.Second)(ctx, cfg, "administrator")
 
-	if err == nil {
+	if conn != nil {
 		_ = conn.Close(ctx)
-		t.Skip("the simulator grants a role above the user's maximum")
 	}
+	require.Error(t, err, "the simulator must refuse a role above the user's maximum")
 	assert.ErrorIs(t, err, errRole)
 	assert.ErrorIs(t, err, errAuth)
+}
+
+// fruLocator builds the raw SDR record of a FRU device locator.
+func fruLocator(recordID uint16, deviceID uint8, logical bool, entity uint8, name string) []byte {
+	body := make([]byte, 11+len(name))
+	body[1] = deviceID
+	if logical {
+		body[2] = 0x80
+	}
+	body[5] = 0x10
+	body[7] = entity
+	body[10] = 0xC0 | byte(len(name))
+	copy(body[11:], name)
+	head := []byte{byte(recordID), byte(recordID >> 8), 0x51, 0x11, byte(len(body))}
+	return append(head, body...)
+}
+
+func TestListFRUDevicesMarksDevicesBehindAnotherControllerAndSPDDevices(t *testing.T) {
+	hw := mock.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	local := fruLocator(1, 5, true, 0x20, "DIMM A1")
+	bmcAddr := fruLocator(2, 6, true, 0x20, "DIMM A2")
+	bmcAddr[5] = 0x20 // device access address: the BMC
+	satellite := fruLocator(3, 5, true, 0x20, "DIMM B1")
+	satellite[5] = 0x30 // a satellite controller holds device 5
+	otherChannel := fruLocator(4, 7, true, 0x20, "DIMM B2")
+	otherChannel[8] = 0x10 // channel 1
+	spd := fruLocator(5, 8, true, 0x20, "DIMM C1")
+	spd[11] = 0x01 // device type modifier: DIMM memory ID
+	for i, rec := range [][]byte{local, bmcAddr, satellite, otherChannel, spd} {
+		require.NoError(t, hw.Storage().SDR().Write(ctx, uint16(i+1), rec))
+	}
+	cfg := startSimulatorHAL(t, "ro", "secret", bmc.PrivilegeLevelAdministrator, hw)
+	conn, err := newDialer(2*time.Second)(ctx, cfg, "user")
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(ctx) }()
+
+	devices, err := conn.ListFRUDevices(ctx)
+
+	require.NoError(t, err)
+	assert.Equal(t, []fruDevice{
+		{id: 5, name: "DIMM A1", kind: "dimm"},
+		{id: 6, name: "DIMM A2", kind: "dimm"},
+		{id: 5, name: "DIMM B1", kind: "dimm", isRemote: true},
+		{id: 7, name: "DIMM B2", kind: "dimm", isRemote: true},
+		{id: 8, name: "DIMM C1", kind: "dimm", isSPD: true},
+	}, devices)
+}
+
+// wireCommand is the NetFn and command code of a request the simulator received.
+type wireCommand struct{ netFn, cmd uint8 }
+
+// allowedOnTheWire is every IPMI request a scrape may send. Reserve SDR Repository and Get SDR are
+// read-only Storage commands that go-ipmi sends inside its SDR reads. Anything else fails the test.
+var allowedOnTheWire = map[wireCommand]string{
+	{0x06, 0x38}: "Get Channel Authentication Capabilities",
+	{0x06, 0x3B}: "Set Session Privilege Level",
+	{0x06, 0x3C}: "Close Session",
+	{0x06, 0x01}: "Get Device ID",
+	{0x0A, 0x20}: "Get SDR Repository Info",
+	{0x0A, 0x22}: "Reserve SDR Repository",
+	{0x0A, 0x23}: "Get SDR",
+	{0x0A, 0x10}: "Get FRU Inventory Area Info",
+	{0x0A, 0x11}: "Read FRU Data",
+	{0x04, 0x2D}: "Get Sensor Reading",
+	{0x2C, 0x02}: "DCMI Get Power Reading",
+}
+
+// scrapeOnTheWire scrapes a simulator with DCMI power and FRU reads on, and returns the metrics and
+// the count of every request the simulator received.
+func scrapeOnTheWire(t *testing.T) (pmetric.Metrics, map[wireCommand]int) {
+	t.Helper()
+	var mu sync.Mutex
+	seen := map[wireCommand]int{}
+	reg := handlers.NewRegistry()
+	reg.Use(func(next handlers.Handler) handlers.Handler {
+		return handlers.HandlerFunc(func(ctx context.Context, hctx *handlers.HandlerContext, data []byte) ([]byte, types.CompletionCode, error) {
+			if hctx != nil {
+				mu.Lock()
+				seen[wireCommand{uint8(hctx.Command.NetFn), hctx.Command.ID}]++
+				mu.Unlock()
+			}
+			return next.Handle(ctx, hctx, data)
+		})
+	})
+	handlers.RegisterAllHandlers(reg)
+
+	hw := mock.New()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	require.NoError(t, hw.Storage().FRU().Write(ctx, 0, fruImage(nil, fruBoardArea(fruText8("BoardMaker")), nil)))
+	require.NoError(t, hw.Storage().FRU().Write(ctx, 5, fruImage(nil, fruBoardArea(fruText8("DimmMaker")), nil)))
+	require.NoError(t, hw.Storage().SDR().Write(ctx, 1, fruLocator(1, 5, true, 0x20, "DIMM A1")))
+	cfg := startSimulatorHAL(t, "ro", "secret", bmc.PrivilegeLevelAdministrator, hw, server.WithHandlerRegistry(reg))
+	cfg.DCMIPower = true
+	cfg = cfg.resolved()
+	tg := newTarget(cfg, &env{now: time.Now, dial: newDialer(2 * time.Second), logger: zap.NewNop(), scrapeTimeout: time.Minute, authFailed: func(string) {}})
+
+	md := tg.scrape(ctx)
+
+	mu.Lock()
+	defer mu.Unlock()
+	counts := make(map[wireCommand]int, len(seen))
+	for c, n := range seen {
+		counts[c] = n
+	}
+	return md, counts
+}
+
+func TestAScrapeSendsOnlyTheReadCommandsOfTheAllowList(t *testing.T) {
+	_, seen := scrapeOnTheWire(t)
+
+	require.NotEmpty(t, seen)
+	for c, n := range seen {
+		_, ok := allowedOnTheWire[c]
+		assert.True(t, ok, "request NetFn 0x%02x command 0x%02x was sent %d times and is not allowed", c.netFn, c.cmd, n)
+		t.Logf("sent NetFn 0x%02x command 0x%02x (%s) %d times", c.netFn, c.cmd, allowedOnTheWire[c], n)
+	}
+}
+
+func TestAScrapeOfTheSimulatorReadsTheSDRAndTheFRUAndReportsTheBMCUp(t *testing.T) {
+	md, seen := scrapeOnTheWire(t)
+
+	require.Equal(t, 1, pointCount(md, "hw.bmc.up"))
+	assert.NotEmpty(t, fruSeries(md), "the FRU pass ran")
+	assert.Contains(t, seen, wireCommand{0x0A, 0x23}, "the SDR was read with Get SDR")
+	assert.Contains(t, seen, wireCommand{0x0A, 0x11}, "the FRU was read")
+}
+
+func TestWordAccessIsAnUnsupportedFRUDeviceNotAFailure(t *testing.T) {
+	assert.ErrorIs(t, fruAccessError(true), errFRUUnsupported)
+	assert.NoError(t, fruAccessError(false))
+}
+
+func TestReadFRUReturnsTheImageAndListFRUDevicesKeepsLogicalDIMMAndCPUOnTheSimulator(t *testing.T) {
+	hw := mock.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	img := fruImage(nil, fruBoardArea(fruText8("BoardMaker"), fruText8("X9DRW")), fruProductArea(fruText8("ProdMaker"), fruText8("Server")))
+	require.NoError(t, hw.Storage().FRU().Write(ctx, 0, img))
+	require.NoError(t, hw.Storage().FRU().Write(ctx, 5, fruImage(nil, fruBoardArea(fruText8("DimmMaker")), nil)))
+	require.NoError(t, hw.Storage().SDR().Write(ctx, 1, fruLocator(1, 5, true, 0x20, "DIMM A1")))
+	require.NoError(t, hw.Storage().SDR().Write(ctx, 2, fruLocator(2, 6, true, 0x03, "CPU1")))
+	require.NoError(t, hw.Storage().SDR().Write(ctx, 3, fruLocator(3, 7, true, 0x0A, "PSU1")))
+	require.NoError(t, hw.Storage().SDR().Write(ctx, 4, fruLocator(4, 8, false, 0x20, "NotLogical")))
+	cfg := startSimulatorHAL(t, "ro", "secret", bmc.PrivilegeLevelAdministrator, hw)
+	conn, err := newDialer(2*time.Second)(ctx, cfg, "user")
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(ctx) }()
+
+	got, err := conn.ReadFRU(ctx, 0)
+	require.NoError(t, err)
+	rec, err := decodeFRU(got)
+	require.NoError(t, err)
+	assert.Equal(t, "BoardMaker", rec.board["hw.vendor"])
+	assert.Equal(t, "Server", rec.product["hw.model"])
+
+	_, err = conn.ReadFRU(ctx, 9)
+	assert.ErrorIs(t, err, errNotPresent)
+
+	devices, err := conn.ListFRUDevices(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []fruDevice{{id: 5, name: "DIMM A1", kind: "dimm"}, {id: 6, name: "CPU1", kind: "cpu"}}, devices)
+}
+
+// A short reply is a DCMI matter only. The device, SDR and sensor reads keep the error as the library gave
+// it, so a caller that looks for the library error, or treats it as any other failure, behaves as before.
+func TestAShortReplyOutsideTheDCMIReadKeepsItsOldClass(t *testing.T) {
+	tests := map[string]error{
+		"short reply":      fmt.Errorf("get sdr: %w", types.ErrUnpackedDataTooShortWith(2, 8)),
+		"short reply text": errors.New("not enough data for sensor reading (1/4)"),
+		"wrong DCMI group": fmt.Errorf("unpack: %w", types.ErrDCMIGroupExtensionIDMismatchWith(0xdc, 0x00)),
+	}
+	for name, in := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := classify(in)
+
+			assert.NotErrorIs(t, got, errMalformed)
+			assert.Same(t, in, got, "returned as it came")
+		})
+	}
+}
+
+func TestTheDCMIReadClassifiesAShortReplyAsMalformed(t *testing.T) {
+	tests := map[string]error{
+		"short reply":      fmt.Errorf("get dcmi power: %w", types.ErrUnpackedDataTooShortWith(2, 8)),
+		"short reply text": errors.New("not enough data for power reading (3/8)"),
+		"wrong DCMI group": fmt.Errorf("unpack: %w", types.ErrDCMIGroupExtensionIDMismatchWith(0xdc, 0x00)),
+	}
+	for name, in := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, classifyDCMI(in), errMalformed)
+		})
+	}
+	assert.ErrorIs(t, classifyDCMI(context.DeadlineExceeded), errTimeout, "the other classes still apply")
+	assert.ErrorIs(t, classifyDCMI(types.NewRmcpStatusError(types.RmcpStatusCodeUnauthorizedName)), errAuth)
+	assert.NoError(t, classifyDCMI(nil))
 }

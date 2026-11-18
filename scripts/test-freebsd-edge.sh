@@ -91,8 +91,11 @@ var version string
 func main() { _ = version }
 EOF
 printf 'module probe\n\ngo 1.21\n' >"$SCRATCH/prog/go.mod"
+# trimpath-exempt: a probe binary for this test, never published
 (cd "$SCRATCH/prog" && GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=$VERSION_NOW" -o "$SCRATCH/probe-freebsd" .) || fail "cannot cross-build the probe"
+# trimpath-exempt: a probe binary for this test, never published
 (cd "$SCRATCH/prog" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=$VERSION_NOW" -o "$SCRATCH/probe-linux" .) || fail "cannot build the Linux probe"
+# trimpath-exempt: a probe binary for this test, never published
 (cd "$SCRATCH/prog" && GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=0.0.0" -o "$SCRATCH/probe-badver" .) || fail "cannot build the bad-version probe"
 if just check-edge-freebsd "$SCRATCH/probe-freebsd" >"$SCRATCH/check.out" 2>&1; then pass "check-edge-freebsd accepts a static FreeBSD build"; else
 	fail "check-edge-freebsd rejects a static FreeBSD build"

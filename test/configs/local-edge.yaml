@@ -74,6 +74,8 @@ receivers:
         metrics:
           system.memory.utilization:
             enabled: true
+      # system.processes.count and system.processes.created; off by default, and one host sent them
+      processes: {}
   # Hourly process metrics - cpu.time and uptime for long-running processes
   # Using 30s for local testing (production uses 1h)
   host_metrics/process_hourly:
@@ -126,7 +128,7 @@ processors:
   # Multi-line recombination (custom): Docker journald lines are grouped per container, not per daemon PID
   logrecombine:
     container_identifier: body.CONTAINER_ID
-  # Container name (custom): service.name from container.name on Docker journald logs
+  # Container name (custom): service.name from container.name on Docker journald logs and docker_stats metrics
   containername: {}
   # Process lifetime (custom): CPU time and disk bytes divided by process.uptime. Runs before kthread
   processlifetime: {}
@@ -182,7 +184,7 @@ service:
       exporters: [debug, file/logs]
     metrics:
       receivers: [host_metrics, psi, docker_stats]
-      processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, batch]
+      processors: [memory_limiter, filter/process, normalizedload, resource_detection, resource/host, containername, batch]
       exporters: [debug, file/metrics]
     metrics/network_allowance:
       receivers: [ethtool]

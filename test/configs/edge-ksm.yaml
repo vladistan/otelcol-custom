@@ -1,0 +1,34 @@
+# Linux edge reading the Kernel Samepage Merging counters of its own host.
+#
+# List the receiver on PVE hypervisors only: KSM runs there to merge the memory of guests, and a
+# host without it has no /sys/kernel/mm/ksm to read.
+#   otelcol-edge --config test/configs/edge-ksm.yaml
+# Validate: otelcol-edge validate --config test/configs/edge-ksm.yaml
+#
+# The receiver opens seven files under ksm_path, read-only, and needs no privilege beyond read access.
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+receivers:
+  ksm:
+    collection_interval: 60s
+    ksm_path: /sys/kernel/mm/ksm # the default
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  batch:
+    timeout: 10s
+exporters:
+  # Replace with otlp_grpc towards the gateway.
+  debug:
+    verbosity: basic
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [ksm]
+      processors: [memory_limiter, batch]
+      exporters: [debug]

@@ -51,6 +51,13 @@ flow becomes one log record with about 30 attributes, such as `source.address`, 
 `flow.in_if`, `flow.out_if` and `flow.sampling_rate`. There is no custom field mapping. A port above 1024
 needs no privilege.
 
+**Bytes and packets of NetFlow v9.** The receiver in this collector is the contrib receiver with a local patch
+(`receiver/netflowreceiver`). The upstream decoder takes `IN_BYTES` and `OUT_BYTES` (and the packet pair) into
+one value, so an exporter that sends the `OUT_*` fields after the `IN_*` fields with 0 in them, as OPNsense
+and FreeBSD `ng_netflow` do, gave `flow.io.bytes` 0 and `flow.io.packets` 0 for every flow. The patch adds
+the `OUT_*` counter to the `IN_*` counter of the same v9 record. An exporter that sends real values in both
+now reports the sum of both. IPFIX records are not changed. Flows recorded before the fix keep their 0.
+
 **NetFlow has no authentication.** Any host that can reach the port can send records. Bind one address with
 `hostname` and allow only the exporting device in the firewall.
 

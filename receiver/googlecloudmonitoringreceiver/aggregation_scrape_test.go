@@ -34,8 +34,10 @@ import (
 type fakeMonitoring struct {
 	monitoringpb.UnimplementedMetricServiceServer
 
-	mu                 sync.Mutex
-	descriptors        map[string]*metric.MetricDescriptor
+	mu          sync.Mutex
+	descriptors map[string]*metric.MetricDescriptor
+	// projectDescriptors, when set, answers each project with its own descriptors and nothing else.
+	projectDescriptors map[string]map[string]*metric.MetricDescriptor
 	requests           []*monitoringpb.ListTimeSeriesRequest
 	descriptorProjects []string
 	// failDescriptors returns an error for a descriptor request, or nil.
@@ -63,7 +65,11 @@ func (f *fakeMonitoring) ListMetricDescriptors(_ context.Context, req *monitorin
 		}
 	}
 	resp := &monitoringpb.ListMetricDescriptorsResponse{}
-	if desc, ok := f.descriptors[metricTypeOf(req.GetFilter())]; ok {
+	source := f.descriptors
+	if f.projectDescriptors != nil {
+		source = f.projectDescriptors[strings.TrimPrefix(req.GetName(), "projects/")]
+	}
+	if desc, ok := source[metricTypeOf(req.GetFilter())]; ok {
 		resp.MetricDescriptors = append(resp.MetricDescriptors, desc)
 	}
 	return resp, nil
@@ -217,7 +223,9 @@ func TestEachRequestCarriesTheAlignmentPeriodAndTheWindow(t *testing.T) {
 	_, err := h.mr.Scrape(context.Background())
 
 	require.NoError(t, err)
-	for _, req := range h.fake.recorded() {
+	requests := h.fake.recorded()
+	require.NotEmpty(t, requests, "the scrape sent no request")
+	for _, req := range requests {
 		assert.Equal(t, 12*time.Hour, req.GetAggregation().GetAlignmentPeriod().AsDuration())
 		window := req.GetInterval().GetEndTime().AsTime().Sub(req.GetInterval().GetStartTime().AsTime())
 		assert.Equal(t, 24*time.Hour, window, "a window above 23 h is sent as it is")
@@ -403,7 +411,8 @@ func TestDescriptorsAreReadForEveryProject(t *testing.T) {
 	h.fake.mu.Unlock()
 	sort.Strings(got)
 	assert.Equal(t, []string{"projects/proj-a", "projects/proj-b"}, got)
-	assert.Contains(t, h.mr.metricDescriptors, "m.googleapis.com/a")
+	assert.Contains(t, h.mr.metricDescriptors["proj-a"], "m.googleapis.com/a")
+	assert.Contains(t, h.mr.metricDescriptors["proj-b"], "m.googleapis.com/a")
 }
 
 func denyProject(project string) func(*fakeMonitoring) {
@@ -437,7 +446,9 @@ func TestProjectThatCannotListDescriptorsIsSkippedWithAWarning(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, metrics.ResourceMetrics().Len(), "the other project is scraped")
-	for _, req := range h.fake.recorded() {
+	requests := h.fake.recorded()
+	require.NotEmpty(t, requests, "the scrape sent no request")
+	for _, req := range requests {
 		assert.Equal(t, "projects/proj-a", req.GetName(), "the skipped project gets no time series request")
 	}
 }

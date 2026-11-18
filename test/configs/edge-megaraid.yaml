@@ -18,7 +18,7 @@ extensions:
 receivers:
   megaraid:
     collection_interval: 60s
-    smart: false # true reads SATA drives through the controller, once every smart_interval
+    smart: true # reads SATA drives (ATA commands) and SAS drives (LOG SENSE) through the controller, once every smart_interval
     smart_interval: 15m
     create_node: false # true makes /dev/megaraid_sas_ioctl_node when it is missing (CAP_MKNOD)
     events:

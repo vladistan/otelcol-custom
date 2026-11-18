@@ -25,7 +25,6 @@ type Config struct {
 	BMCs          []BMCConfig   `mapstructure:"bmcs"`
 }
 
-// BMCConfig is one board.
 type BMCConfig struct {
 	Name     string              `mapstructure:"name"`
 	Address  string              `mapstructure:"address"` // host or host:port, port 623 by default
@@ -42,6 +41,8 @@ type BMCConfig struct {
 	// DCMIPower reads the host power over a separate administrator session.
 	DCMIPower     bool          `mapstructure:"dcmi_power"`
 	PowerInterval time.Duration `mapstructure:"power_interval"` // 5m by default
+	// FRUInterval is the time between two reads of the BMC FRU inventory (24h by default).
+	FRUInterval time.Duration `mapstructure:"fru_interval"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -51,6 +52,9 @@ const (
 	defaultPrivilege     = "user"
 	defaultPowerInterval = 5 * time.Minute
 	minPowerInterval     = time.Minute
+	defaultFRUInterval   = 24 * time.Hour
+	minFRUInterval       = time.Hour
+	maxCipherSuite       = 19 // the highest suite id of the IPMI 2.0 table
 )
 
 // resolved returns a copy of the BMC with the defaults filled in.
@@ -64,10 +68,12 @@ func (b BMCConfig) resolved() BMCConfig {
 	if b.PowerInterval == 0 {
 		b.PowerInterval = defaultPowerInterval
 	}
+	if b.FRUInterval == 0 {
+		b.FRUInterval = defaultFRUInterval
+	}
 	return b
 }
 
-// Validate checks the limits and every BMC.
 func (c *Config) Validate() error {
 	switch {
 	case c.CollectionInterval <= 0:
@@ -100,9 +106,13 @@ func (b BMCConfig) validate(index int, seen map[string]bool) error {
 		return fmt.Errorf("duplicate bmc name %q", b.Name)
 	}
 	seen[b.Name] = true
-	switch {
-	case b.Address == "":
+	if b.Address == "" {
 		return fmt.Errorf("bmc %q: address must be set", b.Name)
+	}
+	if _, _, err := splitAddress(b.Address); err != nil {
+		return fmt.Errorf("bmc %q: %w", b.Name, err)
+	}
+	switch {
 	case b.Username == "":
 		return fmt.Errorf("bmc %q: username must be set", b.Name)
 	case b.Password == "":
@@ -117,9 +127,13 @@ func (b BMCConfig) validate(index int, seen map[string]bool) error {
 		return fmt.Errorf("bmc %q: power_interval must not be negative", b.Name)
 	case b.PowerInterval < minPowerInterval:
 		return fmt.Errorf("bmc %q: power_interval must be at least %s: every read opens an administrator session", b.Name, minPowerInterval)
+	case b.FRUInterval < 0:
+		return fmt.Errorf("bmc %q: fru_interval must not be negative", b.Name)
+	case b.FRUInterval < minFRUInterval:
+		return fmt.Errorf("bmc %q: fru_interval must be at least %s: a FRU read is many requests", b.Name, minFRUInterval)
 	}
-	if b.CipherSuite != nil && (*b.CipherSuite < 0 || *b.CipherSuite > 19) {
-		return fmt.Errorf("bmc %q: cipher_suite must be between 0 and 19", b.Name)
+	if b.CipherSuite != nil && (*b.CipherSuite < 0 || *b.CipherSuite > maxCipherSuite) {
+		return fmt.Errorf("bmc %q: cipher_suite must be between 0 and %d", b.Name, maxCipherSuite)
 	}
 	if b.IPMIVersion != "1.5" && b.CipherSuite == nil {
 		return fmt.Errorf("bmc %q: cipher_suite is required for IPMI 2.0", b.Name)

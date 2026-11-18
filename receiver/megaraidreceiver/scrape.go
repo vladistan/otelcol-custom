@@ -30,23 +30,25 @@ const (
 
 // ctrlState is what the scraper remembers of one controller between scrapes.
 type ctrlState struct {
-	unsupported map[uint32]bool
-	warned      map[string]bool
-	episode     string
-	smartLast   map[uint16]time.Time
-	smartCache  map[uint16]*smartResult
-	hung        <-chan struct{} // closed when a timed-out call returns to userspace
-	evtErrors   uint64          // failed event reads since start
-	evtEpisode  string
-	evtFailed   bool
+	invalid         map[uint32]bool // commands the controller does not know; never sent again until restart
+	notSupported    map[uint32]bool // commands reported as not supported; asked at every scrape, logged once per episode
+	warned          map[string]bool
+	episode         string
+	smartLast       map[uint16]time.Time
+	smartCache      map[uint16]*smartResult
+	hung            <-chan struct{} // closed when a timed-out call returns to userspace
+	eventErrorCount uint64          // failed event reads since start
+	eventEpisode    string
+	hasEventFailure bool
 }
 
 func newCtrlState() *ctrlState {
 	return &ctrlState{
-		unsupported: map[uint32]bool{},
-		warned:      map[string]bool{},
-		smartLast:   map[uint16]time.Time{},
-		smartCache:  map[uint16]*smartResult{},
+		invalid:      map[uint32]bool{},
+		notSupported: map[uint32]bool{},
+		warned:       map[string]bool{},
+		smartLast:    map[uint16]time.Time{},
+		smartCache:   map[uint16]*smartResult{},
 	}
 }
 
@@ -61,12 +63,12 @@ type scraper struct {
 	start  time.Time
 	events *eventCursor
 
-	inFlight atomic.Bool
-	mu       sync.Mutex
-	state    map[string]*ctrlState
-	noneSeen bool
-	findWarn bool
-	minClass int8
+	inFlight           atomic.Bool
+	mu                 sync.Mutex
+	state              map[string]*ctrlState
+	hasLoggedNone      bool
+	hasLoggedFindError bool
+	minClass           int8
 }
 
 func newScraper(logger *zap.Logger, cfg *Config, find func() ([]controller, error), open func(int) (device, func(), error), now func() time.Time) *scraper {
@@ -111,15 +113,15 @@ func (s *scraper) scrape(ctx context.Context) output {
 
 	ctrlList, err := s.find()
 	if err != nil {
-		if !s.findWarn {
-			s.findWarn = true
+		if !s.hasLoggedFindError {
+			s.hasLoggedFindError = true
 			s.logger.Warn("Cannot list the megaraid_sas controllers", zap.Error(err))
 		}
 		return out
 	}
 	if len(ctrlList) == 0 {
-		if !s.noneSeen {
-			s.noneSeen = true
+		if !s.hasLoggedNone {
+			s.hasLoggedNone = true
 			s.logger.Info("No megaraid_sas controller found; nothing is sent to any device")
 		}
 		return out
@@ -213,14 +215,14 @@ func (s *scraper) scrapeOne(ctx context.Context, c controller, now time.Time, ou
 
 	if s.cfg.Events.Enabled && s.events != nil {
 		s.readEvents(ctx, dev, c, st, now, out)
-		b.count(metricEventErrors, ident{id: c.id()}, typeController, st.evtErrors)
+		b.count(metricEventErrors, ident{id: c.id()}, typeController, st.eventErrorCount)
 	}
 }
 
-// cmd sends one allowed DCMD. ok is false when the command is skipped or the controller answers
+// execRead sends one allowed DCMD. ok is false when the command is skipped or the controller answers
 // with a status other than success; an error ends the read of the controller.
-func (s *scraper) cmd(dev device, st *ctrlState, c controller, req request) ([]byte, bool, error) {
-	if st.unsupported[req.opcode] {
+func (s *scraper) execRead(dev device, st *ctrlState, c controller, req request) ([]byte, bool, error) {
+	if st.invalid[req.opcode] {
 		return nil, false, nil
 	}
 	resp, err := dev.exec(req)
@@ -229,15 +231,18 @@ func (s *scraper) cmd(dev device, st *ctrlState, c controller, req request) ([]b
 	}
 	switch resp.status {
 	case statusOK:
+		delete(st.notSupported, req.opcode)
 		return resp.data, true, nil
 	case statusInvalidDCMD:
-		st.unsupported[req.opcode] = true
-		s.logger.Info("The controller does not know a command and it is not sent again",
+		st.invalid[req.opcode] = true
+		s.logger.Info("The controller does not know a command and it is not sent again until the receiver restarts",
 			zap.String("controller", c.id()), zap.String("command", allowed[req.opcode]))
 	case statusNotSupported:
-		st.unsupported[req.opcode] = true
-		s.logger.Debug("The controller reports a command as not supported",
-			zap.String("controller", c.id()), zap.String("command", allowed[req.opcode]))
+		if !st.notSupported[req.opcode] {
+			st.notSupported[req.opcode] = true
+			s.logger.Info("The controller reports a command as not supported and it is asked again at every scrape",
+				zap.String("controller", c.id()), zap.String("command", allowed[req.opcode]))
+		}
 	default:
 		s.warnOnce(st, fmt.Sprintf("%#x/%d", req.opcode, resp.status), "The controller refused a read command",
 			zap.String("controller", c.id()), zap.String("command", allowed[req.opcode]), zap.Uint8("status", resp.status))
@@ -245,14 +250,14 @@ func (s *scraper) cmd(dev device, st *ctrlState, c controller, req request) ([]b
 	return nil, false, nil
 }
 
-func mbox(b ...byte) [mboxSize]byte {
+func mailbox(b ...byte) [mboxSize]byte {
 	var m [mboxSize]byte
 	copy(m[:], b)
 	return m
 }
 
 func (s *scraper) read(dev device, c controller, st *ctrlState, now time.Time) (*snapshot, error) {
-	raw, ok, err := s.cmd(dev, st, c, request{opcode: opCtrlGetInfo, dataLen: ctrlInfoRequestLen})
+	raw, ok, err := s.execRead(dev, st, c, request{opcode: opCtrlGetInfo, dataLen: ctrlInfoRequestLen})
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +299,7 @@ func (s *scraper) read(dev device, c controller, st *ctrlState, now time.Time) (
 		if a.SCSIType != 0 {
 			continue // enclosure services and other devices that are not drives
 		}
-		raw, ok, err := s.cmd(dev, st, c, request{opcode: opPDGetInfo, mbox: mbox(byte(a.DeviceID), byte(a.DeviceID>>8)), dataLen: pdInfoReqLen})
+		raw, ok, err := s.execRead(dev, st, c, request{opcode: opPDGetInfo, mbox: mailbox(byte(a.DeviceID), byte(a.DeviceID>>8)), dataLen: pdInfoReqLen})
 		if err != nil {
 			return nil, err
 		}
@@ -329,9 +334,9 @@ func (s *scraper) listLDs(dev device, st *ctrlState, c controller, info ctrlInfo
 	for _, op := range order {
 		req := request{opcode: op, dataLen: ldListReqLen}
 		if op == opLDListQuery {
-			req = request{opcode: op, mbox: mbox(ldQueryAll), dataLen: ldQueryReqLen}
+			req = request{opcode: op, mbox: mailbox(ldQueryAll), dataLen: ldQueryReqLen}
 		}
-		raw, ok, err := s.cmd(dev, st, c, req)
+		raw, ok, err := s.execRead(dev, st, c, req)
 		if err != nil {
 			return nil, err
 		}
@@ -360,9 +365,9 @@ func (s *scraper) listPDs(dev device, st *ctrlState, c controller, info ctrlInfo
 	for _, op := range order {
 		req := request{opcode: op, dataLen: pdListReqLen}
 		if op == opPDListQuery {
-			req.mbox = mbox(pdQueryExposed)
+			req.mbox = mailbox(pdQueryExposed)
 		}
-		raw, ok, err := s.cmd(dev, st, c, req)
+		raw, ok, err := s.execRead(dev, st, c, req)
 		if err != nil {
 			return nil, err
 		}
@@ -380,7 +385,7 @@ func (s *scraper) listPDs(dev device, st *ctrlState, c controller, info ctrlInfo
 }
 
 func (s *scraper) readLD(dev device, st *ctrlState, c controller, target uint8) (ldInfo, bool, error) {
-	raw, ok, err := s.cmd(dev, st, c, request{opcode: opLDGetInfo, mbox: mbox(target), dataLen: ldInfoReqLen})
+	raw, ok, err := s.execRead(dev, st, c, request{opcode: opLDGetInfo, mbox: mailbox(target), dataLen: ldInfoReqLen})
 	if err != nil || !ok {
 		return ldInfo{}, false, err
 	}
@@ -390,31 +395,34 @@ func (s *scraper) readLD(dev device, st *ctrlState, c controller, target uint8) 
 		return ldInfo{}, false, nil
 	}
 	l.Target = target
-	raw, ok, err = s.cmd(dev, st, c, request{opcode: opLDGetProp, mbox: mbox(target), dataLen: ldPropReqLen})
+	raw, ok, err = s.execRead(dev, st, c, request{opcode: opLDGetProp, mbox: mailbox(target), dataLen: ldPropReqLen})
 	if err != nil {
 		return ldInfo{}, false, err
 	}
 	if ok {
-		if name, cache, perr := decodeLDProps(raw); perr == nil {
-			if name != "" {
-				l.Name = name
-			}
-			l.Cache = cache
+		name, cache, perr := decodeLDProps(raw)
+		if perr != nil {
+			s.warnOnce(st, "ld-prop-short", "A logical drive properties answer is shorter than expected", zap.String("controller", c.id()), zap.Error(perr))
+			return l, true, nil
 		}
+		if name != "" {
+			l.Name = name
+		}
+		l.Cache = cache
 	}
 	return l, true, nil
 }
 
 func (s *scraper) readBBU(dev device, st *ctrlState, c controller) (*bbuInfo, error) {
-	status, ok, err := s.cmd(dev, st, c, request{opcode: opBBUGetStatus, dataLen: bbuStatusLen})
+	status, ok, err := s.execRead(dev, st, c, request{opcode: opBBUGetStatus, dataLen: bbuStatusLen})
 	if err != nil || !ok {
 		return nil, err
 	}
-	capacity, _, err := s.cmd(dev, st, c, request{opcode: opBBUGetCapacityInfo, dataLen: bbuCapacityLen})
+	capacity, _, err := s.execRead(dev, st, c, request{opcode: opBBUGetCapacityInfo, dataLen: bbuCapacityLen})
 	if err != nil {
 		return nil, err
 	}
-	props, _, err := s.cmd(dev, st, c, request{opcode: opBBUGetProp, dataLen: bbuPropLen})
+	props, _, err := s.execRead(dev, st, c, request{opcode: opBBUGetProp, dataLen: bbuPropLen})
 	if err != nil {
 		return nil, err
 	}

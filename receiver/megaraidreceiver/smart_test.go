@@ -31,6 +31,9 @@ func drive(t *testing.T, fake *smarttest.ATA) func(passRequest) (response, error
 	t.Helper()
 	return func(req passRequest) (response, error) {
 		cdb := req.cdb
+		if cdb[0] == scsiLogSense { // a SAS drive that refuses every page
+			return response{status: statusSCSIError}, nil
+		}
 		require.Equal(t, byte(ataPassThrough16), cdb[0])
 		cmd := smartdecode.ATACommand{
 			Command: cdb[14], Features: cdb[4], SectorCount: cdb[6], LBALow: cdb[8], LBAMid: cdb[10], LBAHigh: cdb[12],
@@ -119,10 +122,10 @@ func TestSmartMetricsAndStatesFromTheDecoders(t *testing.T) {
 	assert.Equal(t, 100.0*3600, hours.val)
 	cycles, _ := find(md, hwschema.MetricPhysicalDiskPowerCycles, hwschema.AttrID, "ZC1AAAA1")
 	assert.Equal(t, 12.0, cycles.val)
-	_, notWanted := find(md, hwschema.MetricPhysicalDiskSmart, hwschema.AttrID, "ZC1AAAA1", attrAttrID, "231")
-	assert.True(t, notWanted, "231 is in the default list")
+	_, inDefaultList := find(md, hwschema.MetricPhysicalDiskSmart, hwschema.AttrID, "ZC1AAAA1", attrAttrID, "231")
+	assert.True(t, inDefaultList, "231 is in the default list")
 	sas, _ := find(md, metricSmartState, hwschema.AttrID, "S0M1BBB3")
-	assert.Equal(t, smartNotATA, sas.attrs[attrSmartState], "SAS drives are not read in this stage")
+	assert.Equal(t, smartUnsupported, sas.attrs[attrSmartState], "a SAS drive that refuses the log pages")
 }
 
 func TestAPredictedFailureAnswerRaisesTheDriveState(t *testing.T) {
@@ -192,7 +195,7 @@ func TestEachDriveIsReadOncePerIntervalInSerialOrder(t *testing.T) {
 			order = append(order, p.target)
 		}
 	}
-	assert.Equal(t, []uint8{4, 5}, order, "one drive at a time, in list order")
+	assert.Equal(t, []uint8{4, 5, 6}, order, "one drive at a time, in list order, the SAS drive last")
 
 	clock.advance(5 * time.Minute)
 	second := s.scrape(context.Background())
@@ -208,9 +211,9 @@ func TestEachDriveIsReadOncePerIntervalInSerialOrder(t *testing.T) {
 
 func TestRebuildingFailedAndPatrolledDrivesAreNotQueried(t *testing.T) {
 	dev := labFake(t)
-	dev.setMbox(opPDGetInfo, mbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "A", fw: pdRebuild, rebuildPct: 100}))
-	dev.setMbox(opPDGetInfo, mbox(5, 0), pdInfoBuf(pdSpec{id: 5, vendor: "ATA", serial: "B", fw: pdOnline, patrolPct: 100}))
-	dev.setMbox(opPDGetInfo, mbox(6, 0), pdInfoBuf(pdSpec{id: 6, vendor: "ATA", serial: "C", fw: pdFailed}))
+	dev.setMbox(opPDGetInfo, mailbox(4, 0), pdInfoBuf(pdSpec{id: 4, vendor: "ATA", serial: "A", fw: pdRebuild, rebuildPct: 100}))
+	dev.setMbox(opPDGetInfo, mailbox(5, 0), pdInfoBuf(pdSpec{id: 5, vendor: "ATA", serial: "B", fw: pdOnline, patrolPct: 100}))
+	dev.setMbox(opPDGetInfo, mailbox(6, 0), pdInfoBuf(pdSpec{id: 6, vendor: "ATA", serial: "C", fw: pdFailed}))
 	dev.passFn = drive(t, smarttest.HealthyATA("x"))
 	s, _, _ := newTestScraper(t, smartConfig(), dev)
 
@@ -260,7 +263,7 @@ func TestAStatusOtherThanSuccessIsAnError(t *testing.T) {
 func TestADriveIdAbove255CannotBeAddressed(t *testing.T) {
 	dev := labFake(t)
 	dev.set(opPDGetList, pdListBuf(pdAddr{DeviceID: 300}))
-	dev.setMbox(opPDGetInfo, mbox(0x2C, 0x01), pdInfoBuf(pdSpec{id: 300, vendor: "ATA", serial: "BIG", fw: pdOnline}))
+	dev.setMbox(opPDGetInfo, mailbox(0x2C, 0x01), pdInfoBuf(pdSpec{id: 300, vendor: "ATA", serial: "BIG", fw: pdOnline}))
 	dev.passFn = drive(t, smarttest.HealthyATA("x"))
 	s, logs, _ := newTestScraper(t, smartConfig(), dev)
 

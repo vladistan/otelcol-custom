@@ -32,7 +32,7 @@ func (c *fakeClock) Advance(d time.Duration) {
 	c.t = c.t.Add(d)
 }
 
-// fakeBMC is a board that answers the four calls from fixtures and counts them.
+// fakeBMC is a board that answers the session calls from fixtures and counts them.
 type fakeBMC struct {
 	mu    sync.Mutex
 	clock *fakeClock
@@ -50,14 +50,26 @@ type fakeBMC struct {
 	hang        bool    // every call blocks until the context ends
 	dialLatency time.Duration
 
-	sdrReads        int
-	sdrChecks       int
-	sensorReads     []uint8
-	powerReads      int
-	dials           []string // privilege level of every dial
-	opened, closed  int
-	concurrent, max int
-	calls           []string // names of every call, in order
+	frus         map[uint8][]byte // FRU images by device; a device with none answers "not present"
+	fruErrs      map[uint8]error
+	fruDevices   []fruDevice
+	fruListErr   error
+	fruReadCount int
+	fruListCount int
+	fruLatency   time.Duration // each FRU read takes this long, on the fake clock and in real time
+	fruHook      func()        // runs in every FRU read
+
+	fruIDs []uint8 // devices asked, in order
+
+	closeCtxErrs []error // ctx.Err() of every Close
+	powerCtxErrs []error // ctx.Err() of every power read
+
+	sdrReads       int
+	sensorReads    []uint8
+	powerReads     int
+	dials          []string // privilege level of every dial
+	opened, closed int
+	calls          []string // names of every call, in order
 }
 
 func newBoard(clock *fakeClock, records ...sdrRecord) *fakeBMC {
@@ -88,18 +100,11 @@ func (b *fakeBMC) dial(ctx context.Context, _ BMCConfig, level string) (bmcSessi
 	}
 	b.mu.Lock()
 	b.opened++
-	b.concurrent++
-	if b.concurrent > b.max {
-		b.max = b.concurrent
-	}
 	b.mu.Unlock()
-	return &fakeSession{b: b, level: level}, nil
+	return &fakeSession{b: b}, nil
 }
 
-type fakeSession struct {
-	b     *fakeBMC
-	level string
-}
+type fakeSession struct{ b *fakeBMC }
 
 func (s *fakeSession) record(name string) {
 	s.b.mu.Lock()
@@ -116,7 +121,6 @@ func (s *fakeSession) GetSDRsMap(_ context.Context, known time.Time) (sdrSet, bo
 	s.record("GetSDRsMap")
 	s.b.mu.Lock()
 	defer s.b.mu.Unlock()
-	s.b.sdrChecks++
 	if !known.IsZero() && known.Equal(s.b.stamp) {
 		return sdrSet{}, true, nil
 	}
@@ -135,11 +139,12 @@ func (s *fakeSession) GetSensorReading(_ context.Context, rec sdrRecord) (sensor
 	return s.b.readings[rec.number], nil
 }
 
-func (s *fakeSession) GetDCMIPowerReading(context.Context) (float64, error) {
+func (s *fakeSession) GetDCMIPowerReading(ctx context.Context) (float64, error) {
 	s.record("GetDCMIPowerReading")
 	s.b.mu.Lock()
 	defer s.b.mu.Unlock()
 	s.b.powerReads++
+	s.b.powerCtxErrs = append(s.b.powerCtxErrs, ctx.Err())
 	if len(s.b.powerErrs) > 0 {
 		err := s.b.powerErrs[0]
 		s.b.powerErrs = s.b.powerErrs[1:]
@@ -148,17 +153,57 @@ func (s *fakeSession) GetDCMIPowerReading(context.Context) (float64, error) {
 	return s.b.power, nil
 }
 
-func (s *fakeSession) Close(context.Context) error {
+func (s *fakeSession) ListFRUDevices(context.Context) ([]fruDevice, error) {
+	s.record("ListFRUDevices")
+	s.b.mu.Lock()
+	defer s.b.mu.Unlock()
+	s.b.fruListCount++
+	if s.b.fruListErr != nil {
+		return nil, s.b.fruListErr
+	}
+	return s.b.fruDevices, nil
+}
+
+func (s *fakeSession) ReadFRU(_ context.Context, id uint8) ([]byte, error) {
+	s.record("ReadFRU")
+	if s.b.fruHook != nil {
+		s.b.fruHook()
+	}
+	if s.b.fruLatency > 0 {
+		s.b.clock.Advance(s.b.fruLatency)
+		time.Sleep(s.b.fruLatency)
+	}
+	s.b.mu.Lock()
+	defer s.b.mu.Unlock()
+	s.b.fruReadCount++
+	s.b.fruIDs = append(s.b.fruIDs, id)
+	if err := s.b.fruErrs[id]; err != nil {
+		return nil, err
+	}
+	img, ok := s.b.frus[id]
+	if !ok {
+		return nil, errNotPresent
+	}
+	return img, nil
+}
+
+func (s *fakeSession) Close(ctx context.Context) error {
 	s.b.mu.Lock()
 	defer s.b.mu.Unlock()
 	s.b.closed++
-	s.b.concurrent--
+	s.b.closeCtxErrs = append(s.b.closeCtxErrs, ctx.Err())
 	return nil
+}
+
+func (b *fakeBMC) fruReadIDs() []uint8 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]uint8(nil), b.fruIDs...)
 }
 
 // Fixture builders.
 
-func fp(v float64) *float64 { return &v }
+func ptrTo(v float64) *float64 { return &v }
 
 // labBoard builds a board with the given number of temperature, fan and voltage
 // sensors, each reading a fixed value, like the X9 boards of the lab.

@@ -28,7 +28,7 @@ func NewFactory() processor.Factory {
 }
 
 func createDefaultConfig() component.Config {
-	return &Config{Patterns: slices.Clone(defaultPatterns), AggregateName: defaultAggregateName}
+	return &Config{Patterns: slices.Clone(defaultPatterns), AggregateName: defaultAggregateName, KernelParent: true}
 }
 
 func createMetricsProcessor(

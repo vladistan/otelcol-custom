@@ -30,6 +30,7 @@ RUN go install go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}
 # entrypoint, the custom in-tree components, and the builder config.
 COPY go.mod go.sum ./
 COPY cmd ./cmd
+COPY extension ./extension
 COPY processor ./processor
 COPY receiver ./receiver
 COPY stanza ./stanza
@@ -49,7 +50,7 @@ RUN go get github.com/getsentry/sentry-go@v0.29.1 && \
     go mod tidy
 
 # Compile the binary.
-RUN CGO_ENABLED=0 go build \
+RUN CGO_ENABLED=0 go build -trimpath \
         -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.serviceName=otelcol-scrape" \
         -o otelcol-scrape .
 

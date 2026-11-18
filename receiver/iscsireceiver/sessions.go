@@ -63,6 +63,9 @@ type sysfsReader struct {
 
 	// goneLogged holds the SCSI devices already reported as vanished.
 	goneLogged map[string]bool
+
+	// hasWarnedConnList is set while the connection class cannot be listed, so one warning covers a run of failures.
+	hasWarnedConnList bool
 }
 
 // maxAttrBytes bounds one attribute read: a sysfs attribute is one page at most.
@@ -78,7 +81,7 @@ func readBounded(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return io.ReadAll(io.LimitReader(f, maxAttrBytes))
 }
 
@@ -137,8 +140,14 @@ func (r *sysfsReader) readSession(dir string) (session, error) {
 func (r *sysfsReader) connections() map[int][]connection {
 	out := map[int][]connection{}
 	dirs, err := r.list(connClass, connDir)
-	if err != nil {
+	switch {
+	case err != nil && !r.hasWarnedConnList:
+		r.hasWarnedConnList = true
+		r.logger.Warn("Cannot list the iSCSI connections; sessions are reported without them", zap.Error(err))
+	case err != nil:
 		r.logger.Debug("Cannot list the iSCSI connections", zap.Error(err))
+	default:
+		r.hasWarnedConnList = false
 	}
 	for _, d := range dirs {
 		dir := filepath.Join(r.root, connClass, d.name)
@@ -185,9 +194,14 @@ func (r *sysfsReader) list(class string, re *regexp.Regexp) ([]dirEntry, error) 
 			continue
 		}
 		d := dirEntry{name: e.Name()}
-		d.session, _ = strconv.Atoi(m[1])
+		var sessionErr, connErr error
+		d.session, sessionErr = strconv.Atoi(m[1])
 		if len(m) > 2 {
-			d.conn, _ = strconv.Atoi(m[2])
+			d.conn, connErr = strconv.Atoi(m[2])
+		}
+		if err := errors.Join(sessionErr, connErr); err != nil {
+			r.logger.Debug("Skipping an iSCSI directory whose number is out of range", zap.String("name", e.Name()), zap.Error(err))
+			continue
 		}
 		out = append(out, d)
 	}

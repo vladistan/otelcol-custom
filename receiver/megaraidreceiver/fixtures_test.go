@@ -311,14 +311,14 @@ func labFake(t *testing.T) *fakeDevice {
 	))
 	f.set(opLDGetList, ldListBuf(0))
 	ld := ldSpec{target: 0, name: "data", level: 5, spans: 1, stripeLog2: 7, drives: 3, state: ldStateOptimal, cache: 0x03, blocks: 1 << 21}
-	f.setMbox(opLDGetInfo, mbox(0), ldInfoBuf(ld))
-	f.setMbox(opLDGetProp, mbox(0), ldPropBuf(ld))
+	f.setMbox(opLDGetInfo, mailbox(0), ldInfoBuf(ld))
+	f.setMbox(opLDGetProp, mailbox(0), ldPropBuf(ld))
 	for _, p := range []pdSpec{
 		{id: 4, vendor: "ATA", product: "ST4000NM0033", serial: "ZC1AAAA1", fw: pdOnline, media: 2, blocks: 1 << 22, encl: 32, slot: 0, temp: 34},
 		{id: 5, vendor: "ATA", product: "ST4000NM0033", serial: "ZC1AAAA2", fw: pdOnline, blocks: 1 << 22, encl: 32, slot: 1, temp: 35},
 		{id: 6, vendor: "SEAGATE", product: "ST300MM0006", serial: "S0M1BBB3", fw: pdOnline, blocks: 1 << 20, encl: 32, slot: 2, temp: 38},
 	} {
-		f.setMbox(opPDGetInfo, mbox(byte(p.id), byte(p.id>>8)), pdInfoBuf(p))
+		f.setMbox(opPDGetInfo, mailbox(byte(p.id), byte(p.id>>8)), pdInfoBuf(p))
 	}
 	st, capa, props := bbuBuffers(bbuSpec{status: 0, voltage: 4050, temp: 30, pct: 97, cycles: 41, runMin: 600, nextLearn: 600000000})
 	f.set(opBBUGetStatus, st)

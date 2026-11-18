@@ -1,0 +1,11 @@
+hw.errors|{error}|Sum|error.type,hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.smart_attribute,hw.physical_disk.type,hw.serial_number
+hw.errors|{error}|Sum|error.type,hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.endurance_utilization|1|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.state,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.io|By|Sum|disk.io.direction,hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.power_cycles|{cycle}|Sum|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.power_on_time|s|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.size|By|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number
+hw.physical_disk.smart|1|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.smart_attribute,hw.physical_disk.smart_value_type,hw.physical_disk.type,hw.serial_number
+hw.status|1|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number,hw.state,hw.type
+hw.temperature|Cel|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.sensor_location,hw.serial_number
+hw.temperature|Cel|Gauge|hw.firmware_version,hw.id,hw.model,hw.name,hw.physical_disk.type,hw.serial_number

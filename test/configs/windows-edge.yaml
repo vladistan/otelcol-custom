@@ -279,9 +279,12 @@ processors:
   # events; the list replaces the built-in defaults. A rule can also test event
   # data with `fields` (equals or ends_with), and `tally_by` plus
   # `drop_summary: {enabled: true}` emits an hourly count of dropped events;
-  # see docs/windows-edge.md.
+  # see docs/windows-edge.md. `service_name_from_provider` gives each event
+  # the service.name of its provider, without the Microsoft-Windows- prefix;
+  # keep winlog before resource/host, which only inserts a fallback.
   winlog:
     original_message_max_bytes: 65536
+    service_name_from_provider: true
     drop_rules:
       - name: security-audit-noise
         channels: [Security]

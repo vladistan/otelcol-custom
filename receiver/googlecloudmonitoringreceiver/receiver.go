@@ -31,8 +31,8 @@ type monitoringReceiver struct {
 	client            *monitoring.MetricClient
 	metricsBuilder    *internal.MetricsBuilder
 	mutex             sync.RWMutex
-	metricDescriptors map[string]*metric.MetricDescriptor // key is the Type of MetricDescriptor
-	skipped           map[string]bool                     // projects whose descriptors could not be listed
+	metricDescriptors map[string]map[string]*metric.MetricDescriptor // project, then the Type of the MetricDescriptor
+	skipped           map[string]bool                                // projects whose descriptors could not be listed
 }
 
 func newGoogleCloudMonitoringReceiver(cfg *Config, logger *zap.Logger) *monitoringReceiver {
@@ -40,7 +40,7 @@ func newGoogleCloudMonitoringReceiver(cfg *Config, logger *zap.Logger) *monitori
 		config:            cfg,
 		logger:            logger,
 		metricsBuilder:    internal.NewMetricsBuilder(logger),
-		metricDescriptors: make(map[string]*metric.MetricDescriptor),
+		metricDescriptors: make(map[string]map[string]*metric.MetricDescriptor),
 		skipped:           make(map[string]bool),
 	}
 }
@@ -104,7 +104,7 @@ func (mr *monitoringReceiver) Scrape(ctx context.Context) (pmetric.Metrics, erro
 		}
 		scraped++
 		projectFailed := false
-		for metricType, metricDesc := range mr.metricDescriptors {
+		for metricType, metricDesc := range mr.metricDescriptors[project] {
 			if mr.config.Aggregation != nil {
 				mr.scrapeAggregated(ctx, metrics, project, metricType, metricDesc, missingPercentile)
 				continue
@@ -234,6 +234,8 @@ func (mr *monitoringReceiver) metricDescriptorAPI(ctx context.Context) error {
 
 // listDescriptors reads the descriptors of every configured metric in one project.
 func (mr *monitoringReceiver) listDescriptors(ctx context.Context, project string) error {
+	descriptors := map[string]*metric.MetricDescriptor{}
+	mr.metricDescriptors[project] = descriptors
 	for _, metric := range mr.config.MetricsList {
 		// Get the filter query for the metric
 		filterQuery := getFilterQuery(metric)
@@ -258,7 +260,7 @@ func (mr *monitoringReceiver) listDescriptors(ctx context.Context, project strin
 			if err != nil {
 				return fmt.Errorf("failed to retrieve metric descriptors data: %w", err)
 			}
-			mr.metricDescriptors[metricDesc.Type] = metricDesc
+			descriptors[metricDesc.Type] = metricDesc
 		}
 	}
 	return nil

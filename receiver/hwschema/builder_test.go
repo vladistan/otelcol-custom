@@ -104,10 +104,26 @@ func TestFanVoltagePowerAndMemoryUnits(t *testing.T) {
 	} {
 		assert.Equal(t, unit, find(t, md, name).Unit(), name)
 	}
-	disk := find(t, md, MetricPhysicalDiskEndurance).Gauge().DataPoints().At(0)
+}
+
+func TestHostPowerHasNoIdentityAttributes(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.HostPower(250)
+
+	dp := find(t, b.Metrics(), MetricHostPower).Gauge().DataPoints().At(0)
+
+	assert.InDelta(t, 250, dp.DoubleValue(), 1e-9)
+	assert.Empty(t, attrMap(dp.Attributes()))
+}
+
+func TestPhysicalDiskEnduranceIsTheFractionUsed(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.PhysicalDiskEndurance("d1", "Disk 0", "", 0.2)
+
+	disk := find(t, b.Metrics(), MetricPhysicalDiskEndurance).Gauge().DataPoints().At(0)
+
 	assert.Equal(t, "used", attrMap(disk.Attributes())["hw.physical_disk.state"])
 	assert.InDelta(t, 0.2, disk.DoubleValue(), 1e-9)
-	assert.Equal(t, int64(250), int64(find(t, md, MetricHostPower).Gauge().DataPoints().At(0).DoubleValue()))
 }
 
 func TestStatusHasOnePointPerStateAndOnlyTheCurrentOneIs1(t *testing.T) {
@@ -188,11 +204,159 @@ func TestStateFromHealth(t *testing.T) {
 	}
 }
 
-func TestMetricNamesListsEveryMetric(t *testing.T) {
-	names := BMCMetricNames()
+// A name a builder method emits but BMCMetricNames omits would escape the
+// source check, so the list is compared with what every method writes.
+func TestMetricNamesListsEveryMetricTheBuilderEmits(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.Temperature("i", "n", "p", 1)
+	b.TemperatureLimit("i", "n", "p", LimitMax, 1)
+	b.FanSpeed("i", "n", "p", 1)
+	b.FanSpeedRatio("i", "n", "p", 1)
+	b.Voltage("i", "n", "p", 1)
+	b.HostPower(1)
+	b.PowerSupplyUsage("i", "n", "p", 1)
+	b.PowerSupplyLimit("i", "n", "p", 1)
+	b.PowerSupplyUtilization("i", "n", "p", 1)
+	b.PhysicalDiskSize("i", "n", "p", 1)
+	b.PhysicalDiskEndurance("i", "n", "p", 1)
+	b.MemorySize("i", "n", "p", 1)
+	b.Status(TypeFan, "i", "n", StateOK)
+	b.BMCUp(true, "")
+	b.BMCScrapeDuration(time.Second)
+	b.ScrapeErrors("g", 1)
+	b.DiskControllerSpeed("i", "n", "p", 1)
+	b.LogicalDiskLimit("i", "n", "p", 1, nil)
+	b.PhysicalDiskIndicator("i", "n", "p", true)
+	b.PhysicalDiskPredictedFailure("i", "n", "p", true)
+	b.LogicalDiskMediaSpanCount("i", "n", "p", 1)
+	b.StorageDriveCount("i", "n", 1)
+	b.FRUInfo(FRUBoard, nil)
+	b.InventoryStatus(SourceFRU, true)
+	var emitted []string
+	ms := b.Metrics().ResourceMetrics().At(0).ScopeMetrics().At(0).Metrics()
+	for i := 0; i < ms.Len(); i++ {
+		emitted = append(emitted, ms.At(i).Name())
+	}
 
-	assert.Contains(t, names, "hw.temperature")
-	assert.Contains(t, names, "hw.bmc.up")
-	assert.Contains(t, names, "hw.bmc.scrape.duration")
-	assert.Len(t, names, 15)
+	assert.ElementsMatch(t, emitted, BMCMetricNames())
+}
+
+func TestComponentResourceCarriesItsOverrides(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.BMCUp(true, "")
+	d := b.Component(map[string]string{AttrSerialNumber: "DRIVE-1", AttrModel: "", AttrPhysicalDiskType: "SSD"})
+	d.PhysicalDiskSize("d1", "Drive 1", "ctl", 100)
+
+	md := b.Metrics()
+
+	require.Equal(t, 2, md.ResourceMetrics().Len())
+	got := attrMap(md.ResourceMetrics().At(1).Resource().Attributes())
+	assert.Equal(t, "DRIVE-1", got[AttrSerialNumber])
+	assert.Equal(t, "SSD", got[AttrPhysicalDiskType])
+	assert.Equal(t, "X9DRW", got[AttrModel], "an empty override keeps the BMC value")
+	assert.Equal(t, "pve12", got[ResHostName])
+	assert.Equal(t, "S123", attrMap(md.ResourceMetrics().At(0).Resource().Attributes())[AttrSerialNumber], "the BMC resource is unchanged")
+}
+
+func TestStatusWithAddsTheExtraAttributesToEveryStatePoint(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.StatusWith(TypeDiskController, "c1", "Ctl", StateDegraded, map[string]string{AttrParent: "s1", AttrModel: "H740", AttrFirmwareVersion: ""})
+
+	dps := find(t, b.Metrics(), MetricStatus).Gauge().DataPoints()
+
+	require.Equal(t, len(States), dps.Len())
+	for i := 0; i < dps.Len(); i++ {
+		got := attrMap(dps.At(i).Attributes())
+		assert.Equal(t, "s1", got[AttrParent])
+		assert.Equal(t, "H740", got[AttrModel])
+		assert.NotContains(t, got, AttrFirmwareVersion, "an empty extra is left out")
+		assert.Equal(t, "disk_controller", got[AttrType])
+	}
+}
+
+func TestDiskControllerSpeedAndLogicalDiskLimit(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.DiskControllerSpeed("c1", "Ctl", "s1", 12000)
+	b.LogicalDiskLimit("v1", "VD", "s1", 5e11, map[string]string{AttrRAIDLevel: "RAID1"})
+
+	md := b.Metrics()
+
+	speed := find(t, md, MetricDiskControllerSpeed)
+	assert.Equal(t, "Mbit/s", speed.Unit())
+	assert.InDelta(t, 12000, speed.Gauge().DataPoints().At(0).DoubleValue(), 1e-9)
+	limit := find(t, md, MetricLogicalDiskLimit)
+	assert.Equal(t, "By", limit.Unit())
+	assert.Equal(t, "RAID1", attrMap(limit.Gauge().DataPoints().At(0).Attributes())[AttrRAIDLevel])
+}
+
+func TestPhysicalDiskIndicatorIsOneWhenOn(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.PhysicalDiskIndicator("d1", "Drive", "s1", true)
+	b.PhysicalDiskIndicator("d2", "Drive", "s1", false)
+
+	ind := find(t, b.Metrics(), MetricPhysicalDiskIndicator).Gauge().DataPoints()
+
+	assert.Equal(t, int64(1), ind.At(0).IntValue())
+	assert.Equal(t, int64(0), ind.At(1).IntValue())
+}
+
+func TestScrapeErrorsIsACumulativeMonotonicSum(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+	b.ScrapeErrors("drive", 3)
+
+	errs := find(t, b.Metrics(), MetricBMCScrapeErrors)
+
+	assert.Equal(t, "{error}", errs.Unit())
+	require.Equal(t, pmetric.MetricTypeSum, errs.Type())
+	assert.True(t, errs.Sum().IsMonotonic())
+	assert.Equal(t, pmetric.AggregationTemporalityCumulative, errs.Sum().AggregationTemporality())
+	assert.Equal(t, int64(3), errs.Sum().DataPoints().At(0).IntValue())
+	assert.Equal(t, "drive", attrMap(errs.Sum().DataPoints().At(0).Attributes())[AttrPathGroup])
+}
+
+func TestBuilderAddsTheSpanCountDriveCountAndPredictedFailureGauges(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+
+	b.LogicalDiskMediaSpanCount("v1", "VD", "s1", 2)
+	b.StorageDriveCount("storage/s1", "Storage s1", 6)
+	b.PhysicalDiskPredictedFailure("d1", "Drive", "s1", true)
+	b.PhysicalDiskPredictedFailure("d2", "Drive", "s1", false)
+	md := b.Metrics()
+
+	span := find(t, md, MetricLogicalDiskMediaSpanCount)
+	assert.Equal(t, "hw.logical_disk.media_span_count", span.Name())
+	assert.Equal(t, "{span}", span.Unit())
+	assert.InDelta(t, 2, span.Gauge().DataPoints().At(0).DoubleValue(), 1e-9)
+	count := find(t, md, MetricStorageDriveCount)
+	assert.Equal(t, "{drive}", count.Unit())
+	assert.InDelta(t, 6, count.Gauge().DataPoints().At(0).DoubleValue(), 1e-9)
+	pf := find(t, md, MetricPhysicalDiskPredictedFailure).Gauge().DataPoints()
+	assert.Equal(t, int64(1), pf.At(0).IntValue())
+	assert.Equal(t, int64(0), pf.At(1).IntValue())
+}
+
+func TestFRUInfoIsAnInfoGaugeWithTheTypeAndTheFields(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+
+	b.FRUInfo(FRUBoard, map[string]string{AttrID: "fru/0", AttrVendor: "Maker", AttrSerialNumber: "SN1", AttrModel: ""})
+
+	m := find(t, b.Metrics(), MetricBMCFRUInfo)
+	assert.Equal(t, "1", m.Unit())
+	require.Equal(t, 1, m.Gauge().DataPoints().Len())
+	dp := m.Gauge().DataPoints().At(0)
+	assert.Equal(t, int64(1), dp.IntValue())
+	assert.Equal(t, map[string]string{"fru.type": "board", "hw.id": "fru/0", "hw.vendor": "Maker", "hw.serial_number": "SN1"}, attrMap(dp.Attributes()))
+}
+
+func TestInventoryStatusIsOneWhenReadAndZeroWhenNot(t *testing.T) {
+	b := NewBuilder("scope", testResource(), time.Unix(100, 0))
+
+	b.InventoryStatus(SourceFRU, true)
+	b.InventoryStatus(SourceFRU, false)
+
+	dps := find(t, b.Metrics(), MetricInventoryStatus).Gauge().DataPoints()
+	require.Equal(t, 2, dps.Len())
+	assert.Equal(t, int64(1), dps.At(0).IntValue())
+	assert.Equal(t, int64(0), dps.At(1).IntValue())
+	assert.Equal(t, map[string]string{"inventory.source": "fru"}, attrMap(dps.At(0).Attributes()))
 }

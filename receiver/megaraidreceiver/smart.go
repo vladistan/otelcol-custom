@@ -18,9 +18,9 @@ import (
 // from the SMART list for this scrape.
 var errDriveGone = errors.New("the controller does not know the drive (status 12)")
 
-// passTransport sends allow-listed ATA commands to one drive as ATA PASS-THROUGH(16) in an
-// MFI_CMD_PD_SCSI_IO frame. The frame layout is not confirmed on a controller. The allow list is
-// checked here and again before the frame reaches the kernel.
+// passTransport sends allow-listed ATA commands (ATA PASS-THROUGH(16)) and SCSI log page reads
+// (LOG SENSE) to one drive in an MFI_CMD_PD_SCSI_IO frame. The frame layout is not confirmed on a
+// controller. The allow list is checked here and again before the frame reaches the kernel.
 type passTransport struct {
 	dev    device
 	target uint8
@@ -49,6 +49,28 @@ func (t passTransport) ATA(cmd smartdecode.ATACommand) (smartdecode.ATAResult, e
 	return res, nil
 }
 
+// SCSI implements smartdecode.SCSITransport: LOG SENSE of one page as a frame to the drive. The
+// sense key of a SCSI error decides: ILLEGAL REQUEST is smartdecode.ErrUnsupported, NOT READY and
+// UNIT ATTENTION are smartdecode.ErrTransient.
+func (t passTransport) SCSI(cmd smartdecode.SCSICommand) ([]byte, error) {
+	if err := smartdecode.CheckSCSI(cmd); err != nil {
+		return nil, err
+	}
+	resp, err := t.dev.pass(passRequest{target: t.target, cdb: logSenseCDB(cmd), cdbLen: logSenseLen, dataLen: cmd.DataLen})
+	if err != nil {
+		return nil, err
+	}
+	switch resp.status {
+	case statusOK:
+		return resp.data, nil
+	case statusDeviceMissing:
+		return nil, errDriveGone
+	case statusSCSIError:
+		return nil, smartdecode.SenseError(resp.sense)
+	}
+	return nil, fmt.Errorf("pass-through status %d", resp.status)
+}
+
 // smartEligible says whether a drive may be asked for SMART: it must be a disk the controller
 // has configured or can use, and not be rebuilding, copying back, failed, or under patrol read.
 func smartEligible(p pdRecord) bool {
@@ -60,17 +82,13 @@ func smartEligible(p pdRecord) bool {
 	return len(p.info.Progress) == 0
 }
 
-// readSmart reads the SATA drives one at a time, each at most once every smart_interval. A drive
-// that was not due keeps its last result. SAS drives are not read in this stage.
+// readSmart reads the drives one at a time, each at most once every smart_interval: a SATA drive
+// through ATA commands and a SAS drive through LOG SENSE. A drive that was not due keeps its last result.
 func (s *scraper) readSmart(dev device, c controller, st *ctrlState, snap *snapshot, now time.Time) {
 	for i := range snap.pds {
 		p := &snap.pds[i]
 		id := p.addr.DeviceID
 		if !smartEligible(*p) {
-			continue
-		}
-		if !strings.EqualFold(p.info.Vendor, "ATA") {
-			p.smart = &smartResult{state: smartNotATA}
 			continue
 		}
 		if id > 0xFF {
@@ -82,8 +100,16 @@ func (s *scraper) readSmart(dev device, c controller, st *ctrlState, snap *snaps
 			p.smart = st.smartCache[id]
 			continue
 		}
-		res, stop := s.readOneSmart(dev, c, st, uint8(id))
-		st.smartLast[id] = now
+		read := s.readOneSmart
+		if !strings.EqualFold(p.info.Vendor, "ATA") {
+			read = s.readOneSAS
+		}
+		res, stop := read(dev, c, st, uint8(id))
+		if res != nil && res.transient {
+			delete(st.smartLast, id) // read again at the next scrape, not after a full interval
+		} else {
+			st.smartLast[id] = now
+		}
 		st.smartCache[id] = res
 		p.smart = res
 		if stop {
@@ -92,11 +118,36 @@ func (s *scraper) readSmart(dev device, c controller, st *ctrlState, snap *snaps
 	}
 }
 
-// asleep reports whether CHECK POWER MODE shows a drive that is in standby or whose power state
-// is unknown. The controller may return no ATA status registers, and a drive is then left alone:
-// the check fails closed, so SMART never wakes a spun-down drive. An answer of 0x00 or 0x01 is
-// standby; any other value is awake.
-func asleep(tr passTransport) (standby, unknown bool, err error) {
+// readOneSAS reads the log pages of one SAS drive. stop is true when the controller is unusable.
+func (s *scraper) readOneSAS(dev device, c controller, st *ctrlState, target uint8) (res *smartResult, stop bool) {
+	data, err := smartdecode.ReadSCSI(passTransport{dev: dev, target: target})
+	switch {
+	case err == nil:
+		state := smartOK
+		if data.PredictedFailure {
+			state = smartPredicted
+		}
+		if data.Refused > 0 {
+			s.warnOnce(st, fmt.Sprintf("sas-pages-%d", target), "A SAS drive refused or garbled log pages",
+				zap.String("controller", c.id()), zap.Uint8("device_id", target), zap.Int("pages", data.Refused))
+		}
+		return &smartResult{state: state, scsi: &data}, false
+	case errors.Is(err, smartdecode.ErrUnsupported):
+		return &smartResult{state: smartUnsupported}, false
+	case errors.Is(err, smartdecode.ErrTransient):
+		return &smartResult{state: smartUnavailable, transient: true}, false
+	case errors.Is(err, errDriveGone):
+		return nil, false
+	}
+	s.warnOnce(st, fmt.Sprintf("sas-%d-%v", target, errClass(err)), "A SAS log read through the controller failed",
+		zap.String("controller", c.id()), zap.Uint8("device_id", target), zap.Error(err))
+	return &smartResult{state: smartUnavailable}, skipsScrape(err)
+}
+
+// readPowerState sends CHECK POWER MODE. standby is true for an answer of 0x00 or 0x01; unknown is
+// true when the controller returns no ATA registers, and the drive is then left alone so SMART
+// never wakes a spun-down drive.
+func readPowerState(tr passTransport) (standby, unknown bool, err error) {
 	res, err := tr.ATA(smartdecode.CheckPowerModeCommand())
 	if err != nil {
 		return false, false, fmt.Errorf("check power mode: %w", err)
@@ -111,7 +162,7 @@ func asleep(tr passTransport) (standby, unknown bool, err error) {
 // drives must wait for the next scrape.
 func (s *scraper) readOneSmart(dev device, c controller, st *ctrlState, target uint8) (res *smartResult, stop bool) {
 	tr := passTransport{dev: dev, target: target}
-	standby, unknown, err := asleep(tr)
+	standby, unknown, err := readPowerState(tr)
 	switch {
 	case err != nil:
 	case standby:

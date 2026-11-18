@@ -4,12 +4,15 @@
 package syslogprocessor
 
 import (
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+
+	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-// SyslogFormat represents the detected syslog message format.
 type SyslogFormat int
 
 const (
@@ -19,13 +22,14 @@ const (
 	FormatCiscoIOS
 )
 
-// SyslogInfo holds parsed syslog information.
 type SyslogInfo struct {
 	Format   SyslogFormat
 	Hostname string
 	Appname  string // Service/app name (tag in RFC3164, APP-NAME in RFC5424)
-	ProcID   string // Process ID if available
-	Content  string // The actual message content
+	// HostMissing is set for an RFC3164 line with no HOSTNAME: the first token ended in a colon, so it is the tag.
+	HostMissing bool
+	ProcID      string // Process ID if available
+	Content     string // The actual message content
 
 	// Cisco-specific fields
 	CiscoFacility string
@@ -33,53 +37,47 @@ type SyslogInfo struct {
 	CiscoSeq      string
 }
 
-// Regular expressions for format detection and parsing
 var (
 	// RFC5424 format: VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG
 	// Example: "1 2025-12-31T10:05:00.013372-05:00 hostname appname 1234 - - message"
 	rfc5424Pattern = regexp.MustCompile(`^(\d+)\s+(\d{4}-\d{2}-\d{2}T[^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+([^\s]+)\s+(\[[^\]]*\]|-)\s*(.*)$`)
 
-	// RFC3164 format: TIMESTAMP HOSTNAME TAG[PID]: MSG
-	// Example: "Dec 31 10:05:00 hostname sshd[1234]: message"
-	// Note: TAG may include path like /usr/sbin/cron, and PID is optional
-	rfc3164Pattern = regexp.MustCompile(`^([A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+([^\s]+)\s+(.*)$`)
+	// RFC3164: TIMESTAMP HOSTNAME TAG[PID]: MSG, e.g. "Dec 31 10:05:00 hostname sshd[1234]: message".
+	rfc3164Pattern = regexp.MustCompile(`^([A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S.*)$`)
 
-	// RFC3164 tag extraction: tag[pid]: message or tag: message
 	rfc3164TagPattern = regexp.MustCompile(`^([^\s\[:]+)(?:\[(\d+)\])?:\s*(.*)$`)
 
-	// Cisco IOS format: SEQ: *TIMESTAMP: %FACILITY-SEVERITY-MNEMONIC: message
+	// Cisco IOS: SEQ: *TIMESTAMP: %FACILITY-SEVERITY-MNEMONIC: message
 	// Example: "123: *Dec 31 10:05:00.123: %SYS-5-CONFIG_I: Configured from console"
 	ciscoPattern = regexp.MustCompile(`^(\d+):\s+\*?([A-Za-z]{3}\s+\d{1,2}\s+[\d:.]+):\s+%([^-]+)-(\d)-([^:]+):\s*(.*)$`)
+
+	rfc5424PrefixPattern = regexp.MustCompile(`^\d+\s+\d{4}-\d{2}-\d{2}T`)
+	rfc3164PrefixPattern = regexp.MustCompile(`^[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}`)
 )
 
-// DetectFormat detects the syslog message format.
 func DetectFormat(message string) SyslogFormat {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return FormatUnknown
 	}
 
-	// Check RFC5424 first (starts with version digit followed by ISO timestamp)
-	if len(message) > 0 && message[0] >= '0' && message[0] <= '9' {
-		if regexp.MustCompile(`^\d+\s+\d{4}-\d{2}-\d{2}T`).MatchString(message) {
-			return FormatRFC5424
-		}
+	// RFC5424 first: a Cisco sequence number also starts with digits.
+	if rfc5424PrefixPattern.MatchString(message) {
+		return FormatRFC5424
 	}
 
-	// Check Cisco IOS format (starts with sequence number)
 	if ciscoPattern.MatchString(message) {
 		return FormatCiscoIOS
 	}
 
-	// Check RFC3164 (starts with month abbreviation timestamp)
-	if regexp.MustCompile(`^[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}`).MatchString(message) {
+	if rfc3164PrefixPattern.MatchString(message) {
 		return FormatRFC3164
 	}
 
 	return FormatUnknown
 }
 
-// Parse parses a syslog message and returns structured information.
+// Parse returns nil for an empty or unrecognised message.
 func Parse(message string) *SyslogInfo {
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -99,7 +97,6 @@ func Parse(message string) *SyslogInfo {
 	}
 }
 
-// parseRFC5424 parses an RFC5424 formatted syslog message.
 func parseRFC5424(message string) *SyslogInfo {
 	matches := rfc5424Pattern.FindStringSubmatch(message)
 	if matches == nil {
@@ -114,7 +111,7 @@ func parseRFC5424(message string) *SyslogInfo {
 		Content:  matches[8],
 	}
 
-	// Clean up nil-value indicators
+	// "-" is the RFC5424 nil value.
 	if info.Hostname == "-" {
 		info.Hostname = ""
 	}
@@ -128,21 +125,37 @@ func parseRFC5424(message string) *SyslogInfo {
 	return info
 }
 
-// parseRFC3164 parses an RFC3164 formatted syslog message.
+// The first token after the timestamp is the HOSTNAME. When it ends in a colon and is not an IP address,
+// the line has no HOSTNAME and the token is the tag: HostMissing is set and the content is the rest of the
+// line as written. An IP address followed by a colon is the host, and the colon is dropped.
 func parseRFC3164(message string) *SyslogInfo {
 	matches := rfc3164Pattern.FindStringSubmatch(message)
 	if matches == nil {
 		return nil
 	}
 
-	info := &SyslogInfo{
-		Format:   FormatRFC3164,
-		Hostname: matches[2],
-		Content:  matches[3], // Will be refined below
+	rest := matches[2]
+	token, content := rest, ""
+	if i := strings.IndexFunc(rest, unicode.IsSpace); i >= 0 {
+		token = rest[:i]
+		content = strings.TrimLeftFunc(rest[i:], unicode.IsSpace)
 	}
 
-	// Try to extract tag and PID from content
-	content := matches[3]
+	info := &SyslogInfo{Format: FormatRFC3164, Hostname: token, Content: content}
+	if strings.HasSuffix(token, ":") && !isAddress(token) {
+		if addr := strings.TrimSuffix(token, ":"); isAddress(addr) {
+			info.Hostname = addr
+		} else {
+			info.Hostname = ""
+			info.HostMissing = true
+			content = rest
+			info.Content = rest
+		}
+	}
+	if content == "" && !info.HostMissing {
+		return nil // a host and nothing else
+	}
+
 	if tagMatches := rfc3164TagPattern.FindStringSubmatch(content); tagMatches != nil {
 		info.Appname = tagMatches[1]
 		info.ProcID = tagMatches[2]
@@ -152,7 +165,11 @@ func parseRFC3164(message string) *SyslogInfo {
 	return info
 }
 
-// parseCisco parses a Cisco IOS formatted syslog message.
+func isAddress(s string) bool {
+	_, err := netip.ParseAddr(s)
+	return err == nil
+}
+
 func parseCisco(message string) *SyslogInfo {
 	matches := ciscoPattern.FindStringSubmatch(message)
 	if matches == nil {
@@ -165,47 +182,34 @@ func parseCisco(message string) *SyslogInfo {
 		CiscoFacility: matches[3],
 		CiscoMnemonic: matches[5],
 		Content:       matches[6],
-		// Note: Cisco syslog doesn't have hostname in the message itself
-		// It should come from the source IP or be configured separately
 	}
 }
 
-// IsEmbeddedRFC5424 checks if an RFC3164 message content is actually RFC5424.
-// This handles double-wrapped BSD syslog where the outer RFC3164 wraps inner RFC5424.
+// IsEmbeddedRFC5424 reports double-wrapped BSD syslog: an RFC3164 line whose content is RFC5424.
 func IsEmbeddedRFC5424(content string) bool {
 	return DetectFormat(content) == FormatRFC5424
 }
 
-// MapPriorityToSeverity converts syslog priority to OTEL severity number and text.
-// Syslog priority = (facility * 8) + severity
-// Severity: 0=Emergency, 1=Alert, 2=Critical, 3=Error, 4=Warning, 5=Notice, 6=Info, 7=Debug
-func MapPriorityToSeverity(priority string) (severityNumber int32, severityText string) {
+// MapPriorityToSeverity maps a syslog priority (facility*8 + severity) to an OTEL severity.
+// ok is false when the priority is not a number.
+func MapPriorityToSeverity(priority string) (number plog.SeverityNumber, text string, ok bool) {
 	pri, err := strconv.Atoi(priority)
 	if err != nil {
-		return 0, ""
+		return plog.SeverityNumberUnspecified, "", false
 	}
 
-	// Extract severity from priority (lower 3 bits)
-	severity := pri & 0x07
-
-	switch severity {
-	case 0: // Emergency
-		return 24, "FATAL" // SEVERITY_NUMBER_FATAL4
-	case 1: // Alert
-		return 21, "FATAL" // SEVERITY_NUMBER_FATAL
-	case 2: // Critical
-		return 17, "ERROR" // SEVERITY_NUMBER_ERROR
-	case 3: // Error
-		return 17, "ERROR" // SEVERITY_NUMBER_ERROR
-	case 4: // Warning
-		return 13, "WARN" // SEVERITY_NUMBER_WARN
-	case 5: // Notice
-		return 9, "INFO" // SEVERITY_NUMBER_INFO
-	case 6: // Informational
-		return 9, "INFO" // SEVERITY_NUMBER_INFO
-	case 7: // Debug
-		return 5, "DEBUG" // SEVERITY_NUMBER_DEBUG
+	switch pri & 0x07 {
+	case 0:
+		return plog.SeverityNumberFatal4, "FATAL", true
+	case 1:
+		return plog.SeverityNumberFatal, "FATAL", true
+	case 2, 3:
+		return plog.SeverityNumberError, "ERROR", true
+	case 4:
+		return plog.SeverityNumberWarn, "WARN", true
+	case 5, 6:
+		return plog.SeverityNumberInfo, "INFO", true
 	default:
-		return 0, ""
+		return plog.SeverityNumberDebug, "DEBUG", true
 	}
 }

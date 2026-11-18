@@ -20,23 +20,41 @@ import (
 	"github.com/vladistan/otelcol-custom/receiver/smartdecode"
 )
 
+// The ATA SMART attribute ids the receiver reads by number, as vendors define them.
+const (
+	attrReallocated        uint8 = 5
+	attrPowerOnHours       uint8 = 9
+	attrPowerCycles        uint8 = 12
+	attrAirflowTemperature uint8 = 190
+	attrTemperature        uint8 = 194
+	attrPendingSectors     uint8 = 197
+	attrUncorrectable      uint8 = 198
+	attrCRCErrors          uint8 = 199
+	attrLifetimeRemaining  uint8 = 202
+	attrSSDLifeLeft        uint8 = 231
+	attrWearout            uint8 = 233
+	attrTotalWritten       uint8 = 241
+	attrTotalRead          uint8 = 242
+)
+
 type scraper struct {
-	logger      *zap.Logger
-	bus         bus
-	sel         selector
-	attrs       attributeSelection
-	valueTypes  []string
-	skipStandby bool
-	maxDevices  int
-	timeout     time.Duration
-	skipped     metric.Int64Counter
-	start       pcommon.Timestamp
+	logger           *zap.Logger
+	bus              bus
+	sel              selector
+	attrs            attributeSelection
+	valueTypes       []string
+	isStandbySkipped bool
+	maxDevices       int
+	timeout          time.Duration
+	skipped          metric.Int64Counter
+	start            pcommon.Timestamp
 
 	// ioUnit gives the bytes in one unit of an attribute that counts data moved.
 	ioUnit func(id uint8) (uint64, bool)
 
-	episodes  map[string]string // device to the reason of its failure, set while the failure lasts
-	capWarned bool
+	episodes     map[string]string // device to the reason of its failure, set while the failure lasts
+	hasWarnedCap bool
+	listProblem  string // text of the listing failure being reported, empty when the last listing was whole
 }
 
 func newScraper(logger *zap.Logger, cfg *Config, b bus, skipped metric.Int64Counter, start time.Time) (*scraper, error) {
@@ -49,18 +67,18 @@ func newScraper(logger *zap.Logger, cfg *Config, b bus, skipped metric.Int64Coun
 		return nil, err
 	}
 	return &scraper{
-		logger:      logger,
-		bus:         b,
-		sel:         sel,
-		attrs:       attrs,
-		valueTypes:  cfg.ValueTypes,
-		skipStandby: cfg.SkipIfStandby,
-		maxDevices:  cfg.MaxDevices,
-		timeout:     cfg.CommandTimeout,
-		skipped:     skipped,
-		start:       pcommon.NewTimestampFromTime(start),
-		ioUnit:      smartdecode.IOUnitBytes,
-		episodes:    map[string]string{},
+		logger:           logger,
+		bus:              b,
+		sel:              sel,
+		attrs:            attrs,
+		valueTypes:       cfg.ValueTypes,
+		isStandbySkipped: cfg.SkipIfStandby,
+		maxDevices:       cfg.MaxDevices,
+		timeout:          cfg.CommandTimeout,
+		skipped:          skipped,
+		start:            pcommon.NewTimestampFromTime(start),
+		ioUnit:           smartdecode.IOUnitBytes,
+		episodes:         map[string]string{},
 	}, nil
 }
 
@@ -68,20 +86,26 @@ func newScraper(logger *zap.Logger, cfg *Config, b bus, skipped metric.Int64Coun
 func (s *scraper) scrape(ctx context.Context, now time.Time) pmetric.Metrics {
 	md := pmetric.NewMetrics()
 	devs, err := s.bus.discover()
-	if err != nil {
-		s.logger.Warn("Failed to list the disks", zap.Error(err))
+	if err != nil && !errors.Is(err, errPartialList) {
+		s.reportListProblem("Failed to list the disks", err)
 		return md
+	}
+	// A partial list still carries the disks found; the problem is logged once while it lasts.
+	if err != nil {
+		s.reportListProblem("The disk list is incomplete; the disks found are still read", err)
+	} else {
+		s.listProblem = ""
 	}
 	devs = s.sel.filter(devs)
 	if len(devs) > s.maxDevices {
-		if !s.capWarned {
-			s.capWarned = true
+		if !s.hasWarnedCap {
+			s.hasWarnedCap = true
 			s.logger.Warn("More devices than max_devices; the rest are not read",
 				zap.Int("devices", len(devs)), zap.Int("max_devices", s.maxDevices))
 		}
 		devs = devs[:s.maxDevices]
 	} else {
-		s.capWarned = false
+		s.hasWarnedCap = false
 	}
 
 	b := newBuilder(md, s.start, pcommon.NewTimestampFromTime(now))
@@ -92,6 +116,15 @@ func (s *scraper) scrape(ctx context.Context, now time.Time) pmetric.Metrics {
 		s.read(ctx, b, d)
 	}
 	return md
+}
+
+// reportListProblem warns when the listing failure differs from the one last reported, so a failure that
+// repeats every interval gives one line until it changes or ends.
+func (s *scraper) reportListProblem(message string, err error) {
+	if text := err.Error(); text != s.listProblem {
+		s.listProblem = text
+		s.logger.Warn(message, zap.Error(err))
+	}
 }
 
 func (s *scraper) read(ctx context.Context, b *builder, d device) {
@@ -115,7 +148,7 @@ func (s *scraper) readATA(b *builder, d device) error {
 		return err
 	}
 	defer func() { _ = closer.Close() }()
-	data, err := smartdecode.ReadATA(tr, smartdecode.ATAOptions{SkipIfStandby: s.skipStandby})
+	data, err := smartdecode.ReadATA(tr, smartdecode.ATAOptions{SkipIfStandby: s.isStandbySkipped})
 	if err != nil {
 		return err
 	}
@@ -195,10 +228,12 @@ func (s *scraper) emitNVMe(b *builder, d device, data smartdecode.NVMeData) {
 	id := ident{
 		id: firstNonEmpty(data.Identify.Serial, d.name), name: d.name, model: data.Identify.Model,
 		serial: data.Identify.Serial, firmware: data.Identify.Firmware, diskType: hwschema.DiskNVMe,
+		vendor: smartdecode.NVMeVendor(data.Identify.VendorID),
 	}
 	smart := data.Smart
-	if data.Identify.SizeBytes > 0 {
-		b.count(hwschema.MetricPhysicalDiskSize, id, data.Identify.SizeBytes)
+	// TNVMCAP is 0 on many consumer drives; the namespaces then give the size.
+	if size := firstNonZero(data.Identify.SizeBytes, d.nsBytes); size > 0 {
+		b.count(hwschema.MetricPhysicalDiskSize, id, size)
 	}
 	b.status(id, smartdecode.NVMeState(smart.CriticalWarning))
 	if smart.HasComposite {
@@ -251,7 +286,7 @@ func (s *scraper) emitATA(b *builder, d device, data smartdecode.ATAData) {
 	if info.IsSSD() {
 		diskType = hwschema.DiskSSD
 	}
-	id := ident2(d, info, diskType)
+	id := ataIdent(d, info, diskType)
 
 	if info.SizeBytes > 0 {
 		b.count(hwschema.MetricPhysicalDiskSize, id, info.SizeBytes)
@@ -267,7 +302,7 @@ func (s *scraper) emitATA(b *builder, d device, data smartdecode.ATAData) {
 		b.gauge(hwschema.MetricTemperature, id, temp)
 	}
 	if info.IsSSD() {
-		for _, endurance := range []uint8{231, 233, 202} {
+		for _, endurance := range []uint8{attrSSDLifeLeft, attrWearout, attrLifetimeRemaining} {
 			if a, ok := findAttr(data.Attributes, endurance); ok {
 				b.gauge(hwschema.MetricPhysicalDiskEndurance, id, float64(a.Value)/100, hwschema.AttrPhysicalDiskState, hwschema.DiskStateRemaining)
 				break
@@ -277,21 +312,24 @@ func (s *scraper) emitATA(b *builder, d device, data smartdecode.ATAData) {
 	for _, e := range []struct {
 		id   uint8
 		kind string
-	}{{5, hwschema.ErrorBadSector}, {197, hwschema.ErrorBadSector}, {198, hwschema.ErrorBadSector}, {199, hwschema.ErrorCRC}} {
+	}{
+		{attrReallocated, hwschema.ErrorBadSector}, {attrPendingSectors, hwschema.ErrorBadSector},
+		{attrUncorrectable, hwschema.ErrorBadSector}, {attrCRCErrors, hwschema.ErrorCRC},
+	} {
 		if a, ok := findAttr(data.Attributes, e.id); ok {
 			b.count(hwschema.MetricErrors, id, a.Raw, hwschema.AttrErrorType, e.kind, hwschema.AttrSmartAttribute, smartdecode.AttributeName(e.id))
 		}
 	}
-	if a, ok := findAttr(data.Attributes, 9); ok {
+	if a, ok := findAttr(data.Attributes, attrPowerOnHours); ok {
 		b.gauge(hwschema.MetricPhysicalDiskPowerOnTime, id, float64(a.Raw&0xFFFFFFFF)*3600)
 	}
-	if a, ok := findAttr(data.Attributes, 12); ok {
+	if a, ok := findAttr(data.Attributes, attrPowerCycles); ok {
 		b.count(hwschema.MetricPhysicalDiskPowerCycles, id, a.Raw)
 	}
 	for _, m := range []struct {
 		id  uint8
 		dir string
-	}{{241, hwschema.DirectionWrite}, {242, hwschema.DirectionRead}} {
+	}{{attrTotalWritten, hwschema.DirectionWrite}, {attrTotalRead, hwschema.DirectionRead}} {
 		a, ok := findAttr(data.Attributes, m.id)
 		if !ok {
 			continue
@@ -307,16 +345,17 @@ func (s *scraper) emitATA(b *builder, d device, data smartdecode.ATAData) {
 	}
 }
 
-func ident2(d device, i smartdecode.Identify, diskType string) ident {
+// ataIdent builds the identity of a SATA disk from its IDENTIFY data.
+func ataIdent(d device, i smartdecode.Identify, diskType string) ident {
 	return ident{
 		id: firstNonEmpty(i.Serial, i.WWN, d.name), name: d.name, model: i.Model,
-		serial: i.Serial, firmware: i.Firmware, diskType: diskType,
+		serial: i.Serial, firmware: i.Firmware, diskType: diskType, vendor: smartdecode.ATAVendor(i.Model),
 	}
 }
 
 // ataTemperature takes the low byte of attribute 194, else 190, else the Device Statistics value.
 func ataTemperature(data smartdecode.ATAData) (float64, bool) {
-	for _, id := range []uint8{194, 190} {
+	for _, id := range []uint8{attrTemperature, attrAirflowTemperature} {
 		if a, ok := findAttr(data.Attributes, id); ok {
 			return float64(a.Raw & 0xFF), true
 		}

@@ -78,7 +78,11 @@ What the SATA numbers assume. Vendors differ, and the receiver does not know the
   are emitted as the 48-bit number, and only in `hw.physical_disk.smart`.
 - Attributes 5, 197 and 198 feed the monotonic sum `hw.errors`. A pending or uncorrectable count can fall
   when the disk reallocates a sector, and a backend then sees a counter reset.
-- The `hw.vendor` attribute is not set.
+- `hw.vendor` comes from a short table: the PCI vendor id of Identify Controller for an NVMe disk and the start of
+  the model string for an ATA disk. An id or model that is not in the table leaves the attribute out, so a
+  missing `hw.vendor` does not mean the disk has no maker.
+- An NVMe controller that reports no capacity (common on consumer drives) gives `hw.physical_disk.size` from the
+  sum of its namespaces in `/sys/class/nvme`; with neither, the series is left out.
 
 The receiver also records `otelcol_smart_devices_skipped` with the attribute `reason`: `timeout`,
 `unsupported`, `smart_disabled`, `standby`, `permission` or `error`.
@@ -125,7 +129,8 @@ host with many disks.
   and has no SMART data of its own. The receiver skips it with reason `unsupported`. The decoders sit
   in a separate module behind a transport interface, so a later controller layer can supply the same
   buffers.
-- **SAS disks.** SCSI `LOG SENSE` is not read; a SAS disk behind an HBA is skipped as `unsupported`.
+- **SAS disks.** This receiver does not read SCSI `LOG SENSE`; a SAS disk behind an HBA is skipped as
+  `unsupported`. SAS drives behind a MegaRAID controller are read by the `megaraid` receiver.
 - **USB bridges that refuse the SAT command**, and virtual disks (`virtio_blk`, VMware): skipped as
   `unsupported`.
 - **A disk in standby**, with `skip_if_standby` on: CHECK POWER MODE runs, no SMART command follows, and

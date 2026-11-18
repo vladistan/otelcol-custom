@@ -46,6 +46,7 @@ func mapEnvelope(env envelope) (plog.Logs, error) {
 	rl := logs.ResourceLogs().AppendEmpty()
 	res := rl.Resource().Attributes()
 	res.PutStr("service.name", "auth0")
+	res.PutStr("cloud.provider", "auth0")
 	putNonEmpty(res, "cloud.account.id", env.Account)
 	putNonEmpty(res, "cloud.region", env.Region)
 

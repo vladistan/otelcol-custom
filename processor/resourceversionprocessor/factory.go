@@ -47,7 +47,7 @@ func createLogsProcessor(
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
 	c := cfg.(*Config)
-	return newLogsProcessor(set, c, nextConsumer), nil
+	return newLogsProcessor(c, nextConsumer), nil
 }
 
 func createMetricsProcessor(
@@ -57,7 +57,7 @@ func createMetricsProcessor(
 	nextConsumer consumer.Metrics,
 ) (processor.Metrics, error) {
 	c := cfg.(*Config)
-	return newMetricsProcessor(set, c, nextConsumer), nil
+	return newMetricsProcessor(c, nextConsumer), nil
 }
 
 func createTracesProcessor(
@@ -67,5 +67,5 @@ func createTracesProcessor(
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
 	c := cfg.(*Config)
-	return newTracesProcessor(set, c, nextConsumer), nil
+	return newTracesProcessor(c, nextConsumer), nil
 }

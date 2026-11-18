@@ -8,6 +8,7 @@ require (
 	go.opentelemetry.io/collector/consumer v1.70.0
 	go.opentelemetry.io/collector/consumer/consumertest v0.164.0
 	go.opentelemetry.io/collector/pdata v1.70.0
+	go.opentelemetry.io/collector/pdata/xpdata v0.164.0
 	go.opentelemetry.io/collector/processor v1.70.0
 	go.opentelemetry.io/collector/processor/processortest v0.164.0
 	go.uber.org/zap v1.28.0

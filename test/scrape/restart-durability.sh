@@ -19,6 +19,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 readonly ROOT
 
 "$ROOT/test/scrape/validate-scrape.sh"
+# trimpath-exempt: a scratch binary for this durability test, never published
 (cd "$ROOT/build/scratch-scrape" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o otelcol-scrape-linux .)
 SCRAPE_LINUX_BIN="$ROOT/build/scratch-scrape/otelcol-scrape-linux" \
 	go -C "$ROOT/test/scrape" test -tags durability -run 'Test(RestartDurability|KillAtIntake|ALBGunzip|ALBKeyWithoutLogSuffix)' -count=1 -v ./...

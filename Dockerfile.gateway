@@ -51,7 +51,7 @@ RUN cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-c
 # Compile the binary.
 # hadolint ignore=DL3003
 RUN cd build/gateway && \
-    CGO_ENABLED=0 go build \
+    CGO_ENABLED=0 go build -trimpath \
         -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.serviceName=otelcol-gateway" \
         -o otelcol-gateway .
 

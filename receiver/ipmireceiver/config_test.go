@@ -79,6 +79,10 @@ func TestConfigValidate(t *testing.T) {
 		"no name":                     {func(c *Config) { c.BMCs[0].Name = "" }, "name must be set"},
 		"duplicate name":              {func(c *Config) { c.BMCs = append(c.BMCs, c.BMCs[0]) }, "duplicate bmc name"},
 		"no address":                  {func(c *Config) { c.BMCs[0].Address = "" }, "address must be set"},
+		"port is not a number":        {func(c *Config) { c.BMCs[0].Address = "192.0.2.12:x" }, "address"},
+		"port out of range":           {func(c *Config) { c.BMCs[0].Address = "192.0.2.12:65536" }, "address"},
+		"empty host":                  {func(c *Config) { c.BMCs[0].Address = ":623" }, "address"},
+		"host with a port is valid":   {func(c *Config) { c.BMCs[0].Address = "192.0.2.12:6230" }, ""},
 		"no username":                 {func(c *Config) { c.BMCs[0].Username = "" }, "username must be set"},
 		"no password":                 {func(c *Config) { c.BMCs[0].Password = "" }, "password must be set"},
 		"unknown vendor":              {func(c *Config) { c.BMCs[0].Vendor = "acme" }, "vendor must be dell or supermicro"},
@@ -138,4 +142,17 @@ func confmapString(t *testing.T, cfg *Config) string {
 	cm := confmap.New()
 	require.NoError(t, cm.Marshal(cfg))
 	return fmt.Sprintf("%v", cm.ToStringMap())
+}
+
+func TestFRUIntervalDefaultsTo24HoursAndIsValidated(t *testing.T) {
+	cfg := validConfig()
+	require.NoError(t, cfg.Validate())
+	assert.Equal(t, 24*time.Hour, cfg.BMCs[0].resolved().FRUInterval)
+
+	cfg.BMCs[0].FRUInterval = -time.Hour
+	assert.ErrorContains(t, cfg.Validate(), "fru_interval must not be negative")
+	cfg.BMCs[0].FRUInterval = time.Minute
+	assert.ErrorContains(t, cfg.Validate(), "fru_interval must be at least 1h0m0s")
+	cfg.BMCs[0].FRUInterval = 12 * time.Hour
+	assert.NoError(t, cfg.Validate())
 }

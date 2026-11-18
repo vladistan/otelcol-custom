@@ -62,13 +62,13 @@ func classLocale(class int8) uint32 {
 // for after delivery. With no saved sequence number the first read starts from the newest event;
 // a saved number above the newest one (log cleared) is reset to the newest.
 func (s *scraper) readEvents(ctx context.Context, dev device, c controller, st *ctrlState, now time.Time, out *output) {
-	st.evtFailed = false
+	st.hasEventFailure = false
 	defer func() {
-		if !st.evtFailed {
-			st.evtEpisode = ""
+		if !st.hasEventFailure {
+			st.eventEpisode = ""
 		}
 	}()
-	raw, ok, err := s.cmd(dev, st, c, request{opcode: opEventGetInfo, dataLen: evtInfoLen})
+	raw, ok, err := s.execRead(dev, st, c, request{opcode: opEventGetInfo, dataLen: evtInfoLen})
 	if err != nil || !ok {
 		s.eventFailure(st, c, "state", err)
 		return
@@ -99,7 +99,7 @@ func (s *scraper) readEvents(ctx context.Context, dev device, c controller, st *
 	var m [mboxSize]byte
 	binary.LittleEndian.PutUint32(m[0:], saved+1)
 	binary.LittleEndian.PutUint32(m[4:], classLocale(s.minClass))
-	raw, ok, err = s.cmd(dev, st, c, request{opcode: opEventGet, mbox: m, dataLen: evtHeader + evtSize*count})
+	raw, ok, err = s.execRead(dev, st, c, request{opcode: opEventGet, mbox: m, dataLen: evtHeader + evtSize*count})
 	if err != nil || !ok {
 		s.eventFailure(st, c, "read", err)
 		return
@@ -110,7 +110,7 @@ func (s *scraper) readEvents(ctx context.Context, dev device, c controller, st *
 		s.eventFailure(st, c, "read", err)
 		return
 	}
-	st.evtEpisode = ""
+	st.eventEpisode = ""
 	cursor := state.Newest
 	if len(events) >= count && len(events) > 0 {
 		cursor = events[len(events)-1].Sequence
@@ -131,12 +131,12 @@ func (s *scraper) readEvents(ctx context.Context, dev device, c controller, st *
 // eventFailure counts a failed event read and logs it once for each run of failures of one kind.
 // The metrics of the scrape are already sent, so without this line events could stop silently.
 func (s *scraper) eventFailure(st *ctrlState, c controller, stage string, err error) {
-	st.evtErrors++
-	st.evtFailed = true
-	if st.evtEpisode == stage {
+	st.eventErrorCount++
+	st.hasEventFailure = true
+	if st.eventEpisode == stage {
 		return
 	}
-	st.evtEpisode = stage
+	st.eventEpisode = stage
 	fields := []zap.Field{zap.String("controller", c.id()), zap.String("stage", stage)}
 	if err != nil {
 		fields = append(fields, zap.Error(err))

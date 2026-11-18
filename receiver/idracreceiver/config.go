@@ -42,6 +42,12 @@ type TargetConfig struct {
 	// RequestTimeout limits one request; ScrapeTimeout limits the whole read.
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 	ScrapeTimeout  time.Duration `mapstructure:"scrape_timeout"`
+	// StorageInterval is the time between two reads of the storage resources (controllers, volumes and
+	// drives), which run apart from the other scrapes. It may equal collection_interval and may not be below it.
+	// The default is 5m, or collection_interval when that is longer.
+	StorageInterval time.Duration `mapstructure:"storage_interval"`
+	// StorageMaxDrives is the most drives read in one storage read. The default is 256.
+	StorageMaxDrives int `mapstructure:"storage_max_drives"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -50,6 +56,9 @@ const (
 	defaultRequestTimeout = 10 * time.Second
 	defaultScrapeTimeout  = 30 * time.Second
 	defaultMaxConcurrent  = 8
+
+	defaultStorageInterval  = 5 * time.Minute
+	defaultStorageMaxDrives = 256
 )
 
 // resolved returns a copy of the target with the defaults filled in.
@@ -63,7 +72,19 @@ func (t TargetConfig) resolved() TargetConfig {
 	if t.ScrapeTimeout == 0 {
 		t.ScrapeTimeout = defaultScrapeTimeout
 	}
+	if t.StorageMaxDrives == 0 {
+		t.StorageMaxDrives = defaultStorageMaxDrives
+	}
 	return t
+}
+
+// storageInterval is the time between two storage reads: the configured interval, else 5 minutes or the
+// collection interval when that is longer.
+func (t TargetConfig) storageInterval(collection time.Duration) time.Duration {
+	if t.StorageInterval > 0 {
+		return t.StorageInterval
+	}
+	return max(defaultStorageInterval, collection)
 }
 
 // Validate checks the interval and every target.
@@ -82,6 +103,9 @@ func (c *Config) Validate() error {
 	for i, t := range c.Targets {
 		if err := t.resolved().validate(i, seen); err != nil {
 			return err
+		}
+		if t.StorageInterval != 0 && t.StorageInterval < c.CollectionInterval {
+			return fmt.Errorf("target %q: storage_interval must not be below collection_interval", t.Name)
 		}
 	}
 	return nil
@@ -110,6 +134,10 @@ func (t TargetConfig) validate(index int, seen map[string]bool) error {
 		return fmt.Errorf("target %q: request_timeout must not be negative", t.Name)
 	case t.ScrapeTimeout < t.RequestTimeout:
 		return fmt.Errorf("target %q: scrape_timeout must not be below request_timeout", t.Name)
+	case t.StorageInterval < 0:
+		return fmt.Errorf("target %q: storage_interval must not be negative", t.Name)
+	case t.StorageMaxDrives < 0:
+		return fmt.Errorf("target %q: storage_max_drives must not be negative", t.Name)
 	}
 	for _, r := range t.Resources {
 		if !hwschema.IsRedfishResource(r) {

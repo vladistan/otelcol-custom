@@ -22,6 +22,8 @@ receivers:
             attributes: [cpu, state]
       load:
       memory:
+      # system.processes.count and system.processes.created
+      processes: {}
   psi:
     collection_interval: 60s
   gpu:

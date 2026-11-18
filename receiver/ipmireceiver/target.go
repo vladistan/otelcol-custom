@@ -23,8 +23,11 @@ const (
 	sdrMaxAge = 6 * time.Hour
 	// maxAuthFailures in a row stop a BMC until the receiver restarts.
 	maxAuthFailures = 3
-	maxAuthBackoff  = 6 * time.Hour
-	closeTimeout    = 5 * time.Second
+	// A shared account locks out on repeated failures, so the first retry waits.
+	firstAuthBackoff = 15 * time.Minute
+	maxAuthBackoff   = 6 * time.Hour
+	closeTimeout     = 5 * time.Second
+	levelAdmin       = "administrator"
 )
 
 // env is what every target shares; tests replace the clock and the dialer.
@@ -43,17 +46,22 @@ type target struct {
 
 	authFailures int
 	retryAt      time.Time
-	halted       bool
+	isHalted     bool
 
-	sdr     sdrSet
-	sdrAt   time.Time
-	haveSDR bool
+	sdr    sdrSet
+	sdrAt  time.Time
+	hasSDR bool
 
-	dcmiAbsent    bool // the BMC answered invalid command: no DCMI power
-	powerStopped  bool // the account is not an administrator, or too many logins failed
-	nextPower     time.Time
-	powerFailures int
-	firmware      string
+	isDCMIAbsent       bool // the BMC answered invalid command: no DCMI power
+	isPowerStopped     bool // the account is not an administrator, or too many logins failed
+	nextPower          time.Time
+	powerFailures      int
+	hasWarnedMalformed bool // the one WARN about a malformed DCMI reply was logged
+	firmware           string
+
+	nextFRU      time.Time // the next FRU read; zero means the first scrape
+	hasWarnedFRU bool      // a warning was logged for the current run of FRU failures
+	hasNotedFRU  bool      // the line about FRU devices that are not read was logged
 }
 
 func newTarget(cfg BMCConfig, e *env) *target { return &target{cfg: cfg, env: e} }
@@ -61,7 +69,7 @@ func newTarget(cfg BMCConfig, e *env) *target { return &target{cfg: cfg, env: e}
 // authBackoff is the silence after the nth authentication failure in a row: 15
 // minutes, doubling, to 6 hours.
 func authBackoff(n int) time.Duration {
-	d := 15 * time.Minute
+	d := firstAuthBackoff
 	for i := 1; i < n && d < maxAuthBackoff; i++ {
 		d *= 2
 	}
@@ -89,9 +97,10 @@ func (t *target) resource() hwschema.Resource {
 // duration, so a value of an earlier scrape is never sent again.
 func (t *target) scrape(ctx context.Context) pmetric.Metrics {
 	start := t.env.now()
-	if t.halted || start.Before(t.retryAt) {
+	if t.isHalted || start.Before(t.retryAt) {
 		return t.failed(start, hwschema.ReasonBackoff)
 	}
+	parent := ctx
 	ctx, cancel := context.WithTimeout(ctx, t.env.scrapeTimeout)
 	defer cancel()
 
@@ -100,6 +109,14 @@ func (t *target) scrape(ctx context.Context) pmetric.Metrics {
 		return t.failed(start, t.classify(err, start))
 	}
 	points, err := t.read(ctx, conn, start)
+	// The FRU pass has its own budget (fruTimeout, from the receiver context). Its time is kept out
+	// of the scrape: the power read gets the time the sensors left, and the duration leaves it out.
+	var fruTook time.Duration
+	if err == nil {
+		fruStart := t.env.now()
+		points = append(points, t.readFRU(parent, conn, start)...)
+		fruTook = t.env.now().Sub(fruStart)
+	}
 	t.closeSession(ctx, conn)
 	if err != nil {
 		return t.failed(start, t.classify(err, start))
@@ -110,9 +127,15 @@ func (t *target) scrape(ctx context.Context) pmetric.Metrics {
 	for _, p := range points {
 		p(b)
 	}
-	t.readPower(ctx, b, start)
+	powerCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok && fruTook > 0 {
+		var cancelPower context.CancelFunc
+		powerCtx, cancelPower = context.WithDeadline(parent, deadline.Add(fruTook))
+		defer cancelPower()
+	}
+	t.readPower(powerCtx, b, start)
 	b.BMCUp(true, "")
-	b.BMCScrapeDuration(t.env.now().Sub(start))
+	b.BMCScrapeDuration(t.env.now().Sub(start) - fruTook)
 	return b.Metrics()
 }
 
@@ -131,7 +154,7 @@ func (t *target) classify(err error, now time.Time) string {
 		t.authFailures++
 		t.env.authFailed(t.cfg.Name)
 		if t.authFailures >= maxAuthFailures {
-			t.halted = true
+			t.isHalted = true
 			t.env.logger.Warn("BMC authentication failed three times; not contacting it again until restart",
 				zap.String("bmc", t.cfg.Name), zap.String("error", msg))
 		} else {
@@ -149,6 +172,7 @@ func (t *target) classify(err error, now time.Time) string {
 	}
 }
 
+// closeSession always sends Close Session: its context does not end with the scrape or the receiver.
 func (t *target) closeSession(ctx context.Context, conn bmcSession) {
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), closeTimeout)
 	defer cancel()
@@ -167,7 +191,7 @@ func (t *target) read(ctx context.Context, conn bmcSession, now time.Time) ([]fu
 	t.firmware = dev.firmware
 
 	var known time.Time
-	if t.haveSDR && now.Sub(t.sdrAt) < sdrMaxAge {
+	if t.hasSDR && now.Sub(t.sdrAt) < sdrMaxAge {
 		known = t.sdr.stamp
 	}
 	set, unchanged, err := conn.GetSDRsMap(ctx, known)
@@ -175,7 +199,7 @@ func (t *target) read(ctx context.Context, conn bmcSession, now time.Time) ([]fu
 		return nil, err
 	}
 	if !unchanged {
-		t.sdr, t.sdrAt, t.haveSDR = set, now, true
+		t.sdr, t.sdrAt, t.hasSDR = set, now, true
 	}
 
 	var points []func(*hwschema.Builder)
@@ -236,7 +260,7 @@ func (t *target) point(rec sdrRecord, r sensorReading) func(*hwschema.Builder) {
 		}
 	case kindIntrusion:
 		state := hwschema.StateOK
-		if has(r.active, 0) {
+		if containsOffset(r.active, 0) {
 			state = hwschema.StateFailed
 		}
 		return func(b *hwschema.Builder) {
@@ -246,7 +270,7 @@ func (t *target) point(rec sdrRecord, r sensorReading) func(*hwschema.Builder) {
 	return nil
 }
 
-func has(active []uint8, offset uint8) bool {
+func containsOffset(active []uint8, offset uint8) bool {
 	for _, a := range active {
 		if a == offset {
 			return true
@@ -259,15 +283,15 @@ func has(active []uint8, offset uint8) bool {
 // presence, 1 failure, 2 predictive failure, 3 and 4 input lost, 5 input out of
 // range, 6 configuration error. A supply that is not present has no state.
 func powerSupplyState(active []uint8) (string, bool) {
-	if !has(active, 0) {
+	if !containsOffset(active, 0) {
 		return "", false
 	}
 	switch {
-	case has(active, 1), has(active, 3), has(active, 4):
+	case containsOffset(active, 1), containsOffset(active, 3), containsOffset(active, 4):
 		return hwschema.StateFailed, true
-	case has(active, 2):
+	case containsOffset(active, 2):
 		return hwschema.StatePredictedFailure, true
-	case has(active, 5), has(active, 6):
+	case containsOffset(active, 5), containsOffset(active, 6):
 		return hwschema.StateDegraded, true
 	}
 	return hwschema.StateOK, true
@@ -276,14 +300,14 @@ func powerSupplyState(active []uint8) (string, bool) {
 // readPower reads the DCMI power over a separate administrator session, once
 // per power_interval. Nothing here fails the scrape.
 func (t *target) readPower(ctx context.Context, b *hwschema.Builder, now time.Time) {
-	if !t.cfg.DCMIPower || t.dcmiAbsent || t.powerStopped || now.Before(t.nextPower) {
+	if !t.cfg.DCMIPower || t.isDCMIAbsent || t.isPowerStopped || now.Before(t.nextPower) {
 		return
 	}
 	t.nextPower = now.Add(t.cfg.PowerInterval)
-	conn, err := t.env.dial(ctx, t.cfg, "administrator")
+	conn, err := t.env.dial(ctx, t.cfg, levelAdmin)
 	if err != nil {
 		if errors.Is(err, errRole) {
-			t.powerStopped = true
+			t.isPowerStopped = true
 			t.env.logger.Warn("the account cannot open an administrator session; DCMI power reads stop until restart",
 				zap.String("bmc", t.cfg.Name), zap.String("error", t.redact(err.Error())))
 			return
@@ -304,15 +328,21 @@ func (t *target) readPower(ctx context.Context, b *hwschema.Builder, now time.Ti
 	}
 	var ce completionError
 	switch {
-	case errors.As(err, &ce) && ce.code == ccInvalidCommand:
-		t.dcmiAbsent = true
+	case errors.As(err, &ce) && ce.code == completionInvalidCommand:
+		t.isDCMIAbsent = true
 		t.env.logger.Info("BMC has no DCMI power; not asking again", zap.String("bmc", t.cfg.Name))
-	case errors.As(err, &ce) && ce.code == ccInitializing:
+	case errors.As(err, &ce) && ce.code == completionInitializing:
 		t.env.logger.Debug("BMC is initializing; DCMI power is tried again at the next interval", zap.String("bmc", t.cfg.Name))
-	case errors.As(err, &ce) && ce.code == ccInsufficientPrivilege:
-		t.powerStopped = true
+	case errors.As(err, &ce) && ce.code == completionInsufficientPrivilege:
+		t.isPowerStopped = true
 		t.env.logger.Warn("DCMI power needs an administrator account and this one is not an administrator; power reads stop until restart",
 			zap.String("bmc", t.cfg.Name))
+	case errors.Is(err, errMalformed):
+		if !t.hasWarnedMalformed {
+			t.hasWarnedMalformed = true
+			t.env.logger.Warn("BMC sent a malformed DCMI power reply; no power point for this interval and it is read again at the next one; this is logged once until restart",
+				zap.String("bmc", t.cfg.Name), zap.String("error", t.redact(err.Error())))
+		}
 	default:
 		t.env.logger.Debug("DCMI power read failed", zap.String("bmc", t.cfg.Name), zap.String("error", t.redact(err.Error())))
 	}
@@ -324,7 +354,7 @@ func (t *target) powerAuthFailed(now time.Time, err error) {
 	t.powerFailures++
 	t.env.authFailed(t.cfg.Name)
 	if t.powerFailures >= maxAuthFailures {
-		t.powerStopped = true
+		t.isPowerStopped = true
 	} else {
 		t.nextPower = now.Add(authBackoff(t.powerFailures))
 	}

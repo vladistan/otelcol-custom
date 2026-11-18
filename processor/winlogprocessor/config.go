@@ -41,6 +41,9 @@ type Config struct {
 	DropSummary DropSummaryConfig `mapstructure:"drop_summary"`
 	// OriginalMessageMaxBytes cuts original_message (the event XML); 0 keeps it whole.
 	OriginalMessageMaxBytes int `mapstructure:"original_message_max_bytes"`
+	// ServiceNameFromProvider sets service.name on a per-event resource from
+	// winlog.provider_name with the Microsoft-Windows- prefix removed. Off by default.
+	ServiceNameFromProvider bool `mapstructure:"service_name_from_provider"`
 }
 
 func (cfg *Config) Validate() error {

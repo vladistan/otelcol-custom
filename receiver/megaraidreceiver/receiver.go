@@ -29,12 +29,12 @@ type megaReceiver struct {
 	scraper    *scraper
 	closeStore func(context.Context) error
 
-	mu         sync.Mutex
-	started    int
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	storeWarn  bool
-	storeError string
+	mu             sync.Mutex
+	started        int
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	hasWarnedStore bool
+	storeFailure   error
 }
 
 func newReceiver(settings receiver.Settings, cfg *Config) *megaReceiver {
@@ -56,7 +56,7 @@ func (r *megaReceiver) Start(ctx context.Context, host component.Host) error {
 	}
 	if r.cfg.Events.Enabled && r.logs != nil {
 		if err := r.openStore(ctx, host); err != nil {
-			r.storeError = err.Error()
+			r.storeFailure = err
 		}
 	}
 	loopCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -138,9 +138,13 @@ func (r *megaReceiver) collect(ctx context.Context) {
 // scrapeAndSend reads the controllers and sends the metrics and the events. A missing file_storage
 // is one error per start; metrics go on.
 func (r *megaReceiver) scrapeAndSend(ctx context.Context) {
-	if r.storeError != "" && !r.storeWarn {
-		r.storeWarn = true
-		r.logger.Error("Controller events are off: "+r.storeError+"; the receiver needs the file_storage extension to keep its place in the event log", zap.String("extension", "file_storage"))
+	if r.storeFailure != nil && !r.hasWarnedStore {
+		r.hasWarnedStore = true
+		if r.cfg.Events.enabledByDefault && r.cfg.Events.Storage == nil {
+			r.logger.Info("Controller events wait for events.storage: name a file_storage extension there to read the event log, or set events.enabled: false to drop this line")
+		} else {
+			r.logger.Error("Controller events are off: "+r.storeFailure.Error()+"; the receiver needs the file_storage extension to keep its place in the event log (set events.storage, or set events.enabled: false to turn events off and drop this line)", zap.String("extension", "file_storage"))
+		}
 	}
 	out := r.scraper.scrape(ctx)
 	if r.metrics != nil && out.metrics.MetricCount() > 0 {

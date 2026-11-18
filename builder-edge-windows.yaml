@@ -7,7 +7,9 @@ dist:
 # =============================================================================
 # Windows edge: builder-edge-static.yaml minus journaldreceiver and
 # psireceiver, plus windowsperfcountersreceiver, windowseventlogreceiver,
-# gpureceiver, fswatchreceiver, winlogprocessor and tightvncprocessor.
+# gpureceiver, fswatchreceiver, windiskhealthreceiver, sqlserverreceiver, winlogprocessor and
+# tightvncprocessor.
+# inventoryreceiver is in the static edge as well, so it is no difference.
 # check-edge-windows-manifest holds this list; extend it when a component is
 # added here.
 # =============================================================================
@@ -30,6 +32,10 @@ replaces:
   - github.com/vladistan/otelcol-custom/processor/tightvncprocessor => ../../processor/tightvncprocessor
   - github.com/vladistan/otelcol-custom/receiver/gpureceiver => ../../receiver/gpureceiver
   - github.com/vladistan/otelcol-custom/receiver/fswatchreceiver => ../../receiver/fswatchreceiver
+  - github.com/vladistan/otelcol-custom/receiver/windiskhealthreceiver => ../../receiver/windiskhealthreceiver
+  - github.com/vladistan/otelcol-custom/receiver/smartdecode => ../../receiver/smartdecode
+  - github.com/vladistan/otelcol-custom/receiver/hwschema => ../../receiver/hwschema
+  - github.com/vladistan/otelcol-custom/receiver/inventoryreceiver => ../../receiver/inventoryreceiver
 # =============================================================================
 # Extensions - Minimal set for edge deployments
 # =============================================================================
@@ -56,8 +62,14 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
   # Windows performance counters
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/windowsperfcountersreceiver v0.164.1
+  # SQL Server on one host (direct connection; query text is dropped in the sample config)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/sqlserverreceiver v0.164.1
   # NVIDIA GPU metrics through nvml.dll (no cgo)
   - gomod: github.com/vladistan/otelcol-custom/receiver/gpureceiver v0.0.0
+  # Physical disk health through DeviceIoControl (no external program)
+  - gomod: github.com/vladistan/otelcol-custom/receiver/windiskhealthreceiver v0.0.0
+  # Daily hardware facts (CPU, memory modules, board, drives, GPU) as info gauges
+  - gomod: github.com/vladistan/otelcol-custom/receiver/inventoryreceiver v0.0.0
   # TCP connectivity probe (IPv4 and bracketed IPv6 targets)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcpcheckreceiver v0.164.1
 # =============================================================================
@@ -105,3 +117,14 @@ exporters:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
   # Debug output for troubleshooting
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.164.0
+# =============================================================================
+# Providers - the five that cmd/otelcol-custom registers. An explicit list replaces the builder default, so
+# every provider the entrypoint imports is named here to keep its pinned version; check-edge-windows-manifest
+# compares the list with the imports of main.go.
+# =============================================================================
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.70.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.70.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.70.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.70.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.70.0

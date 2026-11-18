@@ -117,7 +117,7 @@ build: generate
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/
     cd build && go get github.com/getsentry/sentry-go@v0.29.1
     cd build && go mod tidy
-    cd build && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
+    cd build && CGO_ENABLED=0 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
     @echo "Binary size:"
     ls -lh build/otelcol-custom
 
@@ -127,7 +127,7 @@ build-linux: generate
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/
     cd build && go get github.com/getsentry/sentry-go@v0.29.1
     cd build && go mod tidy
-    cd build && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
+    cd build && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-custom" -o otelcol-custom .
     @echo "Binary size:"
     ls -lh build/otelcol-custom
 
@@ -153,7 +153,7 @@ build-edge: generate-edge
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/edge/
     cd build/edge && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/edge && go mod tidy
-    cd build/edge && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" -o otelcol-edge .
+    cd build/edge && CGO_ENABLED=0 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" -o otelcol-edge .
     @echo "Binary size:"
     ls -lh build/edge/otelcol-edge
 
@@ -183,7 +183,7 @@ build-edge-linux: build-edge-image
     cd build/edge
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    go build -buildvcs=false -tags netgo,osusergo \
+    go build -trimpath -buildvcs=false -tags netgo,osusergo \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge .
     EOF
@@ -208,7 +208,7 @@ build-edge-static-linux: build-edge-image
     cd build/edge-static
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    go build -buildvcs=false \
+    go build -trimpath -buildvcs=false \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge .
     EOF
@@ -256,6 +256,14 @@ check-ipmi-deployment:
 test-check-ipmi-deployment:
     scripts/test-check-ipmi-deployment.sh
 
+# Fail unless every scrape sample with runAsNonRoot sets the numeric runAsUser and runAsGroup of the image.
+check-sample-user:
+    scripts/check-sample-user.sh
+
+# Tests for check-sample-user; no network.
+test-check-sample-user:
+    scripts/test-check-sample-user.sh
+
 # Fail unless every sample config with a docker_stats block sets api_version to an empty string.
 check-docker-stats-api-version:
     scripts/check-docker-stats-api-version.sh
@@ -290,6 +298,22 @@ check-local-replaces:
 test-check-local-replaces:
     scripts/test-check-local-replaces.sh
 
+# Fail unless each Dockerfile that builds from a builder manifest copies every directory that manifest replaces from.
+check-dockerfile-copies:
+    scripts/check-dockerfile-copies.sh
+
+# Tests for check-dockerfile-copies; no network.
+test-check-dockerfile-copies:
+    scripts/test-check-dockerfile-copies.sh
+
+# Fail when a shipped build compiles without -trimpath (build paths would change the checksum).
+check-trimpath:
+    scripts/check-trimpath.sh
+
+# Tests for check-trimpath; no network.
+test-check-trimpath:
+    scripts/test-check-trimpath.sh
+
 # Fail when a sample config holds a literal SNMP community, auth_password or privacy_password.
 check-snmp-secrets:
     scripts/check-snmp-secrets.sh
@@ -297,6 +321,18 @@ check-snmp-secrets:
 # Tests for check-snmp-secrets; no network.
 test-check-snmp-secrets:
     scripts/test-check-snmp-secrets.sh
+
+# Load the SQL Server sample with the contrib receiver code and check the password, query text and error log rules.
+test-sqlserver:
+    cd test/sqlserver && go test -count=1 ./...
+
+# Fail when a Linux edge sample has no `processes` scraper in its host_metrics receiver.
+check-edge-processes:
+    scripts/check-edge-processes.sh
+
+# Tests for check-edge-processes; no network.
+test-check-edge-processes:
+    scripts/test-check-edge-processes.sh
 
 # Fail when the binary needs glibc newer than 2.35 or a shared library outside
 # libc.so.6 and ld-linux-x86-64.so.2. A static binary passes with no entries.
@@ -350,7 +386,7 @@ build-scrape: generate-scrape
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/scrape/
     cd build/scrape && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/scrape && go mod tidy
-    cd build/scrape && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
+    cd build/scrape && CGO_ENABLED=0 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
     @echo "Binary size:"
     ls -lh build/scrape/otelcol-scrape
 
@@ -360,7 +396,7 @@ build-scrape-linux: generate-scrape
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/scrape/
     cd build/scrape && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/scrape && go mod tidy
-    cd build/scrape && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
+    cd build/scrape && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-scrape" -o otelcol-scrape .
     @echo "Binary size:"
     ls -lh build/scrape/otelcol-scrape
 
@@ -395,7 +431,7 @@ build-gateway: generate-gateway
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/gateway/
     cd build/gateway && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/gateway && go mod tidy
-    cd build/gateway && CGO_ENABLED=0 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .
+    cd build/gateway && CGO_ENABLED=0 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .
     @echo "Binary size:"
     ls -lh build/gateway/otelcol-gateway
 
@@ -405,7 +441,7 @@ build-gateway-linux: generate-gateway
     cp cmd/otelcol-custom/main.go cmd/otelcol-custom/svcwrapper.go cmd/otelcol-custom/optional.go build/gateway/
     cd build/gateway && go get github.com/getsentry/sentry-go@v0.29.1
     cd build/gateway && go mod tidy
-    cd build/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .
+    cd build/gateway && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-gateway" -o otelcol-gateway .
     @echo "Binary size:"
     ls -lh build/gateway/otelcol-gateway
 
@@ -530,10 +566,21 @@ test-custom:
     @echo "Checking the local replaces in the builder manifests..."
     just test-check-local-replaces
     just check-local-replaces
+    @echo ""
+    @echo "Checking that the Dockerfiles copy the directories the manifests replace from..."
+    just test-check-dockerfile-copies
+    just check-dockerfile-copies
 
     @echo "Checking the SNMP secrets in the sample configs..."
     just test-check-snmp-secrets
     just check-snmp-secrets
+    @echo ""
+    @echo "Checking the SQL Server sample config..."
+    just test-sqlserver
+    @echo ""
+    @echo "Checking the processes scraper in the Linux edge samples..."
+    just test-check-edge-processes
+    just check-edge-processes
     @echo ""
     @echo "Checking the docker_stats api_version in the sample configs..."
     just test-check-docker-stats-api-version

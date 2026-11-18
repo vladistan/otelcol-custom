@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/confmap"
 )
 
 const (
@@ -44,6 +45,10 @@ type EventsConfig struct {
 	MinClass string `mapstructure:"min_class"`
 	// MaxPerScrape bounds the events read in one scrape.
 	MaxPerScrape int `mapstructure:"max_per_scrape"`
+
+	// enabledByDefault is set when the config file did not mention events.enabled, so a missing
+	// storage is a plain note and not an error.
+	enabledByDefault bool
 }
 
 // Validate checks the configuration. A storage name that no extension answers is not an error
@@ -63,4 +68,17 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("events.max_per_scrape must be between 1 and %d", maxMaxPerScrape))
 	}
 	return errors.Join(errs...)
+}
+
+// configAlias has no Unmarshal method, so decoding into it does not call Config.Unmarshal again.
+type configAlias Config
+
+// Unmarshal decodes the config and records whether events.enabled came from the file or from the
+// default.
+func (c *Config) Unmarshal(conf *confmap.Conf) error {
+	if err := conf.Unmarshal((*configAlias)(c)); err != nil {
+		return err
+	}
+	c.Events.enabledByDefault = !conf.IsSet("events::enabled")
+	return nil
 }

@@ -1,0 +1,39 @@
+# Edge collector that reports the short host name: host.name "web01.example.net"
+# leaves as "web01". An IP address and a name with no dot stay as they are.
+# The switch is off unless a config sets it.
+receivers:
+  host_metrics:
+    collection_interval: 60s
+    scrapers:
+      cpu: {}
+      memory: {}
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  resource_detection:
+    detectors: [system]
+    system:
+      hostname_sources: [os]
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+  resourceversion:
+    role: edge
+    short_host_name: true
+exporters:
+  otlp_http:
+    endpoint: http://otel-main.example.invalid:4318
+    compression: gzip
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [host_metrics]
+      processors: [memory_limiter, resource_detection, resourceversion]
+      exporters: [otlp_http]

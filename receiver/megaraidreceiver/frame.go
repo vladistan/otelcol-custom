@@ -8,11 +8,10 @@ import (
 	"fmt"
 )
 
-// The ioctl packet is struct megasas_iocpacket of the Linux driver header megaraid_sas.h:
-// host_no u16, pad u16, sgl_off u32, sge_count u32, sense_off u32, sense_len u32, a 128-byte
-// frame, then 16 iovec entries of 16 bytes. The driver does not bounds-check sgl_off, so every
-// offset below is a constant, never read from input. The layout is the one the capture tool
-// (cmd/megaraid-capture) uses.
+// The ioctl packet is struct megasas_iocpacket of megaraid_sas.h: host_no u16, pad u16, sgl_off
+// u32, sge_count u32, sense_off u32, sense_len u32, a 128-byte frame, then 16 iovec entries of
+// 16 bytes. The driver does not bounds-check sgl_off, so every offset below is a constant, never
+// read from input. The capture tool (cmd/megaraid-capture) uses the same layout.
 const (
 	packetSize  = 404
 	frameOff    = 20

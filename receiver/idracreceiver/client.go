@@ -35,11 +35,19 @@ var (
 	errTimeout = errors.New("timed out")
 	errAbsent  = errors.New("path absent")
 	errStatus  = errors.New("unexpected status")
+	errPanic   = errors.New("decoder failed")
+
+	// errUndecodable is a member the BMC sent that does not decode; the member is skipped.
+	errUndecodable = errors.New("member does not decode")
 )
 
 // reprobeAfter is how long a path stays marked absent. A 404 during an iDRAC reset must not hide a
 // resource until the next restart.
 const reprobeAfter = 6 * time.Hour
+
+// neverLatch asks for a path to be requested on every read, whatever an earlier read answered. A 404 is then
+// counted once, when the path first answers it, and the mark is dropped when the path answers again.
+const neverLatch time.Duration = -1
 
 // statusError is an HTTP status the client did not expect; it matches errStatus.
 type statusError struct {
@@ -52,9 +60,16 @@ func (e *statusError) Error() string {
 }
 func (e *statusError) Is(target error) bool { return target == errStatus }
 
-// client speaks Redfish to one iDRAC with a session token. It sends one request
-// at a time, logs in again once after a 401, and remembers the paths the BMC
-// answered 404 for.
+// absentError is a 404. It matches errAbsent; fresh is true for the 404 that marked the path and false when
+// the path was already marked, so a caller counts a path once.
+type absentError struct{ fresh bool }
+
+func (e *absentError) Error() string        { return errAbsent.Error() }
+func (e *absentError) Is(target error) bool { return target == errAbsent }
+
+// client speaks Redfish to one iDRAC with a session token. A scraper sends one request at a time, the base
+// scrape and the storage read may overlap, a 401 gives one new login and one retry, and a path the BMC
+// answered 404 for is remembered.
 type client struct {
 	http       *http.Client
 	base       string
@@ -63,7 +78,8 @@ type client struct {
 	logger     *zap.Logger
 	now        func() time.Time
 
-	mu          sync.Mutex
+	loginMu     sync.Mutex // one login or logout at a time
+	mu          sync.Mutex // guards the fields below
 	token       string
 	sessionPath string
 	absent      map[string]time.Time // path to the time of its 404
@@ -103,13 +119,75 @@ func (c *client) redact(s string) string {
 	if c.pass != "" {
 		s = strings.ReplaceAll(s, c.pass, "[redacted]")
 	}
-	if c.token != "" {
-		s = strings.ReplaceAll(s, c.token, "[redacted]")
+	if token := c.currentToken(); token != "" {
+		s = strings.ReplaceAll(s, token, "[redacted]")
 	}
 	return s
 }
 
-// login opens a session. The caller holds c.mu.
+func (c *client) currentToken() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.token
+}
+
+// session returns the token, logging in first when there is none.
+func (c *client) session(ctx context.Context) (string, error) {
+	if token := c.currentToken(); token != "" {
+		return token, nil
+	}
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
+	if token := c.currentToken(); token != "" {
+		return token, nil
+	}
+	if err := c.login(ctx); err != nil {
+		return "", err
+	}
+	return c.currentToken(), nil
+}
+
+// dropToken forgets a token the BMC refused, unless another caller has already logged in again.
+func (c *client) dropToken(stale string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token == stale {
+		c.token = ""
+	}
+}
+
+// markAbsent remembers a 404 and reports whether the path was not marked already.
+func (c *client) markAbsent(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, known := c.absent[key]
+	c.absent[key] = c.now()
+	return !known
+}
+
+// isAbsent reports whether the path answered 404 less than latch ago.
+func (c *client) isAbsent(key string, latch time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	since, ok := c.absent[key]
+	if !ok {
+		return false
+	}
+	if c.now().Sub(since) < latch {
+		return true
+	}
+	delete(c.absent, key)
+	return false
+}
+
+// clearAbsent forgets a 404 of a path that answers again.
+func (c *client) clearAbsent(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.absent, key)
+}
+
+// login opens a session. The caller holds c.loginMu.
 func (c *client) login(ctx context.Context) error {
 	body, _ := json.Marshal(map[string]string{"UserName": c.user, "Password": c.pass})
 	resp, err := c.do(ctx, http.MethodPost, sessionsPath, bytes.NewReader(body), "")
@@ -124,11 +202,13 @@ func (c *client) login(ctx context.Context) error {
 	case resp.StatusCode/100 != 2:
 		return fmt.Errorf("%w: login answered %d", errStatus, resp.StatusCode)
 	}
-	c.token = resp.Header.Get("X-Auth-Token")
-	if c.token == "" {
+	token := resp.Header.Get("X-Auth-Token")
+	if token == "" {
 		return fmt.Errorf("%w: login gave no token", errStatus)
 	}
-	c.sessionPath = locationPath(resp.Header.Get("Location"))
+	c.mu.Lock()
+	c.token, c.sessionPath = token, locationPath(resp.Header.Get("Location"))
+	c.mu.Unlock()
 	return nil
 }
 
@@ -185,28 +265,36 @@ func (c *client) classify(err error) error {
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
 		return fmt.Errorf("%w: %s", errTimeout, c.redact(err.Error()))
 	}
-	return errors.New(c.redact(err.Error()))
+	return &redactedError{msg: c.redact(err.Error()), err: err}
 }
 
-// get reads path into out. A 401 gives one new login and one retry; a 404
-// marks the path absent for six hours and returns errAbsent without a request meanwhile.
+// redactedError shows the redacted message of err and still matches it with errors.Is and errors.As.
+type redactedError struct {
+	msg string
+	err error
+}
+
+func (e *redactedError) Error() string { return e.msg }
+func (e *redactedError) Unwrap() error { return e.err }
+
+// get reads path into out. A 401 gives one new login and one retry; a 404 marks the path absent for six
+// hours, so it is not requested again meanwhile.
 func (c *client) get(ctx context.Context, path string, out any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	return c.getFor(ctx, path, out, reprobeAfter)
+}
+
+// getFor is get with the time a 404 keeps the path marked absent; neverLatch marks it for counting only.
+func (c *client) getFor(ctx context.Context, path string, out any, latch time.Duration) error {
 	key := strings.SplitN(path, "?", 2)[0]
-	if since, ok := c.absent[key]; ok {
-		if c.now().Sub(since) < reprobeAfter {
-			return errAbsent
-		}
-		delete(c.absent, key)
+	if latch > 0 && c.isAbsent(key, latch) {
+		return &absentError{}
 	}
 	for attempt := 0; ; attempt++ {
-		if c.token == "" {
-			if err := c.login(ctx); err != nil {
-				return err
-			}
+		token, err := c.session(ctx)
+		if err != nil {
+			return err
 		}
-		resp, err := c.do(ctx, http.MethodGet, path, nil, c.token)
+		resp, err := c.do(ctx, http.MethodGet, path, nil, token)
 		if err != nil {
 			return err
 		}
@@ -215,15 +303,17 @@ func (c *client) get(ctx context.Context, path string, out any) error {
 		_ = resp.Body.Close()
 		switch {
 		case status == http.StatusUnauthorized && attempt == 0:
-			c.token = ""
+			c.dropToken(token)
 			continue
 		case status == http.StatusUnauthorized:
-			c.token = ""
+			c.dropToken(token)
 			return fmt.Errorf("%w: %s answered 401 after a new login", errAuth, key)
 		case status == http.StatusNotFound:
-			c.absent[key] = c.now()
-			c.logger.Info("Redfish path is absent on this BMC; not asked again for six hours", zap.String("path", key))
-			return errAbsent
+			fresh := c.markAbsent(key)
+			if fresh {
+				c.logger.Info("Redfish path is absent on this BMC", zap.String("path", key), zap.Duration("not_asked_again_for", max(latch, 0)))
+			}
+			return &absentError{fresh: fresh}
 		case status/100 != 2:
 			return &statusError{code: status, path: key}
 		case readErr != nil:
@@ -232,20 +322,23 @@ func (c *client) get(ctx context.Context, path string, out any) error {
 		if err := json.Unmarshal(data, out); err != nil {
 			return fmt.Errorf("%w: %s is not JSON: %s", errStatus, key, c.redact(err.Error()))
 		}
+		c.clearAbsent(key)
 		return nil
 	}
 }
 
-// logout deletes the session, if there is one.
 func (c *client) logout(ctx context.Context) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
 	defer c.http.CloseIdleConnections()
-	if c.token == "" || c.sessionPath == "" {
+	c.mu.Lock()
+	token, sessionPath := c.token, c.sessionPath
+	c.token = ""
+	c.mu.Unlock()
+	if token == "" || sessionPath == "" {
 		return
 	}
-	resp, err := c.do(ctx, http.MethodDelete, c.sessionPath, nil, c.token)
-	c.token = ""
+	resp, err := c.do(ctx, http.MethodDelete, sessionPath, nil, token)
 	if err != nil {
 		c.logger.Debug("Redfish session delete failed", zap.String("error", c.redact(err.Error())))
 		return

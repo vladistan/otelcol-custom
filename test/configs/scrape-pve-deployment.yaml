@@ -1,0 +1,108 @@
+# Sample Kubernetes objects for the scrape image polling Proxmox VE nodes: the API tokens in a Secret, read into the
+# pod as environment variables, and the CA of the PVE nodes in a ConfigMap. The collector config is
+# test/configs/scrape-pve-snmp.yaml (it reads PVE_RESOURCES_TOKEN and PVE_GUESTS_TOKEN and /etc/otelcol/pve-ca.pem);
+# mount it as the ConfigMap `scrape-pve-config` (key config.yaml).
+#
+# The token values below are placeholders. Do not commit real tokens: create the Secret from a parameter store or
+# with `kubectl create secret generic pve-tokens --from-literal=resources=... --from-literal=guests=...`.
+#
+# Each token needs the roles of docs/scrape-collector.md (Proxmox VE API permissions). Replace the namespace, the
+# image tag and the PVE node addresses of the network policy.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pve-tokens
+  namespace: monitoring
+type: Opaque
+stringData:
+  resources: REPLACE_WITH_RESOURCES_TOKEN_SECRET # pragma: allowlist secret
+  guests: REPLACE_WITH_GUESTS_TOKEN_SECRET # pragma: allowlist secret
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otelcol-scrape-pve
+  namespace: monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: otelcol-scrape-pve
+  template:
+    metadata:
+      labels:
+        app: otelcol-scrape-pve
+    spec:
+      containers:
+        - name: otelcol-scrape
+          image: ghcr.io/vladistan/otelcol-scrape:v0.3.17
+          args: ["--config", "/etc/otel/config.yaml"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001 # the otel user of the image
+            runAsGroup: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PVE_RESOURCES_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pve-tokens
+                  key: resources
+            - name: PVE_GUESTS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pve-tokens
+                  key: guests
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              memory: 192Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+              readOnly: true
+            - name: pve-ca
+              mountPath: /etc/otelcol
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: scrape-pve-config
+        - name: pve-ca
+          configMap:
+            name: pve-ca
+            items:
+              - key: pve-ca.pem
+                path: pve-ca.pem
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otelcol-scrape-pve
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: otelcol-scrape-pve
+  policyTypes:
+    - Egress
+  egress:
+    # Add a rule for the exporter's endpoint when the config sends data to a collector.
+    - to:
+        - ipBlock:
+            cidr: 192.0.2.0/28 # the PVE nodes
+      ports:
+        - protocol: TCP
+          port: 8006
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

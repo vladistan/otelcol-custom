@@ -114,19 +114,24 @@ func allowedOpcodes() []uint32 {
 	return out
 }
 
-// SCSI and ATA bytes of the pass-through CDBs. Only INQUIRY(6) and ATA PASS-THROUGH(16) carrying
-// one of the read-only commands of smartdecode.CheckATA pass.
+// SCSI and ATA bytes of the pass-through CDBs. Only INQUIRY(6), ATA PASS-THROUGH(16) carrying
+// one of the read-only commands of smartdecode.CheckATA, and LOG SENSE(10) of one of the pages
+// of smartdecode.CheckSCSI pass.
 const (
-	scsiInquiry      = 0x12
-	ataPassThrough16 = 0x85
-	protoNonData     = 3
-	protoPIOIn       = 4
-	flagPIOIn        = 0x0E // T_DIR from the device, BYTE_BLOCK blocks, T_LENGTH in the sector count
-	flagCheckCond    = 0x20
-	extendBit        = 0x01 // byte 1: the command is a 48-bit command
-	deviceLBA        = 0x40
-	inquiryMin       = 36
-	inquiryMax       = 96
+	scsiInquiry        = 0x12
+	scsiLogSense       = 0x4D
+	logSenseLen        = 10
+	logSenseCumulative = 0x40 // byte 2: page control 01, the cumulative values
+	pageCodeMask       = 0x3F
+	ataPassThrough16   = 0x85
+	protoNonData       = 3
+	protoPIOIn         = 4
+	flagPIOIn          = 0x0E // T_DIR from the device, BYTE_BLOCK blocks, T_LENGTH in the sector count
+	flagCheckCond      = 0x20
+	extendBit          = 0x01 // byte 1: the command is a 48-bit command
+	deviceLBA          = 0x40
+	inquiryMin         = 36
+	inquiryMax         = 96
 )
 
 // ataCDB builds the 16 byte ATA PASS-THROUGH CDB of a command.
@@ -155,6 +160,33 @@ func ataCDB(cmd smartdecode.ATACommand) [maxCDBLen]byte {
 	return cdb
 }
 
+// logSenseCDB builds the 10 byte LOG SENSE CDB of a command: the cumulative values of one page,
+// subpage 0, from the first parameter, for the allocation length of the command.
+func logSenseCDB(cmd smartdecode.SCSICommand) [maxCDBLen]byte {
+	var cdb [maxCDBLen]byte
+	cdb[0] = scsiLogSense
+	cdb[2] = logSenseCumulative | cmd.Page&pageCodeMask
+	cdb[7] = byte(cmd.DataLen >> 8) //nolint:gosec // checkLogSenseCDB bounds it
+	cdb[8] = byte(cmd.DataLen)      //nolint:gosec // checkLogSenseCDB bounds it
+	return cdb
+}
+
+// checkLogSenseCDB passes LOG SENSE only with every field the receiver does not use at zero, the
+// cumulative page control, and a page and length that smartdecode.CheckSCSI accepts.
+func checkLogSenseCDB(cdb []byte, cdbLen, dataLen int) error {
+	if cdbLen != logSenseLen {
+		return fmt.Errorf("LOG SENSE has length %d", cdbLen)
+	}
+	if cdb[1] != 0 || cdb[2]&^pageCodeMask != logSenseCumulative || cdb[3] != 0 || cdb[4] != 0 || cdb[5] != 0 || cdb[6] != 0 ||
+		cdb[9] != 0 || !allZero(cdb[logSenseLen:]) {
+		return fmt.Errorf("LOG SENSE carries fields other than the page and the length")
+	}
+	if int(cdb[7])<<8|int(cdb[8]) != dataLen {
+		return fmt.Errorf("LOG SENSE allocation length %d does not match the buffer of %d", int(cdb[7])<<8|int(cdb[8]), dataLen)
+	}
+	return smartdecode.CheckSCSI(smartdecode.SCSICommand{Page: cdb[2] & pageCodeMask, DataLen: dataLen})
+}
+
 // inquiryCDB builds the 6 byte standard INQUIRY CDB for n bytes of answer.
 func inquiryCDB(n int) [maxCDBLen]byte {
 	var cdb [maxCDBLen]byte
@@ -181,6 +213,8 @@ func checkPassCDB(cdb []byte, cdbLen, dataLen int) error {
 		return nil
 	case ataPassThrough16:
 		return checkATACDB(cdb, cdbLen, dataLen)
+	case scsiLogSense:
+		return checkLogSenseCDB(cdb, cdbLen, dataLen)
 	}
 	return fmt.Errorf("SCSI opcode %#02x is not on the CDB allow-list", cdb[0])
 }

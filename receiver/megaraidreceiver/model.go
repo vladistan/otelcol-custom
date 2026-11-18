@@ -18,7 +18,6 @@ const (
 	smartOff         = "disabled"
 	smartUnsupported = "unsupported"
 	smartStandby     = "standby"
-	smartNotATA      = "not_ata"
 	smartUnavailable = "unavailable"
 	smartAttrNorm    = "normalized"
 	smartAttrRaw     = "raw"
@@ -46,6 +45,9 @@ type pdRecord struct {
 type smartResult struct {
 	state string
 	data  *smartdecode.ATAData
+	scsi  *smartdecode.SCSIData // the log pages of a SAS drive
+
+	transient bool // the drive was not ready: read it again at the next scrape
 }
 
 // snapshot is everything one scrape read from one controller.
@@ -222,11 +224,35 @@ func (s *snapshot) emitPD(b *builder, parent string, p pdRecord, warn func(strin
 		b.gauge(metricProgress, id, typePhysicalDisk, v, attrOperation, op)
 	}
 	if p.smart != nil {
-		emitSmart(b, id, p.smart)
+		emitSMARTDrive(b, id, p.smart)
+		if p.smart.scsi != nil {
+			emitSAS(b, id, p.info.Temperature > 0, p.smart.scsi)
+		}
 	}
 }
 
-func emitSmart(b *builder, id ident, r *smartResult) {
+// emitSAS adds what the log pages of a SAS drive give: the temperature when the drive info had none,
+// the uncorrected error counts of the three error pages and the accumulated start-stop cycles.
+func emitSAS(b *builder, id ident, hasTemperature bool, d *smartdecode.SCSIData) {
+	if !hasTemperature && d.HaveTemperature {
+		b.gauge(metricTemperature, id, typePhysicalDisk, float64(d.Temperature), attrLocation, sensorDrive)
+	}
+	for _, e := range []struct {
+		kind     string
+		counters smartdecode.ErrorCounters
+	}{{errorRead, d.Read}, {errorWrite, d.Write}, {errorVerify, d.Verify}} {
+		if e.counters.HaveUncorrected {
+			b.count(metricErrors, id, typePhysicalDisk, e.counters.Uncorrected,
+				hwschema.AttrErrorType, errorUncorrected, attrDirection, e.kind)
+		}
+	}
+	if d.HaveStartStop {
+		b.count(hwschema.MetricPhysicalDiskPowerCycles, id, typePhysicalDisk, d.StartStopCycles)
+	}
+}
+
+// emitSMARTDrive adds the SMART state of one drive and, when data was read, its health and attributes.
+func emitSMARTDrive(b *builder, id ident, r *smartResult) {
 	b.gauge(metricSmartState, ident{id: id.id, name: id.name, parent: id.parent, extra: []string{attrSmartState, r.state}}, typePhysicalDisk, 1)
 	if r.data == nil {
 		return
