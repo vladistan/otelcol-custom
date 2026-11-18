@@ -91,12 +91,17 @@ var version string
 func main() { _ = version }
 EOF
 printf 'module probe\n\ngo 1.21\n' >"$SCRATCH/prog/go.mod"
-# trimpath-exempt: a probe binary for this test, never published
-(cd "$SCRATCH/prog" && GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=$VERSION_NOW" -o "$SCRATCH/probe-freebsd" .) || fail "cannot cross-build the probe"
-# trimpath-exempt: a probe binary for this test, never published
-(cd "$SCRATCH/prog" && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=$VERSION_NOW" -o "$SCRATCH/probe-linux" .) || fail "cannot build the Linux probe"
-# trimpath-exempt: a probe binary for this test, never published
-(cd "$SCRATCH/prog" && GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build -buildvcs=false -ldflags "-X main.version=0.0.0" -o "$SCRATCH/probe-badver" .) || fail "cannot build the bad-version probe"
+# The probes are built like the release binaries: with -trimpath, which removes -ldflags from the build
+# info, so the version is read from the release_<VERSION> build tag.
+probe() {
+	local goos="$1" out="$2" tags="$3"
+	(cd "$SCRATCH/prog" && GOOS="$goos" GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -buildvcs=false ${tags:+-tags "$tags"} -ldflags "-X main.version=$VERSION_NOW" -o "$SCRATCH/$out" .) || fail "cannot build the $out probe"
+}
+probe freebsd probe-freebsd "release_$VERSION_NOW"
+probe linux probe-linux "release_$VERSION_NOW"
+probe windows probe-windows "release_$VERSION_NOW"
+probe freebsd probe-badver "release_0.0.0"
+probe freebsd probe-unstamped ""
 if just check-edge-freebsd "$SCRATCH/probe-freebsd" >"$SCRATCH/check.out" 2>&1; then pass "check-edge-freebsd accepts a static FreeBSD build"; else
 	fail "check-edge-freebsd rejects a static FreeBSD build"
 	sed 's/^/    /' "$SCRATCH/check.out"
@@ -105,6 +110,26 @@ expect_grep "the check output says the binary was not run" 'not run' "$SCRATCH/c
 expect_grep "the check output shows the file type" 'FreeBSD' "$SCRATCH/check.out"
 if just check-edge-freebsd "$SCRATCH/probe-linux" >"$SCRATCH/check-linux.out" 2>&1; then fail "check-edge-freebsd accepts a Linux build"; else pass "check-edge-freebsd rejects a Linux build"; fi
 if just check-edge-freebsd "$SCRATCH/probe-badver" >"$SCRATCH/check-ver.out" 2>&1; then fail "check-edge-freebsd accepts a wrong version"; else pass "check-edge-freebsd rejects a wrong version"; fi
+if just check-edge-freebsd "$SCRATCH/probe-unstamped" >"$SCRATCH/check-unstamped.out" 2>&1; then fail "check-edge-freebsd accepts a build with no release stamp"; else pass "check-edge-freebsd rejects a build with no release stamp"; fi
+expect_grep "the no-stamp failure names the release tag" 'release_' "$SCRATCH/check-unstamped.out"
+
+# The stamp check shared by the FreeBSD and Windows checks.
+STAMP="$ROOT/scripts/check-release-stamp.sh"
+if "$STAMP" "$SCRATCH/probe-freebsd" "$VERSION_NOW" >"$SCRATCH/stamp.out" 2>&1; then pass "the stamp check accepts a FreeBSD build stamped with VERSION"; else fail "the stamp check rejects a stamped FreeBSD build"; fi
+if "$STAMP" "$SCRATCH/probe-windows" "$VERSION_NOW" >"$SCRATCH/stamp.out" 2>&1; then pass "the stamp check accepts a Windows build stamped with VERSION"; else fail "the stamp check rejects a stamped Windows build"; fi
+if "$STAMP" "$SCRATCH/probe-badver" "$VERSION_NOW" >"$SCRATCH/stamp.out" 2>&1; then fail "the stamp check accepts a wrong version"; else pass "the stamp check rejects a wrong version"; fi
+expect_grep "the wrong-version failure names both versions" "0\\.0\\.0.*$VERSION_NOW" "$SCRATCH/stamp.out"
+if "$STAMP" "$SCRATCH/probe-unstamped" "$VERSION_NOW" >"$SCRATCH/stamp.out" 2>&1; then fail "the stamp check accepts a build with no stamp"; else pass "the stamp check rejects a build with no stamp"; fi
+got=0
+"$STAMP" >"$SCRATCH/stamp.out" 2>&1 || got=$?
+if [ "$got" -eq 2 ]; then pass "the stamp check without arguments is a usage error"; else fail "the stamp check without arguments exits $got, want 2"; fi
+got=0
+"$STAMP" "$SCRATCH/absent" "$VERSION_NOW" >"$SCRATCH/stamp.out" 2>&1 || got=$?
+if [ "$got" -eq 2 ]; then pass "the stamp check on a missing binary is a usage error"; else fail "the stamp check on a missing binary exits $got, want 2"; fi
+# The release recipes pass the stamp tag; without it the checks cannot read the version.
+for recipe in build-edge-windows build-edge-freebsd; do
+	expect_grep "$recipe builds with the release stamp tag" '-tags "?release_' "$SCRATCH/recipe-$recipe"
+done
 
 # Docs and CHANGELOG.
 expect_grep "docs name the install path" '/usr/local/bin/otelcol-edge' "$DOC"

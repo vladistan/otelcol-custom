@@ -23,7 +23,7 @@ build-edge-freebsd: build-edge-image
     cd {{edge_freebsd_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    GOOS=freebsd GOARCH=amd64 go build -trimpath -buildvcs=false \
+    GOOS=freebsd GOARCH=amd64 go build -trimpath -buildvcs=false -tags "release_{{version}}" \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge .
     EOF
@@ -31,6 +31,7 @@ build-edge-freebsd: build-edge-image
     ls -lh {{edge_freebsd_bin}}
 
 # Fail unless the binary is a CGO-off freebsd/amd64 build stamped with VERSION
+# (the release_<VERSION> build tag; -trimpath hides -ldflags from the build info)
 # and `file` reports a static FreeBSD ELF. The binary is not run.
 check-edge-freebsd binary=edge_freebsd_bin:
     #!/usr/bin/env bash
@@ -43,9 +44,7 @@ check-edge-freebsd binary=edge_freebsd_bin:
         printf '%s\n' "$info" | grep -Eq "build[[:space:]]+${want}\$" \
             || { echo "FAIL: $bin lacks build setting $want" >&2; exit 1; }
     done
-    stamped=$(printf '%s\n' "$info" | grep -m1 -o 'main\.version=[^ "]*' | cut -d= -f2 || true)
-    [ "$stamped" = "{{version}}" ] \
-        || { echo "FAIL: $bin version '${stamped}' != VERSION {{version}}" >&2; exit 1; }
+    scripts/check-release-stamp.sh "$bin" "{{version}}"
     kind=$(file -b "$bin")
     echo "file: $kind"
     for want in "ELF 64-bit LSB executable" "x86-64" "FreeBSD" "statically linked"; do

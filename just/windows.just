@@ -28,14 +28,15 @@ build-edge-windows: build-edge-image
     cd {{edge_windows_dir}}
     go get github.com/getsentry/sentry-go@v0.29.1
     go mod tidy
-    GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+    GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -tags "release_{{version}}" \
         -ldflags "{{base_ldflags}} -X main.serviceName=otelcol-edge" \
         -o otelcol-edge.exe .
     EOF
     echo "Binary size:"
     ls -lh {{edge_windows_exe}}
 
-# Fail unless the binary is a CGO-off windows/amd64 build stamped with VERSION,
+# Fail unless the binary is a CGO-off windows/amd64 build stamped with VERSION
+# (the release_<VERSION> build tag; -trimpath hides -ldflags from the build info),
 # and the generated module vets and compiles its tests for windows.
 check-edge-windows binary=edge_windows_exe:
     #!/usr/bin/env bash
@@ -47,9 +48,7 @@ check-edge-windows binary=edge_windows_exe:
         printf '%s\n' "$info" | grep -Eq "build[[:space:]]+${want}\$" \
             || { echo "FAIL: $bin lacks build setting $want" >&2; exit 1; }
     done
-    stamped=$(printf '%s\n' "$info" | grep -m1 -o 'main\.version=[^ "]*' | cut -d= -f2 || true)
-    [ "$stamped" = "{{version}}" ] \
-        || { echo "FAIL: $bin version '${stamped}' != VERSION {{version}}" >&2; exit 1; }
+    scripts/check-release-stamp.sh "$bin" "{{version}}"
     for sub in vet "test -c -o /dev/null"; do
         echo "GOOS=windows go $sub ({{edge_windows_dir}})"
         GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go -C {{edge_windows_dir}} $sub .
