@@ -9,7 +9,7 @@
 receivers:
   pve:
     base_urls:
-      - https://pve1.example.com:8006
+      - https://node1.example.com:8006
     ca_file: /etc/otelcol/pve-ca.pem
     resources:
       enabled: true
@@ -20,7 +20,7 @@ receivers:
       enabled: true
       token_id: otel@pve!guests
       token_secret: ${env:PVE_GUESTS_TOKEN}
-      node: pve1
+      node: node1
       collection_interval: 15m
 processors:
   memory_limiter:

@@ -127,25 +127,25 @@ func (b *batch) addTemperature(id port.DeviceIdentity, celsius float64) {
 	dp := b.point(semconv.MetricTemperature)
 	dp.SetDoubleValue(celsius)
 	attrs := dp.Attributes()
-	attrs.PutStr(semconv.AttrID, id.UUID+":temperature")
-	attrs.PutStr(semconv.AttrParent, id.UUID)
-	attrs.PutStr(semconv.AttrName, id.Name+" temperature")
+	attrs.PutStr(semconv.AttrID, validUTF8(id.UUID)+":temperature")
+	attrs.PutStr(semconv.AttrParent, validUTF8(id.UUID))
+	attrs.PutStr(semconv.AttrName, validUTF8(id.Name)+" temperature")
 	attrs.PutStr(semconv.AttrSensorLocation, semconv.SensorLocationGPU)
 }
 
 func putIdentity(attrs pcommon.Map, id port.DeviceIdentity) {
-	attrs.PutStr(semconv.AttrID, id.UUID)
-	attrs.PutStr(semconv.AttrName, id.Name)
-	attrs.PutStr(semconv.AttrModel, id.Model)
+	attrs.PutStr(semconv.AttrID, validUTF8(id.UUID))
+	attrs.PutStr(semconv.AttrName, validUTF8(id.Name))
+	attrs.PutStr(semconv.AttrModel, validUTF8(id.Model))
 	attrs.PutStr(semconv.AttrType, semconv.TypeGPU)
 	attrs.PutStr(semconv.AttrVendor, semconv.VendorNvidia)
 	if id.DriverVersion != "" {
-		attrs.PutStr(semconv.AttrDriverVersion, id.DriverVersion)
+		attrs.PutStr(semconv.AttrDriverVersion, validUTF8(id.DriverVersion))
 	}
 }
 
 func putExtra(attrs pcommon.Map, extra []attr) {
 	for _, a := range extra {
-		attrs.PutStr(a.key, a.value)
+		attrs.PutStr(a.key, validUTF8(a.value))
 	}
 }

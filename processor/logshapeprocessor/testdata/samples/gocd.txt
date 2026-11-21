@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: written from the format description, not a capture
+jvm 1    | 2026-11-19 22:00:01,123 INFO  [qtp1-5] ConfigRepository:123 - Loaded 3 pipelines
+jvm 1    | 2026-11-19 22:00:02,000 WARN  [qtp1-6] MaterialUpdate:7 - Slow poll

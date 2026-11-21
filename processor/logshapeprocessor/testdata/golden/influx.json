@@ -1,0 +1,55 @@
+[
+  {
+    "body": "POST /write db=metrics 204 14.7ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.19",
+      "http.request.method": "POST",
+      "http.response.status_code": 204,
+      "log.record.original": "[httpd] 192.0.2.19 - webuser [20/Nov/2026:00:02:45 +0100] \"POST /write?db=metrics HTTP/1.1\" 204 0 \"-\" \"InfluxDBClient\" 5a1b2c3d-1111-2222-3333-44445555666a 14684",
+      "url.path": "/write",
+      "url.query": "db=metrics",
+      "user.name": "webuser",
+      "user_agent.original": "InfluxDBClient",
+      "vstan.influx.request_id": "5a1b2c3d-1111-2222-3333-44445555666a"
+    }
+  },
+  {
+    "body": "GET /ping 204 80us",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.20",
+      "http.request.method": "GET",
+      "http.response.status_code": 204,
+      "log.record.original": "[httpd] 192.0.2.20 - - [20/Nov/2026:00:02:46 +0100] \"GET /ping HTTP/1.1\" 204 0 \"-\" \"curl/8\" 9f9f9f9f-0000-1111-2222-33334444555a 80",
+      "url.path": "/ping",
+      "user_agent.original": "curl/8",
+      "vstan.influx.request_id": "9f9f9f9f-0000-1111-2222-33334444555a"
+    }
+  },
+  {
+    "body": "POST /query db=metrics 500 31B 20.5ms",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.21",
+      "http.request.method": "POST",
+      "http.response.body.size": 31,
+      "http.response.status_code": 500,
+      "log.record.original": "[httpd] 192.0.2.21 - webuser [20/Nov/2026:00:02:47 +0100] \"POST /query?db=metrics HTTP/1.1\" 500 31 \"-\" \"InfluxDBClient\" 1d2e3f40-aaaa-bbbb-cccc-ddddeeeeffff 20511",
+      "url.path": "/query",
+      "url.query": "db=metrics",
+      "user.name": "webuser",
+      "user_agent.original": "InfluxDBClient",
+      "vstan.influx.request_id": "1d2e3f40-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  }
+]

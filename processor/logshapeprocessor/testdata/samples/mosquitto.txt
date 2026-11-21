@@ -1,0 +1,5 @@
+# provenance: real
+# evidence: captured broker lines, client names replaced
+2026-11-19T22:56:53: New connection from 127.0.0.1:36468 on port 1883.
+2026-11-19T22:56:53: New client connected from 127.0.0.1:50882 as auto-7C019B88 (p2, c1, k60).
+2026-11-19T22:56:54: Client auto-7C019B88 disconnected.

@@ -1,3 +1,5 @@
+// cspell:ignore vstan
+
 package openvpnstatusreceiver
 
 import (
@@ -78,7 +80,7 @@ func (h *metricsHarness) metric(t *testing.T, name string) pmetric.Metric {
 	return pmetric.Metric{}
 }
 
-// sumPoints maps "common_name/real_address" to the data point of a sum.
+// sumPoints maps "user.name/client.address" to the data point of a sum.
 func sumPoints(t *testing.T, m pmetric.Metric) map[string]pmetric.NumberDataPoint {
 	t.Helper()
 	require.Equal(t, pmetric.MetricTypeSum, m.Type())
@@ -89,9 +91,9 @@ func pointsByClient(t *testing.T, dps pmetric.NumberDataPointSlice) map[string]p
 	t.Helper()
 	out := map[string]pmetric.NumberDataPoint{}
 	for i := 0; i < dps.Len(); i++ {
-		cn, ok := dps.At(i).Attributes().Get("common_name")
+		cn, ok := dps.At(i).Attributes().Get("user.name")
 		require.True(t, ok)
-		addr, ok := dps.At(i).Attributes().Get("real_address")
+		addr, ok := dps.At(i).Attributes().Get("client.address")
 		require.True(t, ok)
 		out[cn.Str()+"/"+addr.Str()] = dps.At(i)
 	}
@@ -140,16 +142,16 @@ func TestPollV1TwoClientsEmitsTwoRecordsWithTypedAttributes(t *testing.T) {
 	require.Len(t, recs, 2)
 	want := localTime(t, "2026-11-13 10:00:00")
 	assert.True(t, want.Equal(recs[0].Timestamp().AsTime()))
-	assert.Equal(t, "alice", attrStr(t, recs[0], "common_name"))
-	assert.Equal(t, "203.0.113.5", attrStr(t, recs[0], "real_address"), "the port is dropped")
-	assert.Equal(t, "2026-11-13 09:00:00", attrStr(t, recs[0], "connected_since"))
-	received, _ := recs[0].Attributes().Get("bytes_received")
-	sent, _ := recs[0].Attributes().Get("bytes_sent")
+	assert.Equal(t, "alice", attrStr(t, recs[0], "user.name"))
+	assert.Equal(t, "203.0.113.5", attrStr(t, recs[0], "client.address"), "the port is dropped")
+	assert.Equal(t, "2026-11-13 09:00:00", attrStr(t, recs[0], "vstan.openvpn.connected_since"))
+	received, _ := recs[0].Attributes().Get("vstan.openvpn.bytes_received")
+	sent, _ := recs[0].Attributes().Get("vstan.openvpn.bytes_sent")
 	assert.Equal(t, pcommon.ValueTypeInt, received.Type())
 	assert.Equal(t, int64(1000), received.Int())
 	assert.Equal(t, pcommon.ValueTypeInt, sent.Type())
 	assert.Equal(t, int64(2000), sent.Int())
-	assert.Equal(t, "bob", attrStr(t, recs[1], "common_name"))
+	assert.Equal(t, "bob", attrStr(t, recs[1], "user.name"))
 }
 
 func TestPollV2AndV3EveryLayoutUsesTheTimeRowTimestamp(t *testing.T) {
@@ -163,8 +165,8 @@ func TestPollV2AndV3EveryLayoutUsesTheTimeRowTimestamp(t *testing.T) {
 			recs := h.records()
 			require.Len(t, recs, 2)
 			assert.True(t, time.Unix(1794564000, 0).Equal(recs[1].Timestamp().AsTime()))
-			assert.Equal(t, "bob", attrStr(t, recs[1], "common_name"))
-			sent, _ := recs[1].Attributes().Get("bytes_sent")
+			assert.Equal(t, "bob", attrStr(t, recs[1], "user.name"))
+			sent, _ := recs[1].Attributes().Get("vstan.openvpn.bytes_sent")
 			assert.Equal(t, int64(4000), sent.Int())
 		})
 	}
@@ -180,7 +182,7 @@ func TestPollFileTruncatedAndRewrittenInPlaceEmitsTheNewSnapshot(t *testing.T) {
 
 	recs := h.records()
 	require.Len(t, recs, 4)
-	received, _ := recs[2].Attributes().Get("bytes_received")
+	received, _ := recs[2].Attributes().Get("vstan.openvpn.bytes_received")
 	assert.Equal(t, int64(1500), received.Int())
 	assert.True(t, localTime(t, "2026-11-13 10:00:20").Equal(recs[2].Timestamp().AsTime()))
 }
@@ -327,8 +329,8 @@ func TestPollBadRowKeepsOtherClients(t *testing.T) {
 
 	recs := h.records()
 	require.Len(t, recs, 2)
-	assert.Equal(t, "alice", attrStr(t, recs[0], "common_name"))
-	assert.Equal(t, "carol", attrStr(t, recs[1], "common_name"))
+	assert.Equal(t, "alice", attrStr(t, recs[0], "user.name"))
+	assert.Equal(t, "carol", attrStr(t, recs[1], "user.name"))
 }
 
 func TestPollMissingEndStillSkipsTheWholeSnapshot(t *testing.T) {
@@ -377,7 +379,7 @@ func TestPollUndefClientIsEmittedWithTheUndefName(t *testing.T) {
 	h.poll()
 
 	require.Len(t, h.records(), 1)
-	assert.Equal(t, "UNDEF", attrStr(t, h.records()[0], "common_name"))
+	assert.Equal(t, "UNDEF", attrStr(t, h.records()[0], "user.name"))
 }
 
 func TestPollMissingFileWarnsOncePerStateChange(t *testing.T) {
@@ -461,9 +463,9 @@ func TestPollLogsCarryTheIPOnlyForIPv6AndPrefixedAddresses(t *testing.T) {
 
 	recs := h.records()
 	require.Len(t, recs, 3)
-	assert.Equal(t, "2001:db8::1", attrStr(t, recs[0], "real_address"))
-	assert.Equal(t, "2001:db8::2", attrStr(t, recs[1], "real_address"))
-	assert.Equal(t, "192.0.2.9", attrStr(t, recs[2], "real_address"))
+	assert.Equal(t, "2001:db8::1", attrStr(t, recs[0], "client.address"))
+	assert.Equal(t, "2001:db8::2", attrStr(t, recs[1], "client.address"))
+	assert.Equal(t, "192.0.2.9", attrStr(t, recs[2], "client.address"))
 }
 
 func TestPollLogsJoinStillUsesTheFullAddressAndOutputsOnlyTheIP(t *testing.T) {
@@ -474,7 +476,7 @@ func TestPollLogsJoinStillUsesTheFullAddressAndOutputsOnlyTheIP(t *testing.T) {
 
 	recs := h.records()
 	assert.Equal(t, "10.8.0.2", attrStr(t, recs[0], "virtual_address"))
-	assert.Equal(t, "203.0.113.5", attrStr(t, recs[0], "real_address"))
+	assert.Equal(t, "203.0.113.5", attrStr(t, recs[0], "client.address"))
 }
 
 func TestPollMetricsBytesAreMonotonicCumulativeSumsInBytes(t *testing.T) {

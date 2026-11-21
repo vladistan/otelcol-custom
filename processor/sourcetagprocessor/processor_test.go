@@ -129,11 +129,11 @@ func TestAWS_CloudTrailErrorCodeRaisesSeverityToWarn(t *testing.T) {
 	}
 }
 
-func TestAWS_CloudTrailWithoutErrorCodeIsInfo(t *testing.T) {
+func TestAWS_CloudTrailWithoutErrorCodeStaysUnset(t *testing.T) {
 	_, lr := tag(t, "aws", input{scope: cloudTrail})
 
-	if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
-		t.Errorf("severity = %v/%q, want INFO/INFO", lr.SeverityNumber(), lr.SeverityText())
+	if lr.SeverityNumber() != plog.SeverityNumberUnspecified || lr.SeverityText() != "" {
+		t.Errorf("severity = %v/%q, want unset", lr.SeverityNumber(), lr.SeverityText())
 	}
 }
 

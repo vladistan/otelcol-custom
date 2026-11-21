@@ -6,7 +6,7 @@
 //
 // PgBouncer log format:
 //
-//	2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 login attempt: ...
+//	2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 login attempt: ...
 //
 // Fields extracted:
 //   - Timestamp -> log record timestamp

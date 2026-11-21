@@ -49,7 +49,7 @@ type GuestsConfig struct {
 
 // Config is the configuration of the pve receiver.
 type Config struct {
-	// BaseURLs lists the API addresses, such as https://pve1:8006; the next one is tried after a failure.
+	// BaseURLs lists the API addresses, such as https://node1:8006; the next one is tried after a failure.
 	BaseURLs []string `mapstructure:"base_urls"`
 	// CAFile is a PEM file with the certificate authority of the cluster.
 	CAFile string `mapstructure:"ca_file"`

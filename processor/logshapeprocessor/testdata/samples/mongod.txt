@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+{"t":{"$date":"2026-11-19T22:45:00.123+00:00"},"s":"I","c":"NETWORK","id":22944,"ctx":"conn1131180","msg":"Connection ended","attr":{"remote":"192.0.2.10:53714","uuid":{"uuid":{"$uuid":"1a2b3c4d-0000-4000-8000-00000000ab01"}},"connectionId":1131180,"connectionCount":23}}
+{"t":{"$date":"2026-11-19T22:45:01.000+00:00"},"s":"I","c":"ACCESS","id":20250,"ctx":"conn1131181","msg":"Authentication succeeded","attr":{"mechanism":"SCRAM-SHA-256","speculative":true,"principalName":"__system","authenticationDatabase":"local","remote":"192.0.2.10:53720","extraInfo":{}}}

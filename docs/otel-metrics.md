@@ -312,7 +312,12 @@ only; see the [README](../README.md#proxmox-ve-metrics).
 Reads `hwmon_path` (default `/sys/class/hwmon`) and the thermal zones in the sibling
 directory `thermal` every `collection_interval` (default `60s`), and on FreeBSD the
 CPU and ACPI temperature sysctls. All metrics are gauges with the attributes `hw.id`,
-`hw.name` and `hw.parent`; the names follow the `hw.*` semantic conventions.
+`hw.name`, `hw.parent` and `hw.type`; the names follow the `hw.*` semantic conventions.
+`hw.type` comes from the sensor kind and has the OpenTelemetry values `temperature`
+(`hw.temperature` and `hw.temperature.limit`), `fan` (`hw.fan.speed`) and `voltage`
+(`hw.voltage`), so these rows match the RAID rows that already carry it. The value
+`power_supply` is reserved for a power supply sensor; the receiver reads none yet.
+A kind with no `hw.type` value gives its metrics without the attribute and one debug line.
 
 | Metric | Type | Unit | Extra attribute | Source |
 |---|---|---|---|---|
@@ -632,6 +637,10 @@ the [README](../README.md#dell-idrac-health-and-sensors).
 
 The exporter health value 0 means `OK`; the receiver gives `hw.state` `ok` for it. The exporter rule `IdracDriveMissing` counts `idrac_storage_drive_info`; the receiver has the series `hw.storage.drive_count`, one for each storage resource, so a missing drive alert is a fall of `hw_storage_drive_count` below its value of an earlier time, for example `hw_storage_drive_count < (hw_storage_drive_count offset 1h)`; counting the `hw.status` series of the drives works too, for example `count by (host_name, hw_parent) (hw_status{hw_type="physical_disk", hw_state="ok"})`. The storage rules port as follows (label names depend on the exporter in use): unhealthy storage, controller, volume or drive is `hw_status{hw_type=~"storage|disk_controller|logical_disk|physical_disk", hw_state=~"degraded|failed|predicted_failure"} == 1`, and a drive the iDRAC predicts to fail is `hw_physical_disk_predicted_failure == 1`; drive life low or critical is `(1 - hw_physical_disk_endurance_utilization) * 100` below the low or critical percentage. Keep `idrac_exporter` running until the series agree on your hosts.
 
+### Raw bytes in hardware labels — `receiver/hwschema` and the hardware receivers
+
+Drive, controller, BMC and GPU strings can hold bytes that are not valid UTF-8, and Prometheus rejects such a label value. Each byte outside a valid UTF-8 sequence is replaced by U+FFFD (one replacement for each byte), the label is kept, and valid text is not changed. This covers every text attribute the shared `hwschema` builder writes: `hw.id`, `hw.name`, `hw.parent`, `hw.vendor`, `hw.model`, `hw.serial_number`, `hw.firmware_version`, the host and server attributes, and the extra attributes of status, volume and FRU points. It reaches the `idrac`, `ipmi` (SDR sensor names), `megaraid`, `smart` and `windiskhealth` receivers through that builder. The `iscsi` receiver (targets, portals, devices) and the `gpu` receiver (UUID, name, model, driver version) apply the same rule in their own code, and the `inventory` receiver replaces invalid bytes the same way and also removes control characters. Control characters such as NUL are valid UTF-8 and are not changed by this rule. A series whose label had a raw byte carries a different label value after the fix, so it shows as a new series.
+
 ### MegaRAID controllers — `receiver/megaraidreceiver`
 
 Reads every controller of the `megaraid_sas` driver (Dell PERC and Supermicro LSI cards) through
@@ -669,6 +678,7 @@ offline and unconfigured bad `failed`; a predictive-failure count above 0 on an 
 drive gives `predicted_failure`. A controller with no battery gets no battery command.
 
 Keys: `collection_interval` (60s), `smart` (false), `smart_interval` (15m, at least 60s),
+`smart_when_power_unknown` (false; only with `smart`),
 `create_node` (false; makes the device node from `/proc/devices`, needs `CAP_MKNOD`) and an `events`
 block with `enabled` (true), `storage` (a `file_storage` extension), `min_class` (`info`) and
 `max_per_scrape` (200).
@@ -697,6 +707,14 @@ the same `hw.physical_disk.*` series as one on a plain port. A drive is read at 
 read. SMART is never switched on or off and no off-line test starts; a drive with SMART off shows
 `raid.smart_state` `disabled`. A JBOD drive that
 also shows as a plain disk is read by both receivers; the receiver does not match them by serial yet.
+
+**Drives with no power state.** Some controllers return no power state for CHECK POWER MODE (no ATA
+registers), so the receiver cannot tell whether the drive is spinning. Those drives are skipped unless the
+option is on: by default the receiver sends no SMART command, logs one warning for the drive, and emits no
+SMART series for it. With `smart_when_power_unknown: true`, set on the receiver of the host that opts in,
+the receiver reads SMART for such a drive like any other and logs no warning. A drive that answers
+standby is skipped either way. Risk: a spun-down drive can wake at every `smart_interval`. The belief
+that RAID-backed drives never spin down is unverified.
 
 **SAS drives.** With `smart: true` a drive whose vendor is not `ATA` is read with SCSI `LOG SENSE`
 (opcode 4Dh, the cumulative values) of seven log pages: the page list, temperature, informational
@@ -738,10 +756,11 @@ events: it is not taken for a first start, so unread events are neither dropped 
 saved value that is not a number restarts the log at the newest event. Event timestamps are the
 time the receiver read the event, not the controller's own time.
 
-**Drives that sleep.** Before any SMART read the receiver sends CHECK POWER MODE. A drive in standby, or
-one for which the controller returns no ATA status registers, is left alone and shows
-`raid.smart_state` `standby` or `unavailable`; the receiver never wakes a drive to read it. This is
-stricter than the `smart` receiver, which reads a drive whose power state it cannot tell.
+**Drives that sleep.** Before any SMART read the receiver sends CHECK POWER MODE. A drive in standby is
+left alone and shows `raid.smart_state` `standby`. A drive for which the controller returns no ATA status
+registers is also left alone and shows `unavailable`, unless `smart_when_power_unknown` is true: then
+SMART is read and the read can wake a spun-down drive. With the option off, no SMART command is sent to
+such a drive, which is stricter than the `smart` receiver, which reads a drive whose power state it cannot tell.
 
 **Series per drive.** Stage 1 sends about 10 series per drive (4 status, temperature, 3 error counts,
 size, and one per running operation), about 10 per logical drive, 8 for the battery and 8 for the
@@ -919,8 +938,10 @@ resource attributes rather than emitting metrics of their own:
   `short_host_name: true` (default `false`) it also cuts `host.name` of each
   resource at the first dot, so `web01.example.net` becomes `web01`. A value that
   is an IP address, has no dot or starts with a dot stays as it is, and so does a
-  `host.name` that is not a string. `host.id` and other attributes are not touched,
-  and the original name is not kept. Put the processor after `resource_detection`.
+  `host.name` that is not a string. When it cuts the name it keeps the full
+  original name in `host.fqdn`; a name that stays as it is gets no `host.fqdn`.
+  `host.id` and other attributes are not touched. Put the processor after
+  `resource_detection`.
   A sample is `test/configs/edge-short-host-name.yaml`.
 - **`processor/assetdbprocessor`** — enriches telemetry with asset-database
   lookups keyed off a configurable `source_attribute`, backed by a local

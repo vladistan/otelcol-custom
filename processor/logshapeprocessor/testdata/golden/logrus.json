@@ -1,0 +1,101 @@
+[
+  {
+    "body": "All records are up to date",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"level\":\"info\",\"msg\":\"All records are up to date\",\"time\":\"2025-12-31T04:03:58Z\"}"
+    }
+  },
+  {
+    "body": "Reconciler error: boom",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "controller/reconciler.go",
+      "code.line.number": 123,
+      "exception.message": "boom",
+      "exception.stacktrace": "goroutine 1",
+      "log.record.original": "{\"level\":\"error\",\"ts\":\"2025-12-31T04:03:58Z\",\"caller\":\"controller/reconciler.go:123\",\"msg\":\"Reconciler error\",\"controller\":\"backups\",\"error\":\"boom\",\"stacktrace\":\"goroutine 1\"}",
+      "vstan.k8s.controller": "backups"
+    }
+  },
+  {
+    "body": "slow sync",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "time=\"2025-12-31T04:25:29Z\" level=warning msg=\"slow sync\" duration=3s",
+      "vstan.logrus.duration": "3s"
+    }
+  },
+  {
+    "body": "Exporting failed. Will retry.",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "internal/retry_sender.go",
+      "code.line.number": 133,
+      "log.record.original": "2026-01-02T14:18:43.362Z\twarn\tinternal/retry_sender.go:133\tExporting failed. Will retry.\t{\"attempt\":2}",
+      "vstan.logrus.attempt": 2
+    }
+  },
+  {
+    "body": "cannot parse csv data: record on line 152: wrong number of fields",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "exception.message": "record on line 152: wrong number of fields",
+      "log.record.original": "{\"time\":\"2026-11-20T04:40:02.123456Z\",\"level\":\"ERROR\",\"msg\":\"cannot parse csv data:\",\"error\":\"record on line 152: wrong number of fields\"}"
+    }
+  },
+  {
+    "body": "[agent.datapath] endpoint regeneration failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"time\":\"2026-11-19T23:00:12Z\",\"level\":\"error\",\"msg\":\"endpoint regeneration failed\",\"subsys\":\"agent.datapath\",\"ipAddr\":\"192.0.2.5\",\"nodeID\":3}",
+      "vstan.logrus.ipAddr": "192.0.2.5",
+      "vstan.logrus.nodeID": 3
+    }
+  },
+  {
+    "body": "apply request took too long",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "server/util.go",
+      "code.line.number": 170,
+      "log.record.original": "{\"level\":\"warn\",\"ts\":\"2026-01-02T05:00:25.573798Z\",\"caller\":\"server/util.go:170\",\"msg\":\"apply request took too long\",\"took\":\"153ms\",\"expected-duration\":\"100ms\"}",
+      "vstan.logrus.expected-duration": "100ms",
+      "vstan.logrus.took": "153ms"
+    }
+  },
+  {
+    "body": "started",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "main.go",
+      "code.line.number": 10,
+      "log.record.original": "{\"level\":\"info\",\"ts\":1795129202.123,\"caller\":\"main.go:10\",\"msg\":\"started\",\"service\":\"worker\",\"hostname\":\"host-1\",\"version\":\"1.2\"}",
+      "vstan.logrus.version": "1.2"
+    }
+  }
+]

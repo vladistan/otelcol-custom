@@ -17,11 +17,11 @@ config:
     # Fills host.name and service.name where they are empty. The defaults apply.
     identityfill: {}
     # The cluster name comes from here only. One value per install:
-    #   kube-v0 | apps-eks-v0 | <name of the third cluster>
+    #   cluster-a | apps-eks-v0 | <name of the third cluster>
     resource/cluster:
       attributes:
         - key: k8s.cluster.name
-          value: kube-v0
+          value: cluster-a
           action: upsert
   service:
     pipelines:

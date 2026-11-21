@@ -1,0 +1,8 @@
+# provenance: partly real; real records: 1, 2, 3
+# One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
+# basis: records 1 to 3 are task lines quoted in the collected samples, with the datastore, user and task ids replaced. Record 4 is invented: a warnings result was never seen on a backup server.
+# cspell:ignore UPID vzdump qmstart Exim vstan
+{"provenance": "real", "body": "2026-11-20T04:00:46+01:00: TASK OK", "attributes": {"log.file.name": "UPID:backup:0001A2B5:0C0D0E11:65F1A2B5:65F1A2C2:logrotate::root@pam:"}, "resource": {}}
+{"provenance": "real", "body": "2026-11-13T10:03:24+01:00: TASK ERROR: connection error: bytes remaining on stream", "attributes": {"log.file.name": "UPID:backup:0001A2B4:0C0D0E10:65F1A2B4:65F1A2C1:backup:data\\x2dstore:backup-user@pbs!sync:"}, "resource": {}}
+{"provenance": "real", "body": "2026-11-20T00:02:45+01:00: processed 99% (583303 chunks)", "attributes": {"log.file.name": "UPID:backup:0001A2B3:0C0D0E0F:65F1A2B3:65F1A2C0:garbage_collection:data\\x2dstore:root@pam:"}, "resource": {}}
+{"provenance": "invented", "body": "2026-11-20T00:09:10+01:00: TASK WARNINGS: 2", "attributes": {"log.file.name": "UPID:backup:0001A2B3:0C0D0E0F:65F1A2B3:65F1A2C0:garbage_collection:data\\x2dstore:root@pam:"}, "resource": {}}

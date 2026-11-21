@@ -209,7 +209,6 @@ func TestWinlogStringAttributesCarryTheEventFields(t *testing.T) {
 		"winlog.channel":         "Security",
 		"winlog.provider_name":   "Microsoft-Windows-Security-Auditing",
 		"winlog.provider_guid":   "{54849625}",
-		"winlog.computer_name":   "HOST1",
 		"winlog.task":            "Logon",
 		"winlog.opcode":          "Info",
 		"winlog.user.identifier": "S-1-5-18",

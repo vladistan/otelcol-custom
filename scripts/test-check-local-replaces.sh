@@ -109,6 +109,18 @@ for edge in builder-edge.yaml builder-edge-static.yaml; do
 	expect_output "the missing netflow replace names $edge" "$edge does not replace .*netflowreceiver"
 done
 
+for module in netflowreceiver flowlogexporter logshapeprocessor; do
+	scratch_tree "$SCRATCH/gateway-no-$module-replace"
+	grep -v "$module =>" "$ROOT/builder-gateway.yaml" >"$SCRATCH/gateway-no-$module-replace/builder-gateway.yaml"
+	expect_exit_code "the gateway manifest without the $module replace fails" 1 "$CHECK" "$SCRATCH/gateway-no-$module-replace"
+	expect_output "the missing gateway replace names $module" "builder-gateway.yaml does not replace .*$module"
+
+	scratch_tree "$SCRATCH/gateway-no-$module-entry"
+	grep -v "gomod: .*$module" "$ROOT/builder-gateway.yaml" >"$SCRATCH/gateway-no-$module-entry/builder-gateway.yaml"
+	expect_exit_code "the gateway manifest without the $module entry fails" 1 "$CHECK" "$SCRATCH/gateway-no-$module-entry"
+	expect_output "the missing gateway entry names $module" "builder-gateway.yaml does not list .*$module"
+done
+
 scratch_tree "$SCRATCH/gone"
 rm -rf "$SCRATCH/gone/receiver/googlecloudmonitoringreceiver"
 expect_exit_code "a replace to a missing directory fails" 1 "$CHECK" "$SCRATCH/gone"

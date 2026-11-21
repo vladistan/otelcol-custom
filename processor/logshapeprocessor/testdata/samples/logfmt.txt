@@ -1,0 +1,5 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+logger=plugin.x t=2026-11-19T22:42:20.918289Z level=info msg="performing QueryData" dsName=a url=/b source=write_handler.go:254 uname=test-user empty=
+ts=2026-11-19T23:00:00.000000Z lvl=info msg="Executing query" log_id=0abc
+t=2026-11-19T22:42:21Z level=warn msg="slow" component=dns

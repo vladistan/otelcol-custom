@@ -5,7 +5,8 @@
 #
 # The pod needs:
 #   - K8S_NODE_NAME from the downward API (spec.nodeName); the observer lists only that node's pods
-#   - a service account that can get, list and watch pods; k8s_attributes also reads namespaces and nodes
+#   - a service account that can get, list and watch pods; the k8s_attributes block below extracts only
+#     names and a pod label, so it needs nothing more
 # See docs/k8s-discovery.md for the Role, the failure table and the cardinality.
 #
 # A pod is scraped when its annotations say so:
@@ -22,12 +23,12 @@ extensions:
     auth_type: serviceAccount
     node: ${env:K8S_NODE_NAME}
     observe_pods: true
-
 receivers:
   receiver_creator/pods:
     watch_observers: [k8s_observer]
     receivers:
       prometheus:
+        # yamllint disable-line rule:line-length
         rule: type == "pod" && annotations["prometheus.io/scrape"] == "true" && labels["app.kubernetes.io/component"] != "opentelemetry-collector"
         config:
           config:
@@ -37,7 +38,6 @@ receivers:
                 metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
                 static_configs:
                   - targets: ['`joinHostPort(endpoint, "prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : "9090")`']
-
 processors:
   memory_limiter:
     check_interval: 1s
@@ -65,12 +65,10 @@ processors:
             name: k8s.pod.uid
   batch:
     timeout: 10s
-
 exporters:
   # Replace with otlp_grpc towards the gateway.
   debug:
     verbosity: basic
-
 service:
   extensions: [health_check, k8s_observer]
   pipelines:

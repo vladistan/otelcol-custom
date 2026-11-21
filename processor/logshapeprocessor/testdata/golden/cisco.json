@@ -1,0 +1,83 @@
+[
+  {
+    "body": "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "LINK"
+    },
+    "attributes": {
+      "network.interface.name": "GigabitEthernet0/1",
+      "vstan.cisco.facility": "LINK",
+      "vstan.cisco.mnemonic": "UPDOWN",
+      "vstan.cisco.severity": "3"
+    }
+  },
+  {
+    "body": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "SW_MATM"
+    },
+    "attributes": {
+      "network.interface.name": "Gi4/0/45",
+      "vstan.cisco.facility": "SW_MATM",
+      "vstan.cisco.mnemonic": "MACFLAP_NOTIF",
+      "vstan.cisco.severity": "4"
+    }
+  },
+  {
+    "body": "%COPY-N-TRAP: The copy operation was completed successfully",
+    "severity": 10,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "COPY"
+    },
+    "attributes": {
+      "vstan.cisco.facility": "COPY",
+      "vstan.cisco.mnemonic": "TRAP",
+      "vstan.cisco.severity": "N"
+    }
+  },
+  {
+    "body": "Client Association",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "APF"
+    },
+    "attributes": {
+      "code.file.path": "apf_80211.c",
+      "code.line.number": 13338,
+      "thread.name": "apfMsConnTask_0",
+      "vstan.cisco.facility": "APF",
+      "vstan.cisco.mnemonic": "CLIENT_ASSOCIATE",
+      "vstan.cisco.severity": "5",
+      "vstan.wifi.ap.name": "DownAP-Master",
+      "vstan.wifi.client.ap": "CiscoAP-Down",
+      "vstan.wifi.radio": "2.4GHz",
+      "vstan.wifi.wlan.id": "1"
+    }
+  },
+  {
+    "body": "Spanning Tree Topology Change Received",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "switch-c-1",
+      "service.name": "TRAPMGR"
+    },
+    "attributes": {
+      "code.file.path": "traps.c",
+      "code.line.number": 763,
+      "thread.name": "dot1s_task",
+      "vstan.cisco.sequence": "284"
+    }
+  }
+]

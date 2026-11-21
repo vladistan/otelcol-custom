@@ -1,0 +1,54 @@
+[
+  {
+    "body": "GET /ready 200 2B 0ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.23",
+      "http.request.method": "GET",
+      "http.response.body.size": 2,
+      "http.response.status_code": 200,
+      "log.record.original": "198.51.100.23 - 7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff - - [2026/11/20 04:42:11] 203.0.113.46:4180 GET - \"/ready\" HTTP/1.1 \"kube-probe/1.36\" 200 2 0.000",
+      "url.path": "/ready",
+      "user_agent.original": "kube-probe/1.36",
+      "vstan.oauth2proxy.request_id": "7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "GET /app/ 302 512B 123ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.23",
+      "http.request.method": "GET",
+      "http.response.body.size": 512,
+      "http.response.status_code": 302,
+      "log.record.original": "198.51.100.23 - 7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff - webuser [2026/11/20 04:42:12] 203.0.113.46:4180 GET - \"/app/\" HTTP/1.1 \"Mozilla/5.0 (X11)\" 302 512 0.123",
+      "url.path": "/app/",
+      "user.name": "webuser",
+      "user_agent.original": "Mozilla/5.0 (X11)",
+      "vstan.oauth2proxy.request_id": "7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "POST /oauth2/callback 500 12B 250ms",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.24",
+      "http.request.method": "POST",
+      "http.response.body.size": 12,
+      "http.response.status_code": 500,
+      "log.record.original": "198.51.100.24 - 3c4d5e6f-aaaa-bbbb-cccc-ddddeeeeffff - - [2026/11/20 04:42:13] 203.0.113.46:4180 POST - \"/oauth2/callback\" HTTP/1.1 \"Mozilla/5.0 (X11)\" 500 12 0.250",
+      "url.path": "/oauth2/callback",
+      "user_agent.original": "Mozilla/5.0 (X11)",
+      "vstan.oauth2proxy.request_id": "3c4d5e6f-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  }
+]

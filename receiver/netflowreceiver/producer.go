@@ -44,6 +44,9 @@ func (o *otelLogsProducerWrapper) Produce(msg any, args *producer.ProduceArgs) (
 		return flowMessageSet, err
 	}
 
+	// Local patch: take the flow times of a NetFlow v9 record from its absolute millisecond fields (see absolute_times.go).
+	fixV9Times(msg, flowMessageSet)
+
 	// Create the otel log structure to hold our messages
 	log := plog.NewLogs()
 	scopeLog := log.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()

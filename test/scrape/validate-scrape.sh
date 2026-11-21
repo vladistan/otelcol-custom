@@ -34,6 +34,10 @@ export GCP_PROJECT=proj-example
 export GCP_MON_PROJECT_A=proj-example-a GCP_MON_PROJECT_B=proj-example-b
 export GCP_CLOUDRUN_SUBSCRIPTION=projects/proj-example/subscriptions/cloudrun
 export GCP_AUDIT_SUBSCRIPTION=projects/proj-example/subscriptions/audit
+export GCP_LB_PROJECT=proj-example GCP_LB_REGION=us-central1
+export GCP_LB_SUBSCRIPTION=projects/proj-example/subscriptions/lb
+export S3ACCESS_ACCOUNT_ID=111122223333
+export CW_ACCOUNT_NAME=example-account CW_ROLE_ARN=arn:aws:iam::111122223333:role/example CW_EXTERNAL_ID=example
 export AZ_EH_CONN='Endpoint=sb://example.servicebus.windows.net/;SharedAccessKeyName=placeholder-name;SharedAccessKey=placeholder-value;EntityPath=placeholder-hub'
 build/scratch-scrape/otelcol-scrape validate --config test/configs/scrape.yaml
 echo "PASS: test/configs/scrape.yaml validates"

@@ -1,6 +1,8 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore servicel dpanic tdpanic
+
 package logruslogprocessor
 
 import (
@@ -66,12 +68,12 @@ func TestIsLogrusJSON(t *testing.T) {
 		},
 		{
 			name:     "nginx log - not logrus",
-			input:    `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
+			input:    `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
 			expected: false,
 		},
 		{
 			name:     "uvicorn log - not logrus",
-			input:    `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
+			input:    `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
 			expected: false,
 		},
 		{
@@ -338,7 +340,7 @@ func TestIsLogrusText(t *testing.T) {
 		},
 		{
 			name:     "logrus text with extra fields",
-			input:    `time="2025-12-31T04:26:30Z" level=info msg="Applying provider record filter for domains: [r4.example.com.]" source=external-dns`,
+			input:    `time="2025-12-31T04:26:30Z" level=info msg="Applying provider record filter for domains: [zone.example.com.]" source=external-dns`,
 			expected: true,
 		},
 		{
@@ -358,12 +360,12 @@ func TestIsLogrusText(t *testing.T) {
 		},
 		{
 			name:     "nginx log - not logrus",
-			input:    `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
+			input:    `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
 			expected: false,
 		},
 		{
 			name:     "uvicorn log - not logrus",
-			input:    `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
+			input:    `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
 			expected: false,
 		},
 		{
@@ -408,11 +410,11 @@ func TestParseLogrusText(t *testing.T) {
 		},
 		{
 			name:            "logrus text with extra fields",
-			input:           `time="2025-12-31T04:26:30Z" level=info msg="Applying filter" source="external-dns" zone="r4.example.com"`,
+			input:           `time="2025-12-31T04:26:30Z" level=info msg="Applying filter" source="external-dns" zone="zone.example.com"`,
 			expectNil:       false,
 			expectedLevel:   "info",
 			expectedMessage: "Applying filter",
-			expectedExtra:   map[string]string{"source": "external-dns", "zone": "r4.example.com"},
+			expectedExtra:   map[string]string{"source": "external-dns", "zone": "zone.example.com"},
 		},
 		{
 			name:            "logrus text error level",
@@ -534,7 +536,7 @@ func TestIsZapConsole(t *testing.T) {
 		},
 		{
 			name:     "nginx log - not zap console",
-			input:    "10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] \"GET /healthz/ HTTP/1.1\" 200 582",
+			input:    "198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] \"GET /healthz/ HTTP/1.1\" 200 582",
 			expected: false,
 		},
 		{

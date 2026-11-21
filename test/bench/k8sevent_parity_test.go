@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	kubeV0Values     = "../../processor/k8seventprocessor/testdata/kube-v0-values-cluster.yaml"
+	clusterAValues   = "../../processor/k8seventprocessor/testdata/cluster-a-values-cluster.yaml"
 	appsEKSV0Values  = "../../processor/k8seventprocessor/testdata/apps-eks-v0-values-cluster.yaml"
 	siteValues       = "../../processor/k8seventprocessor/testdata/site-k8s-values-cluster.yaml"
 	k8sBodies        = "../../processor/k8seventprocessor/testdata/k8sobjects-bodies.json"
@@ -45,7 +45,7 @@ type k8sCase struct {
 	Body map[string]any `json:"body"`
 }
 
-// loadK8sCases returns the kube-v0 bodies followed by the apps-eks-v0 and site-k8s bodies.
+// loadK8sCases returns the cluster-a bodies followed by the apps-eks-v0 and site-k8s bodies.
 func loadK8sCases(tb testing.TB) []k8sCase {
 	tb.Helper()
 	return append(loadK8sCasesFrom(tb, k8sBodies), loadK8sCasesFrom(tb, k8sClusterBodies)...)
@@ -83,7 +83,7 @@ func loadK8sValuesProcessors(tb testing.TB, path string) map[string]map[string]a
 
 func newK8sOTTL(tb testing.TB, next consumer.Logs) processor.Logs {
 	tb.Helper()
-	return newK8sOTTLFrom(tb, next, kubeV0Values)
+	return newK8sOTTLFrom(tb, next, clusterAValues)
 }
 
 func newK8sOTTLFrom(tb testing.TB, next consumer.Logs, valuesPath string) processor.Logs {
@@ -150,7 +150,7 @@ func assertK8sRecordsMatch(t *testing.T, want, got plog.LogRecord) {
 }
 
 func TestK8sEventParity_EachClusterBlockMatchesOnEveryBody(t *testing.T) {
-	for _, values := range []string{kubeV0Values, appsEKSV0Values, siteValues} {
+	for _, values := range []string{clusterAValues, appsEKSV0Values, siteValues} {
 		t.Run(filepath.Base(values), func(t *testing.T) {
 			ottlSink, k8sSink := new(consumertest.LogsSink), new(consumertest.LogsSink)
 			ottl, k8s := newK8sOTTLFrom(t, ottlSink, values), newK8sEvent(t, k8sSink, nil)

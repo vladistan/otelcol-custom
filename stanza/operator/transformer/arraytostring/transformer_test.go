@@ -83,7 +83,7 @@ func TestTransformer_ArrayToString(t *testing.T) {
 			expected:  "Hello",
 		},
 		{
-			// Real journald byte array with ANSI escape codes (from actual cicd-dkr2 logs)
+			// Real journald byte array with ANSI escape codes (from actual host logs)
 			// [27,91,57,50,109] = ESC[92m (light green ANSI code)
 			name:      "journald byte array with ANSI codes",
 			field:     "body.MESSAGE",

@@ -1,3 +1,5 @@
+// cspell:ignore vstan
+
 package openvpnstatusreceiver
 
 import (
@@ -180,11 +182,17 @@ func (r *statusReceiver) buildLogs(snap snapshot) plog.Logs {
 		rec.SetTimestamp(pcommon.NewTimestampFromTime(snap.at))
 		rec.SetObservedTimestamp(observed)
 		attrs := rec.Attributes()
-		attrs.PutStr("common_name", c.commonName)
-		attrs.PutStr("real_address", c.ip)
-		attrs.PutInt("bytes_received", c.bytesReceived)
-		attrs.PutInt("bytes_sent", c.bytesSent)
-		attrs.PutStr("connected_since", c.connectedSince)
+		attrs.PutStr("user.name", c.commonName)
+		attrs.PutStr("client.address", c.ip)
+		if c.port > 0 {
+			attrs.PutInt("client.port", c.port)
+		}
+		if c.commonName == undefName {
+			attrs.PutBool("unauthenticated", true)
+		}
+		attrs.PutInt("vstan.openvpn.bytes_received", c.bytesReceived)
+		attrs.PutInt("vstan.openvpn.bytes_sent", c.bytesSent)
+		attrs.PutStr("vstan.openvpn.connected_since", c.connectedSince)
 		if match, ok := matchRoute(routes[c.commonName], c); ok {
 			attrs.PutStr("virtual_address", match.virtualAddress)
 			attrs.PutStr("last_ref", match.lastRef)

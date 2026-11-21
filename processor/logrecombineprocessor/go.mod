@@ -4,6 +4,9 @@ go 1.26.0
 
 require (
 	github.com/stretchr/testify v1.12.1
+	github.com/vladistan/otelcol-custom/shape/multiline v0.0.0
+	github.com/vladistan/otelcol-custom/shape/severity v0.0.0
+	github.com/vladistan/otelcol-custom/shape/strip v0.0.0
 	go.opentelemetry.io/collector/component v1.70.0
 	go.opentelemetry.io/collector/consumer v1.70.0
 	go.opentelemetry.io/collector/pdata v1.70.0
@@ -42,3 +45,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 )
+
+replace github.com/vladistan/otelcol-custom/shape/multiline => ../../shape/multiline
+
+replace github.com/vladistan/otelcol-custom/shape/severity => ../../shape/severity
+
+replace github.com/vladistan/otelcol-custom/shape/strip => ../../shape/strip

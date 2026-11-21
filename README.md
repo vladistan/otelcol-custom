@@ -1,5 +1,7 @@
 # otelcol-custom
 
+<!-- cspell:ignore hwmap hwmapprocessor -->
+
 Custom OpenTelemetry Collector distribution with extended log-parsing processors.
 
 ## Overview
@@ -164,7 +166,7 @@ external command.
 ```yaml
 receivers:
   pve:
-    base_urls: [https://pve1:8006, https://pve2:8006]
+    base_urls: [https://node1:8006, https://node2:8006]
     ca_file: /etc/otelcol/pve-ca.pem
     resources:                      # one node per cluster
       enabled: true
@@ -174,7 +176,7 @@ receivers:
       enabled: true
       token_id: otel@pve!guests
       token_secret: ${env:PVE_GUESTS_TOKEN}
-      node: pve1                    # required in a scrape pod; the host name is used when empty
+      node: node1                    # required in a scrape pod; the host name is used when empty
 ```
 
 - `base_urls` is a list. A connect or TLS failure moves on to the next address; for `resources` so does a 5xx
@@ -850,6 +852,7 @@ receivers:
   megaraid:
     collection_interval: 60s         # default
     smart: false                     # default; true reads SATA drives through the controller
+    smart_when_power_unknown: false  # default; true can wake a spun-down drive, see below
     events:
       enabled: true                  # default
       storage: file_storage/megaraid # keeps the last read event
@@ -869,6 +872,10 @@ non-root user needs both (in a container, the device node and the capability). O
 that use the node queue behind a scrape. The 2208 and 3108 controllers are the declared generations;
 others are read best-effort. The tests ran on buffers built from the driver headers, not on a
 controller; the metric table and what is unverified are in `docs/otel-metrics.md`.
+
+With `smart: true`, a drive whose controller returns no power state is skipped by default.
+`smart_when_power_unknown: true` reads it anyway and can wake a spun-down drive at every
+`smart_interval`; see `docs/otel-metrics.md`.
 
 ### KSM (Kernel Samepage Merging)
 
@@ -997,7 +1004,7 @@ in a logs pipeline keeps emitting log records, and a metrics pipeline gets the m
 The `output` key (`metrics`, `logs` or `both`) restricts it. Use status version 2 or 3
 for metrics. See `docs/openvpnstatus.md`.
 
-### Pod discovery on the Linux edge
+### Pod discovery on the Linux edge and the gateway
 
 The Linux and static Linux edge builds can start receivers for the pods of their own
 node, for a DaemonSet. `k8s_observer` lists the pods of one node, and `receiver_creator`
@@ -1014,8 +1021,14 @@ fails a sample config that turns it on. The creator puts `k8s.pod.uid`, `k8s.pod
 and `k8s.namespace.name` on what the receivers produce; `k8s_attributes` after the
 creator adds labels and annotations. Each matching pod gets its own receiver, and a
 new `receiver` label value on the receiver self-metrics after every pod restart. A
-receiver that fails to start is logged and the collector keeps running. The gateway,
-the scrape collector and the Windows edge are unchanged. See `docs/k8s-discovery.md`
+receiver that fails to start is logged and the collector keeps running.
+
+The gateway image carries the same components, for a Deployment of one replica whose
+observer lists the pods of the whole cluster (`test/configs/gateway-k8s-discovery.yaml`,
+one Redis rule, and `test/configs/gateway-k8s-apps.yaml`, one rule for each application
+receiver). Run one replica: two would scrape each pod twice. The service account needs
+`get`, `list` and `watch` on pods across the cluster, which the cluster owner grants.
+The scrape collector and the Windows edge are unchanged. See `docs/k8s-discovery.md`
 for the RBAC, the failure table and the size of each receiver.
 
 ### Custom (in-tree)
@@ -1037,6 +1050,14 @@ Not every processor ships in every build: the builder manifests list which ones
 each profile includes. `journaldprocessor`, `snoozelogprocessor`,
 `healthprobesampler`, `winlogprocessor` and `windowhistprocessor` are in the tree
 from 0.3.1 and join the manifests in later releases.
+
+**Mapping** (`processor/`): `hwmapprocessor` (own module, type `hwmap`, in the scrape image
+only) renames and scales raw metrics and turns state values into `hw.status` points by
+config rules. See `docs/hwmap.md`.
+
+**Exporters** (`exporter/`): `flowlogexporter` (own module, type `flowlog`, in the gateway
+image only) writes the records of the `netflow` receiver as typed rows into the ClickHouse
+flow table. See `docs/flowlog.md`.
 
 **Receivers** (`receiver/`): `ciscologreceiver` (root module, parses Cisco device
 logs), `psireceiver` (own module, Pressure Stall Information metrics from

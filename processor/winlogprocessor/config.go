@@ -44,11 +44,21 @@ type Config struct {
 	// ServiceNameFromProvider sets service.name on a per-event resource from
 	// winlog.provider_name with the Microsoft-Windows- prefix removed. Off by default.
 	ServiceNameFromProvider bool `mapstructure:"service_name_from_provider"`
+	// Summaries adds or replaces one-line summary templates, keyed "provider/event id";
+	// an empty template turns the summary of that event off.
+	Summaries map[string]string `mapstructure:"summaries"`
+	// MSSQLActions adds to or replaces the MSSQL audit action code table.
+	MSSQLActions map[string]string `mapstructure:"mssql_actions"`
+	// DNContractions lists distinguished name suffixes that a summary shortens to ",...".
+	DNContractions []string `mapstructure:"dn_contractions"`
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.OriginalMessageMaxBytes < 0 {
 		return fmt.Errorf("original_message_max_bytes must not be negative, got %d", cfg.OriginalMessageMaxBytes)
+	}
+	if _, err := newSummarizer(cfg); err != nil {
+		return err
 	}
 	_, err := compileRules(cfg.DropRules)
 	return err

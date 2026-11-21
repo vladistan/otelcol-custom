@@ -64,7 +64,8 @@ func (r *ipmiReceiver) Start(ctx context.Context, _ component.Host) error {
 	}
 	for _, b := range r.cfg.BMCs {
 		b = b.resolved()
-		if b.PrivilegeLevel != "user" {
+		// With DCMI power on the BMC needs an administrator account anyway, so the warning says nothing new.
+		if b.PrivilegeLevel != "user" && !b.DCMIPower {
 			r.logger.Warn("The sensor session asks for more than the user privilege level; sensors and the SDR need only user, and an account with more rights than that is a larger risk if the password leaks",
 				zap.String("bmc", b.Name), zap.String("privilege_level", b.PrivilegeLevel))
 		}

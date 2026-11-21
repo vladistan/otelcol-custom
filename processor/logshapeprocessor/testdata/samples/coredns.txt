@@ -1,0 +1,5 @@
+# provenance: partly real; real lines: 2
+# evidence: line 2 is a captured query line, address replaced; the others are written from the format
+[INFO] 198.51.100.42:56818 - 13677 "A IN example.org. udp 24 false 512" REFUSED qr,aa,rd,ra 24 0.000070318s
+[INFO] 198.51.100.42:56819 - 13678 "A IN nohost. udp 24 false 512" SERVFAIL qr,aa,rd,ra 24 0.000070318s
+[2001:db8::7]:5353 - 4 "AAAA IN example.org. tcp 41 true 65535" SERVFAIL qr,rd,ra 98 0.0123s

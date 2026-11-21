@@ -1,0 +1,75 @@
+[
+  {
+    "body": "Succeeded (0/1 ready)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-a",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-a",
+      "k8s.pod.name": "job-1-abcde",
+      "service.name": "job-1-abcde"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Succeeded"
+    }
+  },
+  {
+    "body": "Running (1/1 ready)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-b",
+      "k8s.pod.name": "web-1",
+      "service.name": "web-1"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Running"
+    }
+  },
+  {
+    "body": "Pending",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-b",
+      "k8s.pod.name": "web-2",
+      "service.name": "web-2"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Pending"
+    }
+  },
+  {
+    "body": "ScalingReplicaSet: Scaled up replica set web-5d4f to 2",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "service.name": "Deployment/web"
+    },
+    "attributes": {}
+  },
+  {
+    "body": "BackOff: Back-off restarting failed container",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.pod.name": "web-1",
+      "service.name": "Pod/web-1"
+    },
+    "attributes": {}
+  }
+]

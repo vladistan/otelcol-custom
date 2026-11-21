@@ -1,3 +1,4 @@
+# cspell:ignore kaudit logfmt mosquitto
 # Local Edge Collector Test Configuration
 # Use for local development and debugging with VS Code
 #
@@ -130,6 +131,49 @@ processors:
     container_identifier: body.CONTAINER_ID
   # Container name (custom): service.name from container.name on Docker journald logs and docker_stats metrics
   containername: {}
+  # Log shaping (custom): turns the text of known formats into one-line bodies with official attribute
+  # names. The cloud sources (aws and gcp load balancer, bucket, audit and cloud trail records) are
+  # shaped by the scrape image, so they are not enabled here. It runs before resource/host, which
+  # only inserts a fallback.
+  logshape:
+    branches:
+      - flow
+      - klog
+      - uvicorn
+      - collector
+      - mongod
+      - gcpjson
+      - tracing
+      - pino
+      - logrus
+      - postgres
+      - redis
+      - nginx
+      - sentry
+      - cisco
+      - syslog
+      - influx
+      - oauth2proxy
+      - coredns
+      - rabbitmq
+      - mosquitto
+      - stallcheck
+      - kaudit
+      - smartd
+      - gocd
+      - cron
+      - openvpn
+      - pbs
+      - pve
+      - serialconsole
+      - logfmt
+      - clickhouse
+      - calico
+      - ssmagent
+      - litellm
+      - stderrhint
+      - lldpd
+      - k8s
   # Process lifetime (custom): CPU time and disk bytes divided by process.uptime. Runs before kthread
   processlifetime: {}
   # Kernel threads (custom): one aggregate resource per scrape in place of per-pid kernel-thread series
@@ -180,7 +224,7 @@ service:
   pipelines:
     logs:
       receivers: [file_log/testdata]
-      processors: [memory_limiter, resource_detection, resource/host, containername, batch]
+      processors: [memory_limiter, logshape, resource_detection, resource/host, containername, batch]
       exporters: [debug, file/logs]
     metrics:
       receivers: [host_metrics, psi, docker_stats]

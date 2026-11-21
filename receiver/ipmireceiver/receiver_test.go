@@ -46,11 +46,11 @@ func fastConfig(names ...string) *Config {
 }
 
 func TestStartOffsetsDifferByNameAndAreStable(t *testing.T) {
-	a := startOffset("pve12", time.Minute)
-	b := startOffset("pve13", time.Minute)
+	a := startOffset("node12", time.Minute)
+	b := startOffset("node13", time.Minute)
 
 	assert.NotEqual(t, a, b)
-	assert.Equal(t, a, startOffset("pve12", time.Minute))
+	assert.Equal(t, a, startOffset("node12", time.Minute))
 	assert.Less(t, a, time.Minute)
 	assert.GreaterOrEqual(t, a, time.Duration(0))
 }
@@ -148,6 +148,64 @@ func TestAdministratorPrivilegeLogsOneWarnAtStartAndTheDefaultLogsNone(t *testin
 	require.NoError(t, q.Start(context.Background(), componenttest.NewNopHost()))
 	require.NoError(t, q.Shutdown(context.Background()))
 	assert.Zero(t, quietLogs.FilterLevelExact(zapcore.WarnLevel).FilterMessageSnippet("privilege").Len())
+}
+
+// privilegeWarnings starts a receiver with the given BMCs and counts the start warnings
+// about a privilege level above user, by BMC name.
+func privilegeWarnings(t *testing.T, bmcs ...BMCConfig) map[string]int {
+	t.Helper()
+	cfg := fastConfig()
+	cfg.BMCs = bmcs
+	set, logs := settingsWithLogs()
+	r := newReceiver(set, cfg, consumertest.NewNop(), func(context.Context, BMCConfig, string) (bmcSession, error) {
+		return nil, errRefused
+	})
+	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
+	require.NoError(t, r.Shutdown(context.Background()))
+
+	got := map[string]int{}
+	for _, e := range logs.FilterLevelExact(zapcore.WarnLevel).FilterMessageSnippet("more than the user privilege level").All() {
+		got[e.ContextMap()["bmc"].(string)]++
+	}
+	return got
+}
+
+// A level above user logs the warning once, unless DCMI power is on: the power reads need an
+// administrator account, so the warning would only repeat what the config already says.
+func TestPrivilegeWarningFollowsTheLevelAndDCMIPower(t *testing.T) {
+	tests := map[string]struct {
+		level string
+		dcmi  bool
+		want  int
+	}{
+		"user, power off":          {"user", false, 0},
+		"user, power on":           {"user", true, 0},
+		"operator, power off":      {"operator", false, 1},
+		"operator, power on":       {"operator", true, 0},
+		"administrator, power off": {"administrator", false, 1},
+		"administrator, power on":  {"administrator", true, 0},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			b := validBMC()
+			b.Name = "bmc"
+			b.PrivilegeLevel = tt.level
+			b.DCMIPower = tt.dcmi
+
+			assert.Equal(t, tt.want, privilegeWarnings(t, b)["bmc"])
+		})
+	}
+}
+
+// With two BMCs only the one that has DCMI power off is named in the warning.
+func TestPrivilegeWarningNamesOnlyTheBMCWithDCMIPowerOff(t *testing.T) {
+	on, off := validBMC(), validBMC()
+	on.Name, on.PrivilegeLevel, on.DCMIPower = "power-on", "administrator", true
+	off.Name, off.PrivilegeLevel, off.DCMIPower = "power-off", "administrator", false
+
+	got := privilegeWarnings(t, on, off)
+
+	assert.Equal(t, map[string]int{"power-off": 1}, got)
 }
 
 type failingSink struct{ calls atomic.Int32 }

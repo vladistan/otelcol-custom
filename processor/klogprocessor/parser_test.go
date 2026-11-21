@@ -1,6 +1,8 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore etcdserver mvcc controllerv PLEG
+
 package klogprocessor
 
 import (
@@ -50,7 +52,7 @@ func TestIsKlog(t *testing.T) {
 		},
 		{
 			name:     "nginx log - not klog",
-			input:    `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
+			input:    `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
 			expected: false,
 		},
 		{
@@ -140,7 +142,7 @@ func TestParseKlog(t *testing.T) {
 		},
 		{
 			name:            "kubelet probe failed",
-			input:           `I1220 03:18:01.710490    1233 prober.go:120] "Probe failed" probeType="Readiness" pod="kube-system/kube-apiserver-k8s-0" podUID="040476ba7586efa8b66c57331451b5fa" containerName="kube-apiserver" probeResult="failure" output="HTTP probe failed with statuscode: 500"`,
+			input:           `I1220 03:18:01.710490    1233 prober.go:120] "Probe failed" probeType="Readiness" pod="kube-system/kube-apiserver-k8s-0" podUID="040476ba7586efa8b66c57331451b5fa" containerName="kube-apiserver" probeResult="failure" output="HTTP probe failed with statuscode: 500"`, // pragma: allowlist secret
 			expectNil:       false,
 			expectedLevel:   "I",
 			expectedMessage: "Probe failed",
@@ -149,7 +151,7 @@ func TestParseKlog(t *testing.T) {
 			expectedExtra: map[string]string{
 				"probeType":     "Readiness",
 				"pod":           "kube-system/kube-apiserver-k8s-0",
-				"podUID":        "040476ba7586efa8b66c57331451b5fa",
+				"podUID":        "040476ba7586efa8b66c57331451b5fa", // pragma: allowlist secret
 				"containerName": "kube-apiserver",
 				"probeResult":   "failure",
 			},
@@ -170,7 +172,7 @@ func TestParseKlog(t *testing.T) {
 		},
 		{
 			name:            "kubelet container finished",
-			input:           `I0102 05:00:25.573798    1344 generic.go:358] "Generic (PLEG): container finished" podID="3eb0f5ea-a5fe-4309-973b-eb5fe856f853" containerID="af91019d02c2b507a4c7c12d36aa7d8a171e460d459dca7c84a187cd56e72cb9" exitCode=0`,
+			input:           `I0102 05:00:25.573798    1344 generic.go:358] "Generic (PLEG): container finished" podID="3eb0f5ea-a5fe-4309-973b-eb5fe856f853" containerID="af91019d02c2b507a4c7c12d36aa7d8a171e460d459dca7c84a187cd56e72cb9" exitCode=0`, // pragma: allowlist secret
 			expectNil:       false,
 			expectedLevel:   "I",
 			expectedMessage: "Generic (PLEG): container finished",
@@ -178,7 +180,7 @@ func TestParseKlog(t *testing.T) {
 			expectedLine:    "358",
 			expectedExtra: map[string]string{
 				"podID":       "3eb0f5ea-a5fe-4309-973b-eb5fe856f853",
-				"containerID": "af91019d02c2b507a4c7c12d36aa7d8a171e460d459dca7c84a187cd56e72cb9",
+				"containerID": "af91019d02c2b507a4c7c12d36aa7d8a171e460d459dca7c84a187cd56e72cb9", // pragma: allowlist secret
 				"exitCode":    "0",
 			},
 		},

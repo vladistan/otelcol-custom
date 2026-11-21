@@ -52,7 +52,7 @@ func TestGKEAuditEntryIsFilledAfterSourceTag(t *testing.T) {
 		t.Fatalf("sink got %d batches, want 1", len(final.AllLogs()))
 	}
 	rec := recordsOf(final.AllLogs()[0])[0]
-	wantStr(t, rec.resource, "host.name", "kube-v0")
+	wantStr(t, rec.resource, "host.name", "cluster-a")
 	wantStr(t, rec.resource, "service.name", "gcp-audit")
 	wantStr(t, rec.log.Attributes(), "log.source", "gcp.audit")
 	if got := rec.log.Body().Str(); got == "" {

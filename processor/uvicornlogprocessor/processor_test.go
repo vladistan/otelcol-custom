@@ -40,7 +40,7 @@ func processOne(t *testing.T, cfg *Config, body string) plog.LogRecord {
 
 func TestConsumeLogs_AccessLine_EmitsPathAndIntStatus(t *testing.T) {
 	cfg := &Config{ServiceName: "uvicorn", ExtractHTTPFields: true}
-	line := `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`
+	line := `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`
 
 	attrs := processOne(t, cfg, line).Attributes()
 
@@ -56,7 +56,7 @@ func TestConsumeLogs_AccessLine_EmitsPathAndIntStatus(t *testing.T) {
 
 func TestConsumeLogs_AccessLine_HasNoUserAgent(t *testing.T) {
 	cfg := &Config{ServiceName: "uvicorn", ExtractHTTPFields: true}
-	line := `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`
+	line := `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`
 
 	attrs := processOne(t, cfg, line).Attributes()
 

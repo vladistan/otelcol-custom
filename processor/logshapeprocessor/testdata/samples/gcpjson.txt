@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+{"logging.googleapis.com/operation":"nri.(*plugin).StopPodSandbox.func1()","logging.googleapis.com/sourceLocation":"pkg/nri/nri.go","message":"nri: Done StopPodSandbox","severity":"info","timestamp":"2026-11-19T22:42:00.250Z"}
+{"message":"slow request","severity":"WARNING","timestamp":"2026-11-19T22:42:01Z","logging.googleapis.com/sourceLocation":{"file":"a/b.go","line":"42","function":"pkg.Run"}}

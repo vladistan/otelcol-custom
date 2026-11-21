@@ -25,7 +25,7 @@ var (
 	// Critical medium error: critical medium error, dev sdd, sector 0 ...
 	criticalMediumPattern = regexp.MustCompile(`^critical medium error,\s+dev\s+(\w+),\s+sector\s+(\d+)\s+(.*)$`)
 
-	// IPVS message: IPVS: rr: TCP 192.0.2.1:4318 - no destination available
+	// IPVS message: IPVS: rr: TCP 192.0.2.104:4318 - no destination available
 	ipvsPattern = regexp.MustCompile(`^IPVS:\s+(\w+):\s+(\w+)\s+([\d.:]+)\s+-\s+(.*)$`)
 
 	// Network interface: em0: promiscuous mode enabled/disabled

@@ -166,7 +166,8 @@ func TestCloudTrailGivesOneRecordPerEntry(t *testing.T) {
 		t.Fatalf("records = %d, want 3 (one per Records[] entry)", len(recs))
 	}
 	wantBody := []string{"s3.amazonaws.com GetObject", "iam.amazonaws.com CreateUser", "ec2.amazonaws.com DescribeInstances"}
-	wantSev := []plog.SeverityNumber{plog.SeverityNumberInfo, plog.SeverityNumberWarn, plog.SeverityNumberInfo}
+	// A record with no severity stays unset; an error code raises it to WARN.
+	wantSev := []plog.SeverityNumber{plog.SeverityNumberUnspecified, plog.SeverityNumberWarn, plog.SeverityNumberUnspecified}
 	for i, r := range recs {
 		wantStr(t, r.log.Attributes(), "log.source", "aws.cloudtrail")
 		wantStr(t, r.log.Attributes(), "event.category", "audit")
@@ -195,8 +196,8 @@ func TestS3AccessLogSource(t *testing.T) {
 	for _, r := range recs {
 		wantStr(t, r.log.Attributes(), "log.source", "aws.s3access")
 		wantStr(t, r.log.Attributes(), "event.category", "access")
-		if r.log.SeverityNumber() != plog.SeverityNumberInfo {
-			t.Fatalf("severity = %v, want INFO", r.log.SeverityNumber())
+		if r.log.SeverityNumber() != plog.SeverityNumberUnspecified {
+			t.Fatalf("severity = %v, want unset", r.log.SeverityNumber())
 		}
 	}
 }

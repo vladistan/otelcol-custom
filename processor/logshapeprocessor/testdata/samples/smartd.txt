@@ -1,0 +1,6 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured line; the others are written from the format
+Device: /dev/ada3, 8 Offline uncorrectable sectors
+Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors
+Device: /dev/ada3, FAILED SMART self-check. BACKUP DATA NOW!
+Device: /dev/ada3, SMART Prefailure Attribute: 1 Raw_Read_Error_Rate changed from 100 to 99

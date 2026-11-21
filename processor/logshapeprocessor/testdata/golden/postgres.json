@@ -1,0 +1,57 @@
+[
+  {
+    "body": "deleted 0 row(s)",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 22:42:20.918 UTC [815116] LOG:  deleted 0 row(s)",
+      "process.pid": 815116
+    }
+  },
+  {
+    "body": "duplicate key value violates unique constraint \"example_key\"",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 19:47:24.232 UTC [708688] ERROR:  duplicate key value violates unique constraint \"example_key\"",
+      "process.pid": 708688
+    }
+  },
+  {
+    "body": "permission denied for database \"appdb\"",
+    "severity": 21,
+    "severity_text": "FATAL",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 15:50:21.286 UTC [779331] FATAL:  permission denied for database \"appdb\"",
+      "process.pid": 779331
+    }
+  },
+  {
+    "body": "checkpoint complete",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 22:42:20.918 CET [12] LOG:  checkpoint complete",
+      "process.pid": 12
+    }
+  },
+  {
+    "body": "could not open statistics file",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-13 22:35:25.159 EST [12188] WARNING:  could not open statistics file",
+      "process.pid": 12188
+    }
+  }
+]

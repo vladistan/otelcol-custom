@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+2026-11-19 23:00:14.0871 WARN EC2RoleProvider Failed to connect to Systems Manager
+2026-11-19 23:00:15.0001 INFO Updater Agent is up to date

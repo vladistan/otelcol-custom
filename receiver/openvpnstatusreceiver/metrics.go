@@ -97,6 +97,12 @@ func byteSum(sm pmetric.ScopeMetrics, name, description string) pmetric.NumberDa
 }
 
 func setClient(dp pmetric.NumberDataPoint, totals *clientTotals) {
-	dp.Attributes().PutStr("common_name", totals.commonName)
-	dp.Attributes().PutStr("real_address", totals.ip)
+	dp.Attributes().PutStr("user.name", totals.commonName)
+	dp.Attributes().PutStr("client.address", totals.ip)
+	if totals.commonName == undefName {
+		dp.Attributes().PutBool("unauthenticated", true)
+	}
 }
+
+// undefName is the common name OpenVPN shows for a client that has not been authenticated.
+const undefName = "UNDEF"

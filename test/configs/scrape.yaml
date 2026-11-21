@@ -1,14 +1,15 @@
+# cspell:ignore awselb gcpaudit
 # Reference config for otelcol-scrape.
 # Placeholders only: every credential and endpoint comes from ${env:...}.
 # Deploy only the sources whose Secret exists, with their pipelines;
 # a pipeline with no receivers fails config load.
 #
 # Env: OTEL_MAIN_OTLP_ENDPOINT, AWS_REGION, CLOUDTRAIL_BUCKET, CLOUDTRAIL_SQS_URL,
-# S3ACCESS_BUCKET, S3ACCESS_PREFIX, S3ACCESS_SQS_URL, ALB_BUCKET, ALB_PREFIX,
-# ALB_SQS_URL, CW_ACCOUNT_NAME, CW_ROLE_ARN, CW_EXTERNAL_ID, AUTH0_SQS_URL,
+# S3ACCESS_BUCKET, S3ACCESS_PREFIX, S3ACCESS_SQS_URL, S3ACCESS_ACCOUNT_ID, ALB_BUCKET,
+# ALB_PREFIX, ALB_SQS_URL, CW_ACCOUNT_NAME, CW_ROLE_ARN, CW_EXTERNAL_ID, AUTH0_SQS_URL,
 # AUTH0_SQS_REGION, AUTH0_ROLE_ARN, AUTH0_EXTERNAL_ID, GCP_PROJECT,
-# GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, GCP_MON_PROJECT_A,
-# GCP_MON_PROJECT_B, AZ_EH_CONN.
+# GCP_CLOUDRUN_SUBSCRIPTION, GCP_AUDIT_SUBSCRIPTION, GCP_LB_SUBSCRIPTION, GCP_LB_PROJECT,
+# GCP_LB_REGION, GCP_MON_PROJECT_A, GCP_MON_PROJECT_B, AZ_EH_CONN.
 # AWS and GCP credentials come from the SDK default chains and
 # GOOGLE_APPLICATION_CREDENTIALS, not from this file.
 extensions:
@@ -129,6 +130,13 @@ receivers:
     subscription: ${env:GCP_AUDIT_SUBSCRIPTION}
     encoding: google_cloud_logentry_encoding
     ignore_encoding_error: true
+  # Second load balancer log path: its entries carry no resource labels, so the pipeline logs/gcp-lb
+  # sets log.source and the cloud.* resource attributes itself.
+  googlecloudpubsub/lb:
+    project: ${env:GCP_LB_PROJECT}
+    subscription: ${env:GCP_LB_SUBSCRIPTION}
+    encoding: google_cloud_logentry_encoding
+    ignore_encoding_error: true
   # Cloud Run metrics: one instance per project, because project_id takes one project.
   googlecloudmonitoring/cloudrun-a:
     project_id: ${env:GCP_MON_PROJECT_A}
@@ -188,9 +196,46 @@ processors:
   sourcetag/azure:
     provider: azure
   # Fills host.name, service.name and an empty audit body on GCP audit records.
-  # Runs in logs/gcp only, after sourcetag/gcp. AWS and Azure records carry none
+  # Runs in logs/gcp only, after sourcetag/gcp and logshape/gcp. It fills only values that are
+  # empty, so the identity the gcpaudit branch has set stays. AWS and Azure records carry none
   # of the attributes it reads.
   identityfill: {}
+  # Shapes the cloud records into one-line bodies with official attribute names. It runs after
+  # sourcetag, which sets the log.source the branches claim by. A list of account ids to names
+  # (documentation values here; the deployed config carries the real map) names the account of
+  # each record. Azure records have no branch yet and pass without this processor.
+  logshape/aws:
+    branches: [awselb, s3access, eksaudit, cloudtrail]
+    account_aliases:
+      "111122223333": first-account
+      "444455556666": second-account
+  logshape/gcp:
+    branches: [gcplb, gcpaudit]
+    account_aliases:
+      example-project-a: first-project
+      example-project-b: second-project
+  # Sets log.source on the records of the second load balancer path. sourcetag/gcp keeps a source
+  # that is already set.
+  attributes/gcplb:
+    actions:
+      - key: log.source
+        value: gcp.lb
+        action: upsert
+  # The cloud.* resource attributes of the second load balancer path, which its entries lack.
+  # The image has no resource processor, so transform sets them, only where they are missing.
+  transform/gcplb:
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["cloud.provider"], "gcp") where attributes["cloud.provider"] == nil
+          - set(attributes["cloud.account.id"], "${env:GCP_LB_PROJECT}") where attributes["cloud.account.id"] == nil
+          - set(attributes["cloud.region"], "${env:GCP_LB_REGION}") where attributes["cloud.region"] == nil
+  # The S3 access log encoding writes no cloud.account.id, which the account alias needs.
+  transform/s3access:
+    log_statements:
+      - context: resource
+        statements:
+          - set(attributes["cloud.account.id"], "${env:S3ACCESS_ACCOUNT_ID}") where attributes["cloud.account.id"] == nil
 exporters:
   otlp_http:
     endpoint: ${env:OTEL_MAIN_OTLP_ENDPOINT}
@@ -216,14 +261,25 @@ service:
     - google_cloud_logentry_encoding
   pipelines:
     logs/aws:
-      receivers: [aws_s3/cloudtrail, aws_s3/s3access, aws_s3/alb, awscloudwatch/logs, auth0]
+      receivers: [aws_s3/cloudtrail, aws_s3/alb, awscloudwatch/logs, auth0]
       # No batch: the persistent queue in otlp_http must be the first buffer, because
       # aws_s3 and auth0 delete queue messages once the next consumer accepts them.
-      processors: [memory_limiter, sourcetag/aws, resource_detection]
+      processors: [memory_limiter, sourcetag/aws, logshape/aws, resource_detection]
+      exporters: [otlp_http]
+    # S3 access logs have their own pipeline: transform/s3access adds the account id of the bucket.
+    logs/aws-s3access:
+      receivers: [aws_s3/s3access]
+      processors: [memory_limiter, transform/s3access, sourcetag/aws, logshape/aws, resource_detection]
       exporters: [otlp_http]
     logs/gcp:
       receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
-      processors: [memory_limiter, sourcetag/gcp, identityfill, resource_detection, batch]
+      processors: [memory_limiter, sourcetag/gcp, logshape/gcp, identityfill, resource_detection, batch]
+      exporters: [otlp_http]
+    # Second GCP load balancer path: log.source=gcp.lb and the cloud.* resource attributes are set
+    # here; the processor has no rule for them.
+    logs/gcp-lb:
+      receivers: [googlecloudpubsub/lb]
+      processors: [memory_limiter, attributes/gcplb, transform/gcplb, sourcetag/gcp, logshape/gcp, resource_detection, batch]
       exporters: [otlp_http]
     logs/azure:
       receivers: [azure_event_hub]

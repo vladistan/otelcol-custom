@@ -1,5 +1,7 @@
 # Windows Edge Collector
 
+<!-- cspell:ignore vstan RCODE IOAV LGIS LGIF DBAS DBAF -->
+
 `otelcol-edge` for `windows/amd64` collects host metrics, Windows performance counters and event logs. It sends OTLP over HTTP to the gateway endpoint and keeps a persistent queue on disk. Release 0.3.1 sends metrics and raw event logs with no local processors.
 
 The sample config is `test/configs/windows-edge.yaml`. Every receiver collects at the send interval (60s, filesystem 15m) because 0.3.1 has no summarizer.
@@ -93,37 +95,39 @@ The `fswatch` receiver reports each new file under a watched directory as one lo
 
 ```yaml
 receivers:
-  fswatch/cds:
-    paths: ['D:\CDSProjects']
-    exclude: ['**/~*', '**/*.tmp']
+  fswatch/instrument:
+    roots:
+      - path: 'D:\Data\Instrument'
+        name: instrument-data
+        exclude: ['**/~*', '**/*.tmp']
     start_at: end
     storage: file_storage
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
-| `paths` | required | Roots to watch, each with a drive letter or a UNC prefix. No glob characters, no duplicate or nested roots. |
-| `exclude` | none | Globs (`**` allowed) matched against the path under the root, without regard to case. |
+| `roots` | required | Roots to watch. Each has `path` (a drive letter or a UNC prefix; no glob characters, no duplicate or nested roots), `name` (the `service.name` of its records; default the lower-cased last path element) and `exclude`. Two roots must not have the same name, case aside. The older `paths` list with one shared top-level `exclude` still works; with `roots` alone, a top-level `exclude` is rejected. |
+| `roots[].exclude` | default list | Globs (`**` allowed) matched against the path under the root, without regard to case. Write them with `/` as the separator: the receiver matches the path in `/` form, and a `\` in a glob is an escape. Without the key, the default list applies: `.tmp.driveupload`, `.tmp.drivedownload`, `desktop.ini` and `index.db-journal` at any depth. A list, even an empty one, replaces the default list. A skipped file emits no record and is counted in `otelcol_fswatch_records_excluded`; a scan counts each file it skips and each excluded directory it prunes once, so a restart or rescan counts them again. |
 | `start_at` | `end` | For a root with no saved state: `end` reports nothing that exists; `beginning` reports every existing file once. |
 | `storage` | none | A storage extension that keeps the position of each root. Without it nothing survives a restart. |
-| `settle` | `5m` | After the creation record, the file size is watched. When it has stayed the same for this long, a second record `file write complete` follows with `file.size_final`. `0s` turns this off. |
-| `settle_timeout` | `10m` | Longest a file is watched for growth. A file still changing then gets the second record without `file.size_final`. |
+| `settle` | `5m` | After the creation record, the file size is watched. When it has stayed the same for this long, a second record `write complete` follows. `0s` turns this off. |
+| `settle_timeout` | `10m` | Longest a file is watched for growth. A file still changing then gets the second record with the last size seen. |
 | `max_catchup` | `168h` | How far back a restart looks for files created while the collector was down. |
 | `buffer_size` | `262144` | Bytes of the Windows change buffer per root, 4096 to 1048576. |
 | `max_rescans` | `6` | Rescans an hour after a lost event or a failed delivery. |
 | `rescan_interval` | `0s` | When set, scan the tree this often as well. Use it on a network share. |
 
-Each record has the body `file created`, severity INFO, the file creation time as its timestamp, and the time the receiver saw it as its observed timestamp. Attributes: `file.path`, `file.name`, `file.extension` (no dot), `file.size`, `file.dir_relative` (backslashes, `.` for a file directly under the root), `file.root`, `file.size_final` (on the second record only) and `file.catchup`. `file.catchup` is `true` for a file found by a scan and `false` for a live event.
+Each record has the body `created`, severity INFO, the file creation time as its timestamp, and the time the receiver saw it as its observed timestamp. The resource has `service.name`, the root's name. Attributes: `log.source` (`fswatch`), `file.path`, `file.directory`, `file.name`, `file.extension` (no dot), `file.size`, `vstan.fswatch.dir_relative` (backslashes, `.` for a file directly under the root), `vstan.fswatch.root` and `vstan.fswatch.catchup`. `vstan.fswatch.catchup` is `true` for a file found by a scan and `false` for a live event. `log.source` is new on these rows: a backend that sets a retention class from `log.source` needs a rule for `fswatch` (infra checks this).
 
-The second record has the body `file write complete`, the time of the stable-size check as its timestamp, and `file.size` and `file.size_final` both set to the final size. A catch-up file whose last write is already older than `settle` gets one record with `file.size_final` and no second record. After a restart, files created within `settle_timeout` whose last record is not out are checked again: a stable one gets its second record at once, with `file.catchup=true`, and a file still being written is watched as usual. A second record that cannot be delivered is retried; after 10 failed attempts, or `settle_timeout` after the first failure, it is dropped with one warning and counted in `otelcol_fswatch_writes_dropped`.
+The second record has the body `write complete <path under the root> (<size>)` (`write complete scans\2026-01\run-031.dat (27.8 KiB)`), the time of the stable-size check as its timestamp, and `file.size` set to the final size. A catch-up file whose last write is already older than `settle` gets one `created` record with the final size and no second record. After a restart, files created within `settle_timeout` whose last record is not out are checked again: a stable one gets its second record at once, with `vstan.fswatch.catchup=true`, and a file still being written is watched as usual. A second record that cannot be delivered is retried; after 10 failed attempts, or `settle_timeout` after the first failure, it is dropped with one warning and counted in `otelcol_fswatch_writes_dropped`.
 
-The receiver is create-only: it reports a file when it is created and, once the size settles, a second record when the write is complete. An append to an existing file and a deletion emit nothing. A file renamed while the collector is down is reported under its final name only. On a Windows host after a 2 minute collector outage the receiver sent no duplicate records and replayed nothing.
+The default exclusions remove Google Drive temp files and folder files; on one synced folder they were about 97% of the rows of 24 hours. The receiver is create-only: it reports a file when it is created and, once the size settles, a second record when the write is complete. An append to an existing file and a deletion emit nothing. A file renamed while the collector is down is reported under its final name only. On a Windows host after a 2 minute collector outage the receiver sent no duplicate records and replayed nothing.
 
 A file counts as new when it is created in the tree or moved into it. Writes, deletions and renames within one directory are ignored. A file moved from one directory of the tree to another is reported again as new, because Windows sends it as a removal and an addition. The exception is a rename from an excluded name, such as `~run.tmp` to `run.dx`, which reports the final name.
 
 ### Restarts and lost events
 
-The receiver keeps one position per root, the creation time of the newest file reported. At start it opens the watch first, then scans for files created after that position and reports them with `file.catchup=true`. A file is never reported twice for the same path and creation time, across restarts included. Only the 256 newest files created in the 2 seconds before the position are remembered, so a crash or restart can repeat files beyond that.
+The receiver keeps one position per root, the creation time of the newest file reported. At start it opens the watch first, then scans for files created after that position and reports them with `vstan.fswatch.catchup=true`. A file is never reported twice for the same path and creation time, across restarts included. Only the 256 newest files created in the 2 seconds before the position are remembered, so a crash or restart can repeat files beyond that.
 
 If the Windows change buffer overflows, or a delivery fails, the receiver holds the position back and scans the tree again. It scans at most `max_rescans` times an hour and at least a minute apart. While a scan is owed, a restart can repeat files. If the root disappears, the receiver logs a warning, retries from 5 seconds up to a minute, and scans when the root is back. The collector starts without the root.
 
@@ -135,7 +139,7 @@ If the Windows change buffer overflows, or a delivery fails, the receiver holds 
 - Windows keeps the creation time of a file that is deleted and created again under the same name within about 15 seconds. The path and creation time then match the earlier file, so no new record is sent, live or by a scan. A recreate after more than 15 seconds gets a new creation time and a new record.
 - Network roots are best effort. A mapped drive letter is not visible to a service account; use a UNC path. Set `rescan_interval` on a share.
 
-Counters: `otelcol_fswatch_records_emitted` (attribute `catchup`), `otelcol_fswatch_excluded`, `otelcol_fswatch_vanished`, `otelcol_fswatch_overflows`, `otelcol_fswatch_rescans`, `otelcol_fswatch_rescans_capped` (once an hour while the limit holds), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_dropped`, `otelcol_fswatch_settle_timeouts` and `otelcol_fswatch_scan_skipped` (attribute `reason`: `denied` or `future`).
+Counters: `otelcol_fswatch_records_emitted` (attribute `catchup`), `otelcol_fswatch_records_excluded` (attribute `root`), `otelcol_fswatch_vanished`, `otelcol_fswatch_overflows`, `otelcol_fswatch_rescans`, `otelcol_fswatch_rescans_capped` (once an hour while the limit holds), `otelcol_fswatch_writes_completed`, `otelcol_fswatch_writes_dropped`, `otelcol_fswatch_settle_timeouts` and `otelcol_fswatch_scan_skipped` (attribute `reason`: `denied` or `future`).
 
 ## Performance-counter extensions
 
@@ -180,9 +184,9 @@ The processor sets these attributes when the event has the value.
 
 | Attribute | Type | Source |
 |---|---|---|
-| `winlog.channel`, `winlog.provider_name`, `winlog.provider_guid`, `winlog.computer_name` | string | event header |
+| `winlog.channel`, `winlog.provider_name`, `winlog.provider_guid` | string | event header |
 | `winlog.event_id`, `winlog.record_id` | int | event header |
-| `winlog.task`, `winlog.opcode` | string | rendered, raw when not rendered |
+| `winlog.task`, `winlog.opcode` | string | rendered; the provider table wins for PowerShell 4104, and a bare opcode number is replaced from the opcode table (see Task and opcode text) |
 | `winlog.keywords` | string array | rendered keywords |
 | `winlog.user.identifier` | string | user SID |
 | `winlog.process.pid`, `winlog.process.thread.id` | int | `Execution` element |
@@ -202,11 +206,51 @@ winlog:
 - The name is `winlog.provider_name` with the leading `Microsoft-Windows-` removed: `Microsoft-Windows-Security-Auditing` gives `Security-Auditing`, `Microsoft-Windows-GroupPolicy` gives `GroupPolicy`, `Microsoft-Windows-PowerShell` gives `PowerShell`.
 - A provider name without the prefix is used as is: `Service Control Manager`, `NETLOGON`. A name that is only the prefix is used as is. The prefix match is case-sensitive.
 - `service.name` is a resource attribute, so the processor splits each batch into one resource per name. Each new resource copies the attributes of the resource the record came from. Records of one provider keep their order; the order between providers in one batch can change.
-- A non-empty provider replaces any `service.name` the record already had, including the `otelcol-edge` fallback. An event with no provider keeps its `service.name`, and so does a record that is not a Windows event (no channel).
+- A non-empty provider replaces any `service.name` the record already had, including the `otelcol-edge` fallback. An event with no provider gets a resource without `service.name`, so the `otelcol-edge` fallback does not stand in for a subsystem; a record that is not a Windows event (no channel) keeps its `service.name`. The `resource/host` processor of the sample inserts `otelcol-edge` into a resource that has none, so give the Windows event pipeline a `resource` processor without that insert if events with no provider must stay unset.
 - Nothing else changes: the record count and every record attribute stay the same.
 - Keep `winlog` before `resource/host` in the pipeline. `resource/host` uses `insert`, so it leaves the provider name alone.
 
-A mixed batch of 1000 events from five providers takes about 0.39 microseconds more per event with the option on (Xeon W-3245, `go test -bench Mixed`).
+A mixed batch of 1000 events from five providers takes about 0.39 microseconds more per event with the option on (Xeon W-3245, `go test -bench Mixed`). A batch of 1000 events that all have a summary takes about 6.6 microseconds per event (`go test -bench Summaries`).
+
+### One-line summaries
+
+Seven events get a one-line body built from `winlog.event_data`, and the rendered message moves to the attribute `vstan.winlog.message` (PowerShell 4104 is the exception: its script stays only in `winlog.event_data.ScriptBlockText`), with the literal sequences `\r\n`, `\n`, `\r` and `\t` turned into real control characters, except inside a UNC path (`\\server\share`) or a drive path (`C:\dir`), whose backslashes stay as written. Each byte of event text that is not valid UTF-8 becomes U+FFFD. An event with no template, a template that is switched off, or a template that fills none of its fields keeps its body and gets no attribute. `winlog.event_data.*` always keeps the full values.
+
+| Event | Summary |
+|---|---|
+| GroupPolicy 5310 | `Account details: <principal CN, contracted> via DC \\<dc fqdn>`, from `PrincipalCNName` and `DCName` |
+| NETLOGON 5774 (ERROR) | `DNS registration failed: <record name> SRV (RCODE <n>, status <n>: <text>)`, from `param1` (the record, cut to its name and type), `param4` (RCODE), `param5` (status) and the `Error Value:` line of the message |
+| PowerShell 4104 (WARN) | `PowerShell script block <first 8 of ScriptBlockId> chunk <n> of <m>`, with ` (<Path>)` only when `Path` is not empty |
+| MSSQL audit 33205 | `<action> (<code>) <principal> app=<application> client=<client>`, from the key:value text of `param1` |
+| Defender 1151 | `Defender product status <hex>, RTP/OA/IOAV/BM <state>, definitions age <n> d, last quick scan <n> d ago` |
+| Kernel-Cache 105 | `Cache write latency over <s> s: no write IO`, or `<n> sync writes, slowest bucket <label>` |
+| StorPort 505 | `StorPort <port>:<path>:<target>:<lun> <vendor> <product>: <n> IO, read <size>, written <size>, max latency <ms> ms`, plus `, <n> failed IO` when any failed |
+
+```yaml
+winlog:
+  dn_contractions: [",OU=Domain Controllers,DC=lab,DC=example,DC=org"]   # becomes ",..."
+  mssql_actions: {LGIS: Login succeeded}                                  # adds to or replaces the built-in codes
+  summaries:                                                              # "provider/event id"
+    "Microsoft-Windows-Foo/42": "Foo {Name|dn}"                           # add or replace a template
+    "NETLOGON/5774": ""                                                   # an empty template turns a summary off
+```
+
+- A template fills `{Field}` from the event data, found by name with case, spaces and punctuation ignored, or by position (`param1`, `param2`). `{Field|dn}` also applies the DN contraction. A provider in a key may carry the `Microsoft-Windows-` prefix or not, in any case.
+- The DN contraction replaces a listed suffix at the end of a name with `,...`: `CN=DC1,OU=Domain Controllers,DC=lab,DC=example,DC=org` gives `CN=DC1,...`. A name with no listed suffix stays whole.
+- `mssql_actions` keys are action codes. The built-in table has LGIS, LGIF, LGO, DBAS, DBAF, SL, IN, UP, DL, EX, CR, AL, DR, BA and RS; an unknown code is shown alone, and a failed action (`succeeded:false`) whose text does not already say so gets ` failed`. The real event has one parameter, `param1`, that holds the whole text as `name:value` lines (the message is used when `param1` is missing). Only `action_id`, `succeeded`, `server_principal_name`, `client_ip` and `application_name` are read (`client_ip` is shown as written: `127.0.0.1` for a loopback connection, the text `local machine` for a local one, with no address parsing); the `statement` and `additional_information` lines are never read, even if they contain lines that look like those names. The old separate event data names are no longer read.
+- NETLOGON 5774 is ERROR and PowerShell 4104 is WARN, set from the provider and the event id, so they hold even when the summary is switched off or finds no field. The other severities follow the event level.
+- A template with placeholders and no value for any of them leaves the body alone; a template of plain text always replaces it. Two keys that name the same provider and event id (with or without the `Microsoft-Windows-` prefix, in any case) fail at startup.
+- The field names come from real event rows. NETLOGON 5774 never shows `param2` (a message id placeholder) and keeps `param3` (the DNS server address) in event data. PowerShell 4104 is one record per chunk of a script, all sharing `ScriptBlockId`; the script text is never in the summary and stays only in `winlog.event_data.ScriptBlockText`, not a second time in `vstan.winlog.message`. Defender 1151 has one event data key per line of the report, with spaces in the names (`RTP state`, `OA state`, `IOAV state`, `BM state`, `Last quick scan age`, and `Last AV security intelligence age` for the definitions, with `Last AS security intelligence age` used when the AV one is missing; the keys say AV and AS where the message lines say Antivirus and Antispyware); the values `4294967295` and the date `1601-01-01` mean "never" and are shown as such. Kernel-Cache 105 counts the blocking write IO only, and its 48 bucket keys stay attributes. StorPort 505 trims the padded vendor and product, and never shows the serial number.
+- StorPort 505 with failed I/O above zero gets severity WARN; a report without failed I/O stays INFO. The rule lives in one function, `storPortSeverity`.
+
+### Defects fixed
+
+- `winlog.computer_name` is gone; `host.name` carries the host.
+- A Windows Firewall event (any event id of the provider, not only 2011) whose message still holds `%1` to `%7` and that has no event data gets `vstan.winlog.unsubstituted: true`. The body keeps the text and no value is invented; an event with some event data and some unfilled placeholders gets no marker.
+
+### Task and opcode text
+
+`winlog.opcode` and `winlog.task` keep the text the receiver rendered, with two exceptions. For PowerShell 4104 the task is `Execute a Remote Command` and the opcode `On create calls`, which is what the receiver renders for a real row; a bare number, or the text of another event, is replaced from the provider table. For any other event a bare opcode number is replaced from the Windows opcode table (0 Info, 1 Start, 2 Stop, 3 DC Start, 4 DC Stop, 5 Extension, 6 Reply, 7 Resume, 8 Suspend, 9 Send, 240 Receive).
 
 ### Drop rules
 

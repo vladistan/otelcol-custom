@@ -1,0 +1,75 @@
+[
+  {
+    "body": "GET /healthz 200",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 12610,
+      "http.request.method": "GET",
+      "http.response.status_code": 200,
+      "log.record.original": "INFO:     192.0.2.10:12610 - \"GET /healthz HTTP/1.1\" 200 OK",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/healthz",
+      "vstan.uvicorn.status_text": "OK"
+    }
+  },
+  {
+    "body": "POST /api/submit 400",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.11",
+      "client.port": 8080,
+      "http.request.method": "POST",
+      "http.response.status_code": 400,
+      "log.record.original": "WARNING:  192.0.2.11:8080 - \"POST /api/submit HTTP/1.1\" 400 Bad Request",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/api/submit",
+      "vstan.uvicorn.status_text": "Bad Request"
+    }
+  },
+  {
+    "body": "GET /api/error 500",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.12",
+      "http.request.method": "GET",
+      "http.response.status_code": 500,
+      "log.record.original": "ERROR:    192.0.2.12 - \"GET /api/error HTTP/1.1\" 500 Internal Server Error",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/api/error",
+      "vstan.uvicorn.status_text": "Internal Server Error"
+    }
+  },
+  {
+    "body": "Started server process [1]",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "INFO:     Started server process [1]"
+    }
+  },
+  {
+    "body": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"
+    }
+  }
+]

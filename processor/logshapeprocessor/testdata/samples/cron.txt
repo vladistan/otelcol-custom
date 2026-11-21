@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: written from the format description, not a capture
+cron: (root) CMD (/usr/local/bin/backup.sh)
+cron: (www-data) CMD (php /var/www/cleanup.php)

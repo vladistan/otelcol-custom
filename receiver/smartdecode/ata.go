@@ -148,7 +148,7 @@ func ataString(buf []byte, first, last int) string {
 		out.WriteByte(byte(v >> 8))
 		out.WriteByte(byte(v))
 	}
-	return strings.Trim(out.String(), " \x00")
+	return validUTF8(strings.Trim(out.String(), " \x00"))
 }
 
 // ParseIdentify decodes a 512 byte IDENTIFY DEVICE answer.

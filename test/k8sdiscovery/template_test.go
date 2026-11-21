@@ -298,30 +298,32 @@ func expandEndpoint(value any, address string) any {
 }
 
 func TestAppsTemplates_EachConfigLoadsIntoItsReceiverAndValidates(t *testing.T) {
-	rules := child(t, creatorBlock(t, appsConfig, "receiver_creator/apps"), "receivers")
 	factories := receiverFactories()
 
-	for name, raw := range rules {
-		t.Run(name, func(t *testing.T) {
-			rule := raw.(map[string]any)
-			match := portInRule.FindStringSubmatch(rule["rule"].(string))
-			if match == nil {
-				t.Fatalf("rule %q names no port", rule["rule"])
-			}
-			factory, ok := factories[component.MustNewType(name)]
-			if !ok {
-				t.Fatalf("receiver %s is not among the factories", name)
-			}
-			cfg := factory.CreateDefaultConfig()
-			template := expandEndpoint(rule["config"], "10.1.2.3:"+match[1]).(map[string]any)
+	for _, path := range appsConfigs {
+		rules := child(t, creatorBlock(t, path, "receiver_creator/apps"), "receivers")
+		for name, raw := range rules {
+			t.Run(path+"/"+name, func(t *testing.T) {
+				rule := raw.(map[string]any)
+				match := portInRule.FindStringSubmatch(rule["rule"].(string))
+				if match == nil {
+					t.Fatalf("rule %q names no port", rule["rule"])
+				}
+				factory, ok := factories[component.MustNewType(name)]
+				if !ok {
+					t.Fatalf("receiver %s is not among the factories", name)
+				}
+				cfg := factory.CreateDefaultConfig()
+				template := expandEndpoint(rule["config"], "10.1.2.3:"+match[1]).(map[string]any)
 
-			if err := confmap.NewFromStringMap(template).Unmarshal(cfg); err != nil {
-				t.Fatalf("the template does not load into the %s config: %v", name, err)
-			}
-			if err := confmap.Validate(cfg); err != nil {
-				t.Errorf("the %s config does not validate: %v", name, err)
-			}
-		})
+				if err := confmap.NewFromStringMap(template).Unmarshal(cfg); err != nil {
+					t.Fatalf("the template does not load into the %s config: %v", name, err)
+				}
+				if err := confmap.Validate(cfg); err != nil {
+					t.Errorf("the %s config does not validate: %v", name, err)
+				}
+			})
+		}
 	}
 }
 
@@ -385,11 +387,8 @@ func scrapeErrors(logs *observer.ObservedLogs) []observer.LoggedEntry {
 }
 
 func TestAppsTemplates_TheCreatorLoadsEveryRule(t *testing.T) {
-	for _, path := range []string{discoveryConfig, appsConfig} {
-		name := "receiver_creator/pods"
-		if path == appsConfig {
-			name = "receiver_creator/apps"
-		}
+	for _, path := range []string{discoveryConfig, appsConfig, gatewayDiscoveryConfig, gatewayAppsConfig} {
+		name := creatorOf(path)
 		cfg := receivercreator.NewFactory().CreateDefaultConfig()
 
 		if err := confmap.NewFromStringMap(creatorBlock(t, path, name)).Unmarshal(cfg); err != nil {

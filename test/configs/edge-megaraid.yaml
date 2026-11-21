@@ -20,6 +20,7 @@ receivers:
     collection_interval: 60s
     smart: true # reads SATA drives (ATA commands) and SAS drives (LOG SENSE) through the controller, once every smart_interval
     smart_interval: 15m
+    smart_when_power_unknown: false # true reads drives whose power state is unknown; can wake a spun-down drive at every smart_interval
     create_node: false # true makes /dev/megaraid_sas_ioctl_node when it is missing (CAP_MKNOD)
     events:
       enabled: true

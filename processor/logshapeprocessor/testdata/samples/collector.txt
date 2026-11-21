@@ -1,0 +1,5 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+2026-11-06T21:12:29.299Z	info	otlpreceiver@v0.164.0/otlp.go:175	Starting HTTP server	{"otelcol.component.id": "otlp", "otelcol.component.kind": "receiver", "endpoint": "127.0.0.1:14418"}
+2026-11-06T16:12:29.299-0500	info	fileconsumer/file.go:470	Started watching file	{"otelcol.component.id": "filelog", "otelcol.component.kind": "receiver", "path": "/var/log/app.log"}
+otelcol-contrib[1186]: 2026-11-06T21:12:29.299Z#011info#011otlpreceiver@v0.164.0/otlp.go:175#011Starting HTTP server#011{"otelcol.component.id": "otlp", "otelcol.component.kind": "receiver", "endpoint": "127.0.0.1:14418"}

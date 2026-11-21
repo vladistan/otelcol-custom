@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+2026-11-19 22:53:59.699 [INFO][73] felix/summary.go 100: Summarising 4 dataplane reconciliation loops
+2026-11-19 22:54:00.100 [WARNING][73] felix/sync.go 12: Resync took longer than expected

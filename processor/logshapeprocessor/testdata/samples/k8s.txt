@@ -1,0 +1,7 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured pod status text, names replaced; the other lines are written from the format
+Pod team-a/job-1-abcde: Succeeded (0/1 ready) on node-a
+Pod team-a/web-1: Running (1/1 ready) on node-b
+Pod team-a/web-2: Pending on node-b
+{"involvedObject":{"kind":"Deployment","name":"web","namespace":"team-a"},"reason":"ScalingReplicaSet","message":"Scaled up replica set web-5d4f to 2","type":"Normal","source":{"host":"node-b"}}
+{"involvedObject":{"kind":"Pod","name":"web-1","namespace":"team-a"},"reason":"BackOff","message":"Back-off restarting failed container","type":"Warning","source":{"host":"node-b"}}

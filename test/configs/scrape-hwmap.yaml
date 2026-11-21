@@ -1,0 +1,173 @@
+# cspell:ignore hwmap hwmapprocessor milli
+# Scrape pod that maps raw SNMP metrics to hw.* names with the hwmap processor (docs/hwmap.md).
+#
+# The hwmap rules read metrics named in the snmp receiver config. This sample declares one interface metric
+# only, to stay short; a real config declares a metric for each source below (snmp.sensor.temperature and so on)
+# with its column OID, and puts the index and name columns in `attributes`. All names, indexes and values here
+# are documentation examples.
+#
+# Validate the rule block with the unit tests of the processor, which load this file:
+#   go test ./processor/hwmapprocessor -run TestSample
+# Validate the whole config with the environment set (values only need to be present):
+#   SNMP_SWITCH_HOST=192.0.2.3 SNMP_SWITCH_COMMUNITY=c otelcol-scrape validate --config test/configs/scrape-hwmap.yaml
+#
+# Secrets come from the environment, never from this file.
+
+receivers:
+  snmp/switch:
+    collection_interval: 60s
+    endpoint: udp://${env:SNMP_SWITCH_HOST}:161
+    version: v2c
+    community: ${env:SNMP_SWITCH_COMMUNITY}
+    attributes:
+      interface:
+        oid: "1.3.6.1.2.1.31.1.1.1.1" # IF-MIB ifName
+    metrics:
+      snmp.interface.in.bytes:
+        unit: By
+        description: Octets received, IF-MIB ifHCInOctets
+        sum:
+          aggregation: cumulative
+          monotonic: true
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.6"
+            attributes:
+              - name: interface
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  hwmap:
+    rules:
+      # Value of a sensor table: the index and name come from columns of the same row.
+      - name: sensor-temperature
+        match:
+          metric: snmp.sensor.temperature
+        target: hw.temperature
+        unit: Cel
+        labels:
+          hw.type: temperature
+          hw.id: "{entity.index}"
+          hw.name: "{entity.name}"
+        resource:
+          hw.vendor: Example
+          hw.model: Model 1
+      # A threshold of 0 means unset: no point.
+      - name: sensor-temperature-limit
+        match:
+          metric: snmp.sensor.temperature.threshold
+        target: hw.temperature.limit
+        unit: Cel
+        drop_when_value: 0
+        labels:
+          hw.type: temperature
+          hw.id: "{entity.index}"
+          hw.name: "{entity.name}"
+        constants:
+          hw.limit_type: high.critical
+      # Enum of an environment table: 1 normal, 2 warning, 3 critical, 4 shutdown, 5 not present, 6 not functioning.
+      - name: sensor-state
+        match:
+          metric: snmp.sensor.state
+        target: hw.status
+        labels:
+          hw.type: temperature
+          hw.id: "{entity.index}"
+          hw.name: "{entity.name}"
+        status:
+          states: [ok, degraded, failed]
+          map:
+            "1": ok
+            "2": degraded
+            "3": failed
+            "4": failed
+            "5": drop
+            "6": failed
+      # Sensors that have no names over SNMP: a fixed map from the index.
+      - name: board-temperature
+        match:
+          metric: snmp.board.temperature
+        target: hw.temperature
+        unit: Cel
+        labels:
+          hw.type: temperature
+        index_names:
+          attribute: entity.index
+          names:
+            "1001": Board A
+            "1002": Board B
+      # A text state. Only GOOD is listed; any other text, such as Warning, counts as degraded and keeps its
+      # raw text in hw.status.raw.
+      - name: disk-smart
+        match:
+          metric: snmp.disk.smart
+        target: hw.status
+        labels:
+          hw.type: physical_disk
+          hw.id: "HDD{disk.slot}"
+          hw.name: "{disk.descr}"
+        status:
+          source: attribute
+          attribute: smart
+          states: [ok, degraded, failed]
+          default_state: degraded
+          map:
+            GOOD: ok
+      # Millidegrees to degrees Celsius.
+      - name: disk-temperature
+        match:
+          metric: snmp.disk.temperature.milli
+        target: hw.temperature
+        unit: Cel
+        scale: 0.001
+        labels:
+          hw.type: physical_disk
+          hw.id: "HDD{disk.slot}"
+          hw.name: "{disk.descr}"
+      # KiB to bytes.
+      - name: volume-size
+        match:
+          metric: snmp.volume.size
+        target: hw.logical_disk.limit
+        unit: By
+        scale: 1024
+        labels:
+          hw.type: logical_disk
+          hw.name: "{volume.name}"
+      # Percent to a ratio.
+      - name: lun-utilization
+        match:
+          metric: snmp.lun.used.percent
+        target: hw.logical_disk.utilization
+        unit: "1"
+        scale: 0.01
+        labels:
+          hw.type: logical_disk
+          hw.id: "{lun.id}"
+          hw.name: "{lun.name}"
+        constants:
+          iscsi.lun: "true"
+      # Milliwatts to watts.
+      - name: poe-port-allocated
+        match:
+          metric: snmp.poe.port.allocated
+        target: poe.port.power
+        unit: W
+        scale: 0.001
+        labels:
+          hw.id: "{port.index}"
+          network.interface.name: "{port.name}"
+        constants:
+          poe.measure: allocated
+  batch: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    metrics:
+      receivers: [snmp/switch]
+      processors: [memory_limiter, hwmap, batch]
+      exporters: [debug]

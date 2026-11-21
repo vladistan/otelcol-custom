@@ -1,0 +1,4 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is the captured line; line 2 adds the container log prefix and is written from the format
+published StallMinutes=2
+2026-11-19T22:56:53.123456789Z stdout F published StallMinutes=3

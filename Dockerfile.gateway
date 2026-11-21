@@ -30,7 +30,9 @@ RUN go install go.opentelemetry.io/collector/cmd/builder@v${OCB_VERSION}
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY processor ./processor
+COPY exporter ./exporter
 COPY receiver ./receiver
+COPY shape ./shape
 COPY stanza ./stanza
 COPY builder-gateway.yaml ./
 

@@ -91,7 +91,7 @@ func (f *fakeTree) remove(rel string) {
 	delete(f.files, filepath.Join(testRoot, rel))
 }
 
-func (f *fakeTree) Walk(_ context.Context, root string, _ func(string) bool, fn func(fileInfo)) (walkStats, error) {
+func (f *fakeTree) Walk(_ context.Context, root string, skipDir func(string) bool, fn func(fileInfo)) (walkStats, error) {
 	f.mu.Lock()
 	var list []fileInfo
 	for p, fi := range f.files {
@@ -103,10 +103,38 @@ func (f *fakeTree) Walk(_ context.Context, root string, _ func(string) bool, fn 
 	f.walks++
 	f.mu.Unlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].path < list[j].path })
+	asked := map[string]bool{} // the real walk offers each directory to skipDir once
 	for _, fi := range list {
+		if pruned(root, fi.path, skipDir, asked) {
+			continue
+		}
 		fn(fi)
 	}
 	return walkStats{denied: denied}, nil
+}
+
+// pruned reports whether skipDir prunes a directory above path, offering each directory once.
+func pruned(root, path string, skipDir func(string) bool, asked map[string]bool) bool {
+	if skipDir == nil {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Dir(path))
+	if err != nil || rel == "." {
+		return false
+	}
+	dir := ""
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		dir = filepath.Join(dir, part)
+		skip, seen := asked[dir]
+		if !seen {
+			skip = skipDir(dir)
+			asked[dir] = skip
+		}
+		if skip {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *fakeTree) walkCount() int {
@@ -260,12 +288,13 @@ func newRig(t *testing.T, opts ...rigOption) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := newMatcher(r.cfg.Exclude)
+	spec := r.cfg.rootSpecs()[0]
+	m, err := newMatcher(spec.patterns())
 	if err != nil {
 		t.Fatal(err)
 	}
 	r.rw = newRootWatch(rootParams{
-		cfg: r.cfg, root: testRoot, logger: zap.New(core), next: r.sink, tel: tel,
+		cfg: r.cfg, root: testRoot, name: spec.name, logger: zap.New(core), next: r.sink, tel: tel,
 		tree: r.tree, store: r.store, now: r.clock.Now, match: m,
 	})
 	return r
@@ -335,3 +364,10 @@ func (r *rig) warnings(substr string) int {
 func attrKey(s string) attribute.Key { return attribute.Key(s) }
 
 func ago(c *fakeClock, d time.Duration) time.Time { return c.Now().Add(-d) }
+
+// putAbs adds a file by absolute path, for roots other than testRoot.
+func (f *fakeTree) putAbs(path string, size int64, created time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.files[path] = fileInfo{path: path, size: size, created: created}
+}

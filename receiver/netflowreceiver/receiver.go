@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -38,6 +39,9 @@ type netflowReceiver struct {
 	logConsumer consumer.Logs
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
+
+	// templateNotFound counts the data records dropped because their template is not known (local patch).
+	templateNotFound metric.Int64Counter
 }
 
 func newNetflowLogsReceiver(params receiver.Settings, cfg Config, consumer consumer.Logs) (receiver.Logs, error) {
@@ -56,11 +60,20 @@ func newNetflowLogsReceiver(params receiver.Settings, cfg Config, consumer consu
 		return nil, err
 	}
 
+	templateNotFound, err := params.MeterProvider.Meter("github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver").Int64Counter(
+		"otelcol_netflow_template_not_found",
+		metric.WithDescription("Data records dropped because the template of their data set is not known yet."),
+		metric.WithUnit("{record}"))
+	if err != nil {
+		return nil, err
+	}
+
 	nr := &netflowReceiver{
-		logger:      params.Logger,
-		config:      cfg,
-		logConsumer: consumer,
-		udpReceiver: udpReceiver,
+		logger:           params.Logger,
+		config:           cfg,
+		logConsumer:      consumer,
+		udpReceiver:      udpReceiver,
+		templateNotFound: templateNotFound,
 	}
 
 	return nr, nil
@@ -140,6 +153,19 @@ func (nr *netflowReceiver) buildDecodeFunc() (utils.DecoderFunc, error) {
 	return p.DecodeFlow, nil
 }
 
+// noteError logs an error of the pipeline. A data record whose template is not known yet is dropped;
+// local patch: the drop is counted in otelcol_netflow_template_not_found.
+func (nr *netflowReceiver) noteError(err error) {
+	if errors.Is(err, netflow.ErrorTemplateNotFound) {
+		nr.logger.Warn("we could not find a template for a flow message, this error is expected from time to time until the device sends a template", zap.Error(err))
+		if nr.templateNotFound != nil {
+			nr.templateNotFound.Add(context.Background(), 1)
+		}
+		return
+	}
+	nr.logger.Error("received a generic error while processing a flow message via GoFlow2 for the netflow receiver", zap.Error(err))
+}
+
 // handleErrors handles errors from the listener
 // We don't want the receiver to stop if there is an error processing a packet
 func (nr *netflowReceiver) handleErrors(ctx context.Context) {
@@ -151,17 +177,8 @@ func (nr *netflowReceiver) handleErrors(ctx context.Context) {
 				nr.logger.Info("UDP receiver closed, exiting error handler")
 				return
 
-			case !errors.Is(err, netflow.ErrorTemplateNotFound):
-				nr.logger.Error("received a generic error while processing a flow message via GoFlow2 for the netflow receiver", zap.Error(err))
-				continue
-
-			case errors.Is(err, netflow.ErrorTemplateNotFound):
-				nr.logger.Warn("we could not find a template for a flow message, this error is expected from time to time until the device sends a template", zap.Error(err))
-				continue
-
 			default:
-				nr.logger.Error("unexpected error processing the message", zap.Error(err))
-				continue
+				nr.noteError(err)
 			}
 		case <-ctx.Done():
 			return

@@ -1,48 +1,48 @@
 {
-  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
   "_id": "AZsk5pCYuuchI90gaOpa",
-  "_version": 1,
-  "_seq_no": 5306330,
+  "_index": ".ds-logs-generic.otel-default-2025.11.29-000004",
   "_primary_term": 2,
-  "found": true,
+  "_seq_no": 5306330,
   "_source": {
-    "observed_timestamp": "1765850602409.768268",
     "@timestamp": "1765850602409.768268",
+    "attributes": {
+      "cisco_facility": "SYS",
+      "cisco_mnemonic": "CLOCKUPDATE",
+      "cisco_seq": "171",
+      "client.ip": "192.0.2.39",
+      "log.source": "syslog",
+      "message": "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.39).",
+      "net.host.ip": "::",
+      "net.host.name": "::",
+      "net.host.port": "4319",
+      "net.peer.ip": "192.0.2.244",
+      "net.peer.name": "switch-b.home.example.com",
+      "net.peer.port": "55498",
+      "net.transport": "IP.UDP",
+      "original_message": "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.39).",
+      "priority": "190",
+      "source.ip": "192.0.2.244"
+    },
+    "body": {
+      "text": "System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.39)."
+    },
+    "data_stream": {
+      "dataset": "generic.otel",
+      "namespace": "default",
+      "type": "logs"
+    },
+    "observed_timestamp": "1765850602409.768268",
     "resource": {
       "attributes": {
         "collector.gateway.version": "0.1.21",
-        "service.name": "SYS",
-        "host.name": "switch-b.home.example.com"
+        "host.name": "switch-b.home.example.com",
+        "service.name": "SYS"
       }
     },
-    "data_stream": {
-      "namespace": "default",
-      "type": "logs",
-      "dataset": "generic.otel"
-    },
-    "severity_text": "INFO",
-    "severity_number": 9,
     "scope": {},
-    "attributes": {
-      "net.host.name": "::",
-      "net.transport": "IP.UDP",
-      "net.peer.port": "55498",
-      "log.source": "syslog",
-      "original_message": "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.1).",
-      "client.ip": "192.0.2.1",
-      "net.peer.ip": "192.0.2.1",
-      "priority": "190",
-      "message": "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.1).",
-      "net.host.ip": "::",
-      "cisco_seq": "171",
-      "net.peer.name": "switch-b.home.example.com",
-      "cisco_mnemonic": "CLOCKUPDATE",
-      "cisco_facility": "SYS",
-      "net.host.port": "4319",
-      "source.ip": "192.0.2.1"
-    },
-    "body": {
-      "text": "System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.1)."
-    }
-  }
+    "severity_number": 9,
+    "severity_text": "INFO"
+  },
+  "_version": 1,
+  "found": true
 }

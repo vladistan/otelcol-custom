@@ -149,16 +149,16 @@ type ident struct {
 }
 
 func (i ident) put(attrs pcommon.Map, typ string) {
-	attrs.PutStr(hwschema.AttrID, i.id)
+	attrs.PutStr(hwschema.AttrID, hwschema.ValidUTF8(i.id))
 	if i.name != "" {
-		attrs.PutStr(hwschema.AttrName, i.name)
+		attrs.PutStr(hwschema.AttrName, hwschema.ValidUTF8(i.name))
 	}
 	attrs.PutStr(hwschema.AttrType, typ)
 	if i.parent != "" {
-		attrs.PutStr(hwschema.AttrParent, i.parent)
+		attrs.PutStr(hwschema.AttrParent, hwschema.ValidUTF8(i.parent))
 	}
 	for k := 0; k+1 < len(i.extra); k += 2 {
-		attrs.PutStr(i.extra[k], i.extra[k+1])
+		attrs.PutStr(i.extra[k], hwschema.ValidUTF8(i.extra[k+1]))
 	}
 }
 

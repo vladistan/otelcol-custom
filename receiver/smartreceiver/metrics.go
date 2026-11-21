@@ -89,8 +89,8 @@ type ident struct {
 }
 
 func (i ident) put(attrs pcommon.Map) {
-	attrs.PutStr(hwschema.AttrID, i.id)
-	attrs.PutStr(hwschema.AttrName, i.name)
+	attrs.PutStr(hwschema.AttrID, hwschema.ValidUTF8(i.id))
+	attrs.PutStr(hwschema.AttrName, hwschema.ValidUTF8(i.name))
 	for key, value := range map[string]string{
 		hwschema.AttrModel:            i.model,
 		hwschema.AttrSerialNumber:     i.serial,
@@ -99,7 +99,7 @@ func (i ident) put(attrs pcommon.Map) {
 		hwschema.AttrVendor:           i.vendor,
 	} {
 		if value != "" {
-			attrs.PutStr(key, value)
+			attrs.PutStr(key, hwschema.ValidUTF8(value))
 		}
 	}
 }

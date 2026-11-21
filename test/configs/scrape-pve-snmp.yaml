@@ -14,9 +14,9 @@
 # answers it. Enable `resources` on ONE instance only (it reads the whole cluster).
 
 receivers:
-  pve/pve12:
+  pve/node12:
     base_urls:
-      - https://pve12.example.com:8006
+      - https://node12.example.com:8006
     ca_file: /etc/otelcol/pve-ca.pem
     resources:
       enabled: true
@@ -27,17 +27,17 @@ receivers:
       enabled: true
       token_id: otel@pve!guests
       token_secret: ${env:PVE_GUESTS_TOKEN}
-      node: pve12
+      node: node12
       collection_interval: 15m
-  pve/pve13:
+  pve/node13:
     base_urls:
-      - https://pve13.example.com:8006
+      - https://node13.example.com:8006
     ca_file: /etc/otelcol/pve-ca.pem
     guests:
       enabled: true
       token_id: otel@pve!guests
       token_secret: ${env:PVE_GUESTS_TOKEN}
-      node: pve13
+      node: node13
       collection_interval: 15m
   snmp/switch:
     collection_interval: 300s
@@ -71,10 +71,10 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [pve/pve12, pve/pve13, snmp/switch]
+      receivers: [pve/node12, pve/node13, snmp/switch]
       processors: [memory_limiter, batch]
       exporters: [debug]
     logs:
-      receivers: [pve/pve12, pve/pve13]
+      receivers: [pve/node12, pve/node13]
       processors: [memory_limiter, batch]
       exporters: [debug]

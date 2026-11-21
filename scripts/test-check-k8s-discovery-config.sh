@@ -240,8 +240,23 @@ service:
 EOF
 expect_exit_code "a quoted creator key with watch_observers passes" 0 "$CHECK" "$SCRATCH/quoted-ok.yaml"
 
-# Manifests: the six application receivers belong to the edge manifests only; memcached and kafka_metrics to none.
+# Manifests: the six application receivers belong to the edge and gateway manifests only; memcached and
+# kafka_metrics to none.
 mkdir "$SCRATCH/m"
+
+# gateway_manifest FILE VERSION [LINE...] writes a gateway manifest with the three discovery components at VERSION and the extra lines.
+gateway_manifest() {
+	local file="$1" version="$2"
+	shift 2
+	{
+		echo "extensions:"
+		echo "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/k8sobserver $version"
+		echo "receivers:"
+		echo "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator $version"
+		echo "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver $version"
+		for line in "$@"; do echo "$line"; done
+	} >"$file"
+}
 for app in redis postgresql mysql mongodb rabbitmq nginx; do
 	cat >"$SCRATCH/m/builder-edge.yaml" <<EOF
 receivers:
@@ -250,25 +265,49 @@ EOF
 	expect_exit_code "the edge manifest may compile ${app}receiver" 0 "$CHECK" --manifest "$SCRATCH/m/builder-edge.yaml" "$SCRATCH/unrelated-enabled.yaml"
 	cp "$SCRATCH/m/builder-edge.yaml" "$SCRATCH/m/builder-edge-static.yaml"
 	expect_exit_code "the static edge manifest may compile ${app}receiver" 0 "$CHECK" --manifest "$SCRATCH/m/builder-edge-static.yaml" "$SCRATCH/unrelated-enabled.yaml"
-	for other in builder-gateway.yaml builder-scrape.yaml builder-config.yaml builder-edge-windows.yaml; do
+	for other in builder-scrape.yaml builder-config.yaml builder-edge-windows.yaml; do
 		cp "$SCRATCH/m/builder-edge.yaml" "$SCRATCH/m/$other"
 		expect_exit_code "$other with ${app}receiver fails" 1 "$CHECK" --manifest "$SCRATCH/m/$other" "$SCRATCH/unrelated-enabled.yaml"
 		expect_output "the failure names $other" "$other"
 	done
+	gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1 "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/${app}receiver v0.164.1"
+	expect_exit_code "the gateway manifest may compile ${app}receiver" 0 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
 done
 
-write m/builder-gateway.yaml <<'EOF'
-receivers:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbatlasreceiver v0.164.1
-EOF
+gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1 "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbatlasreceiver v0.164.1"
 expect_exit_code "mongodbatlasreceiver is not mongodbreceiver" 0 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+
+# The gateway carries the observer, the creator and the redis receiver at the version of the edge manifest.
+gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1
+expect_exit_code "a gateway manifest with the three components passes" 0 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+for missing in extension/observer/k8sobserver receiver/receivercreator receiver/redisreceiver; do
+	gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1
+	grep -v "$missing" "$SCRATCH/m/builder-gateway.yaml" >"$SCRATCH/m/gateway.tmp"
+	mv "$SCRATCH/m/gateway.tmp" "$SCRATCH/m/builder-gateway.yaml"
+	expect_exit_code "a gateway manifest without $missing fails" 1 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+	expect_output "the failure names $missing" "does not compile $missing"
+done
+
+cat >"$SCRATCH/m/builder-edge.yaml" <<'EOF'
+extensions:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/k8sobserver v0.164.1
+receivers:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v0.164.1
+EOF
+gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1
+expect_exit_code "a gateway manifest at the edge versions passes" 0 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.163.0
+expect_exit_code "a gateway manifest at another version than the edge fails" 1 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+expect_output "the failure names both versions" "is at v0.163.0, builder-edge.yaml has v0.164.1"
+gateway_manifest "$SCRATCH/m/builder-gateway.yaml" v0.164.1 "replaces:" "  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver => ../../receiver/redisreceiver"
+expect_exit_code "a gateway manifest with a replaces line for redis fails" 1 "$CHECK" --manifest "$SCRATCH/m/builder-gateway.yaml" "$SCRATCH/unrelated-enabled.yaml"
+expect_output "the failure names the replaces line" "has a replaces line for receiver/redisreceiver"
+rm "$SCRATCH/m/builder-edge.yaml"
 
 for banned in memcachedreceiver kafkametricsreceiver; do
 	for manifest in builder-edge.yaml builder-edge-static.yaml builder-gateway.yaml; do
-		cat >"$SCRATCH/m/$manifest" <<EOF
-receivers:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/${banned} v0.164.1
-EOF
+		gateway_manifest "$SCRATCH/m/$manifest" v0.164.1 "  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/${banned} v0.164.1"
 		expect_exit_code "$manifest with $banned fails" 1 "$CHECK" --manifest "$SCRATCH/m/$manifest" "$SCRATCH/unrelated-enabled.yaml"
 		expect_output "the failure names $banned" "$banned"
 	done

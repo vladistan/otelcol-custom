@@ -1,0 +1,24 @@
+[
+  {
+    "body": "published StallMinutes=2",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "published StallMinutes=2",
+      "vstan.stallcheck.stall_minutes": 2
+    }
+  },
+  {
+    "body": "published StallMinutes=3",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19T22:56:53.123456789Z stdout F published StallMinutes=3",
+      "vstan.stallcheck.stall_minutes": 3
+    }
+  }
+]

@@ -1,0 +1,5 @@
+# provenance: invented
+# evidence: written from the format description, not a capture
+02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' path='/api/0/projects/' caller_ip='192.0.2.7' user_agent='ELB-HealthChecker/2.0' request_duration_seconds='0.012')
+02:30:22 [WARNING] sentry.tasks: Retrying the task
+02:30:23 [ERROR] sentry.tasks: Task failed

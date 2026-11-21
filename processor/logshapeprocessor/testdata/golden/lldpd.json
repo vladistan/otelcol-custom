@@ -1,0 +1,25 @@
+[
+  {
+    "body": "eno2 sees switch-48.example.net port Gi4/0/18 192.0.2.39",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.39",
+      "client.mac.address": "00:11:22:33:44:55",
+      "log.record.original": "{\"observed_at\":\"2026-11-20T13:06:13Z\",\"interface\":\"eno2\",\"via\":\"LLDP\",\"age\":\"4 days, 17:24:51\",\"chassis_id\":\"00:11:22:33:44:55\",\"chassis_name\":\"switch-48.example.net\",\"chassis_descr\":\"Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 15.0(1)EX3, RELEASE SOFTWARE (fc2)\\nTechnical Support: http://www.cisco.com/techsupport\\nCopyright (c) 1986-2013 by Cisco Systems, Inc.\\nCompiled Mon 23-Sep-13 18:24 by prod_r\",\"mgmt_ip\":[\"192.0.2.39\"],\"port_id\":\"Gi4/0/18\",\"port_descr\":\"GigabitEthernet4/0/18\"}",
+      "network.interface.name": "eno2",
+      "vstan.lldp.age": "4 days, 17:24:51",
+      "vstan.lldp.chassis_descr": "Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 15.0(1)EX3, RELEASE SOFTWARE (fc2)\nTechnical Support: http://www.cisco.com/techsupport\nCopyright (c) 1986-2013 by Cisco Systems, Inc.\nCompiled Mon 23-Sep-13 18:24 by prod_r",
+      "vstan.lldp.chassis_id": "00:11:22:33:44:55",
+      "vstan.lldp.chassis_name": "switch-48.example.net",
+      "vstan.lldp.mgmt_ip": [
+        "192.0.2.39"
+      ],
+      "vstan.lldp.port_descr": "GigabitEthernet4/0/18",
+      "vstan.lldp.port_id": "Gi4/0/18",
+      "vstan.lldp.via": "LLDP"
+    }
+  }
+]

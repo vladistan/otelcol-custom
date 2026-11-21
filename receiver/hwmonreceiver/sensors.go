@@ -11,7 +11,22 @@ const (
 	kindTemperature kind = iota
 	kindFan
 	kindVoltage
+	kindPowerSupply
 )
+
+// hwTypes holds the OpenTelemetry hw.type value of each sensor kind.
+var hwTypes = map[kind]string{
+	kindTemperature: "temperature",
+	kindFan:         "fan",
+	kindVoltage:     "voltage",
+	kindPowerSupply: "power_supply",
+}
+
+// hwTypeOf returns the hw.type of a sensor kind; ok is false for a kind with no value.
+func hwTypeOf(k kind) (string, bool) {
+	v, ok := hwTypes[k]
+	return v, ok
+}
 
 // limit is one limit of a temperature sensor, in degrees Celsius.
 type limit struct {

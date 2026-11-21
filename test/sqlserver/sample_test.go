@@ -168,22 +168,9 @@ func TestDocs_TheGuideStatesTheLoginTheSecretAndTheLimits(t *testing.T) {
 	}
 }
 
-// changelogSection returns the text of the section that starts with heading, up to the next release heading.
-func changelogSection(t *testing.T, log, heading string) string {
-	t.Helper()
-	start := strings.Index(log, heading)
-	require.NotEqual(t, -1, start, "the changelog has a %q section", heading)
-	rest := log[start+3:]
-	if end := strings.Index(rest, "\n## ["); end != -1 {
-		rest = rest[:end]
-	}
-	return rest
-}
-
 func TestChangelog_HasAGrowthRowForSQLServer(t *testing.T) {
+	// The entry stays in the release section it shipped in, so the whole file is read.
 	log := readFile(t, "../../CHANGELOG.md")
-	version := strings.TrimSpace(readFile(t, "../../VERSION"))
-	head := changelogSection(t, log, "## [Unreleased]") + changelogSection(t, log, "## ["+version+"]")
-	assert.Contains(t, head, "`sqlserver`")
-	assert.Regexp(t, `otelcol-edge-\d+\.\d+\.\d+-windows-amd64\.exe`, head)
+	assert.Contains(t, log, "`sqlserver`")
+	assert.Regexp(t, `otelcol-edge-\d+\.\d+\.\d+-windows-amd64\.exe`, log)
 }

@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore vstan
+
 package fswatchreceiver
 
 import (
@@ -9,25 +11,28 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
 const (
-	batchSize    = 500
-	futureSkew   = 5 * time.Minute
-	saveEvery    = time.Second
-	minRescanGap = time.Minute
-	quotaWindow  = time.Hour
-	debtPoll     = 5 * time.Second
-	minSettleGap = 250 * time.Millisecond
-	logBody      = "file created"
-	completeBody = "file write complete"
+	batchSize      = 500
+	futureSkew     = 5 * time.Minute
+	saveEvery      = time.Second
+	minRescanGap   = time.Minute
+	quotaWindow    = time.Hour
+	debtPoll       = 5 * time.Second
+	minSettleGap   = 250 * time.Millisecond
+	logBody        = "created"
+	completePrefix = "write complete "
+	sourceName     = "fswatch"
 )
 
 type stateStore interface {
@@ -65,6 +70,7 @@ type pendingFile struct {
 type rootParams struct {
 	cfg    *Config
 	root   string
+	name   string // service.name of the root's records; empty uses the root's last path element
 	logger *zap.Logger
 	next   consumer.Logs
 	tel    *telemetry
@@ -115,6 +121,9 @@ type rootWatch struct {
 }
 
 func newRootWatch(p rootParams) *rootWatch {
+	if p.name == "" {
+		p.name = defaultRootName(p.root)
+	}
 	return &rootWatch{
 		rootParams: p,
 		key:        rootKey(p.root),
@@ -201,8 +210,9 @@ func (rw *rootWatch) catchUp(ctx context.Context) error {
 
 	var found, recent []candidate
 	var cutOff, future int
-	stats, err := rw.tree.Walk(ctx, rw.root, rw.match.excluded, func(f fileInfo) {
+	stats, err := rw.tree.Walk(ctx, rw.root, rw.prune(ctx, rw.root), func(f fileInfo) {
 		if rw.match.excluded(rw.rel(f.path)) {
+			rw.countExcluded(ctx)
 			return
 		}
 		if rw.recheckDue && rw.cfg.Settle > 0 && !f.created.IsZero() && !f.created.After(now) && now.Sub(f.created) < rw.cfg.SettleTimeout {
@@ -366,16 +376,24 @@ func (rw *rootWatch) warnDelivery(err error, now time.Time, msg string) {
 
 // buildLogs makes one record per candidate: a creation record, or a write-complete record when
 // complete is set. A write-complete record is stamped with the time the receiver ended the watch.
+// The resource carries the root's service name.
 func (rw *rootWatch) buildLogs(batch []candidate, observed time.Time) plog.Logs {
 	ld := plog.NewLogs()
-	sl := ld.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", rw.name)
+	sl := rl.ScopeLogs().AppendEmpty()
 	sl.Scope().SetName(scopeName)
 	for _, c := range batch {
 		lr := sl.LogRecords().AppendEmpty()
-		lr.Body().SetStr(logBody)
+		size := c.size
+		if c.sizeFinal >= 0 {
+			size = c.sizeFinal
+		}
+		rel := rw.rel(c.path)
 		ts := c.created
+		lr.Body().SetStr(logBody)
 		if c.complete {
-			lr.Body().SetStr(completeBody)
+			lr.Body().SetStr(completeBody(slashesToBackslashes(rel), size))
 			ts = observed
 		}
 		lr.SetSeverityNumber(plog.SeverityNumberInfo)
@@ -388,20 +406,40 @@ func (rw *rootWatch) buildLogs(batch []candidate, observed time.Time) plog.Logs 
 
 		name := filepath.Base(c.path)
 		attrs := lr.Attributes()
+		attrs.PutStr("log.source", sourceName)
 		attrs.PutStr("file.path", c.path)
+		attrs.PutStr("file.directory", filepath.Dir(c.path))
 		attrs.PutStr("file.name", name)
 		attrs.PutStr("file.extension", strings.TrimPrefix(filepath.Ext(name), "."))
-		if c.size >= 0 {
-			attrs.PutInt("file.size", c.size)
+		if size >= 0 {
+			attrs.PutInt("file.size", size)
 		}
-		attrs.PutStr("file.dir_relative", filepath.Dir(rw.rel(c.path)))
-		attrs.PutStr("file.root", rw.root)
-		if c.sizeFinal >= 0 {
-			attrs.PutInt("file.size_final", c.sizeFinal)
-		}
-		attrs.PutBool("file.catchup", c.catchup)
+		attrs.PutStr("vstan.fswatch.dir_relative", filepath.Dir(rel))
+		attrs.PutStr("vstan.fswatch.root", rw.root)
+		attrs.PutBool("vstan.fswatch.catchup", c.catchup)
 	}
 	return ld
+}
+
+// completeBody is the write-complete body: the root-relative path and, when known, the size.
+func completeBody(rel string, size int64) string {
+	if size < 0 {
+		return completePrefix + rel
+	}
+	return completePrefix + rel + " (" + formatSize(size) + ")"
+}
+
+// formatSize writes a byte count in binary units with one decimal; under 1 KiB it is whole bytes.
+func formatSize(n int64) string {
+	if n < 1024 {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	value, unit := float64(n), 0
+	for value >= 1024 && unit < 4 {
+		value /= 1024
+		unit++
+	}
+	return strconv.FormatFloat(value, 'f', 1, 64) + " " + [...]string{"B", "KiB", "MiB", "GiB", "TiB"}[unit]
 }
 
 // advance moves the sentinel up to the newest emitted file. It never passes the wall clock
@@ -491,7 +529,7 @@ func (rw *rootWatch) onEvents(ctx context.Context, events []rawEvent) {
 // consider turns one created or renamed-in name into candidates; a directory contributes its files.
 func (rw *rootWatch) consider(ctx context.Context, rel string, batch []candidate) []candidate {
 	if rw.match.excluded(rel) {
-		add(ctx, rw.tel.excluded, 1)
+		rw.countExcluded(ctx)
 		return batch
 	}
 	path := filepath.Join(rw.root, rel)
@@ -509,10 +547,27 @@ func (rw *rootWatch) consider(ctx context.Context, rel string, batch []candidate
 	return append(batch, candidate{path: path, size: fi.size, created: fi.created, modified: fi.modified, sizeFinal: -1})
 }
 
+// countExcluded counts one file or directory left out by an exclude pattern.
+func (rw *rootWatch) countExcluded(ctx context.Context) {
+	add(ctx, rw.tel.excluded, 1, attribute.String("root", rw.name))
+}
+
+// prune is the skipDir function of a walk that starts at base: it prunes an excluded directory and
+// counts it once, so the files below it are never read or counted one by one.
+func (rw *rootWatch) prune(ctx context.Context, base string) func(string) bool {
+	return func(rel string) bool {
+		if !rw.match.excluded(rw.rel(filepath.Join(base, rel))) {
+			return false
+		}
+		rw.countExcluded(ctx)
+		return true
+	}
+}
+
 func (rw *rootWatch) walkNew(ctx context.Context, dir string, batch []candidate) []candidate {
-	stats, err := rw.tree.Walk(ctx, dir, func(rel string) bool { return rw.match.excluded(rw.rel(filepath.Join(dir, rel))) }, func(f fileInfo) {
+	stats, err := rw.tree.Walk(ctx, dir, rw.prune(ctx, dir), func(f fileInfo) {
 		if rw.match.excluded(rw.rel(f.path)) {
-			add(ctx, rw.tel.excluded, 1)
+			rw.countExcluded(ctx)
 			return
 		}
 		batch = append(batch, candidate{path: f.path, size: f.size, created: f.created, modified: f.modified, sizeFinal: -1})
@@ -538,7 +593,7 @@ func (rw *rootWatch) tick(ctx context.Context) {
 }
 
 // settleTick checks every watched file. One whose size stayed put for settle gets a write-complete
-// record with file.size_final; one still changing at settle_timeout gets the record without it and is
+// record with the final size; one still changing at settle_timeout gets the last size seen and is
 // counted; one that is gone is dropped.
 func (rw *rootWatch) settleTick(ctx context.Context) {
 	if len(rw.pending) == 0 {

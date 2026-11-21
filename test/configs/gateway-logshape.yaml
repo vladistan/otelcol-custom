@@ -1,0 +1,89 @@
+# cspell:ignore awselb gcpaudit kaudit logfmt mosquitto
+# Reference config for log shaping in the gateway image: the logshape processor after the log
+# receivers, then health probe sampling, with the account alias map for the cloud sources.
+# Run: ./build/gateway/otelcol-gateway validate --config test/configs/gateway-logshape.yaml
+# It only has to load. The ids and names below are documentation values; the deployed config
+# carries the real alias map. Every gateway of a rollout runs the same image tag and the same blocks.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  batch: {}
+  # The text of known formats becomes one-line bodies with official attribute names. Every
+  # branch except the cloud ones is on: the scrape image shapes the cloud sources, and a record
+  # it has shaped is not shaped twice. A list key in this block extends the built-in list of the
+  # same key, a map key replaces the built-in value per key, a scalar replaces it.
+  logshape:
+    branches:
+      - flow
+      - klog
+      - uvicorn
+      - collector
+      - mongod
+      - gcpjson
+      - tracing
+      - pino
+      - logrus
+      - postgres
+      - redis
+      - nginx
+      - sentry
+      - cisco
+      - syslog
+      - influx
+      - oauth2proxy
+      - coredns
+      - rabbitmq
+      - mosquitto
+      - stallcheck
+      - kaudit
+      - smartd
+      - gocd
+      - cron
+      - openvpn
+      - pbs
+      - pve
+      - serialconsole
+      - logfmt
+      - clickhouse
+      - calico
+      - ssmagent
+      - litellm
+      - stderrhint
+      - lldpd
+      - k8s
+    # Account and project alias map for the records the cloud branches shape. A key is an
+    # account id or a project id; the value is the name that goes to cloud.account.name. The scrape
+    # image shapes the cloud records in the default setup (test/configs/scrape.yaml holds the same
+    # map), so the cloud branches are off above. A gateway that takes cloud records straight from
+    # a source, with no scrape image in front, adds gcplb, awselb, s3access, gcpaudit, eksaudit and
+    # cloudtrail to branches and keeps this map. One place shapes a source, never both.
+    account_aliases:
+      "111122223333": first-account
+      "444455556666": second-account
+      example-project-a: first-project
+      example-project-b: second-project
+  # Keeps 20% of the successful probe requests (status 200 or 302 on a probe path or from a probe
+  # agent) and tags them log.type=health_probe; a failed probe always passes. It runs after
+  # logshape, which writes the HTTP attributes it reads, and after the HTTP parsers.
+  healthprobe:
+    enabled: true
+    keep_ratio: 0.2
+  # Fills host.name, service.name and an empty audit body on GCP audit records. It runs after
+  # logshape and fills only values that are empty, so the identity logshape has set stays.
+  identityfill: {}
+exporters:
+  debug:
+    verbosity: basic
+service:
+  pipelines:
+    logs/shaped:
+      receivers: [otlp]
+      processors: [memory_limiter, logshape, healthprobe, identityfill, batch]
+      exporters: [debug]

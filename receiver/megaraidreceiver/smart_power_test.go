@@ -69,7 +69,7 @@ func TestAnUnknownPowerStateLeavesTheDriveAloneAndWarnsOnce(t *testing.T) {
 	assert.Equal(t, smartUnavailable, res.state)
 	assert.Equal(t, smartUnavailable, again.state)
 	assert.Len(t, dev.passes, 2, "one CHECK POWER MODE for each read and nothing else")
-	assert.Equal(t, 1, logs.FilterMessage("The controller gave no power state for a drive, so SMART leaves it alone").Len())
+	assert.Equal(t, 1, logs.FilterMessage(msgNoPowerState).Len())
 }
 
 func TestAnActiveDriveIsReadAfterThePowerCheck(t *testing.T) {

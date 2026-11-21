@@ -1,15 +1,15 @@
-# Pod discovery on the Linux edge
+# Pod discovery on the Linux edge and the gateway
 
-The Linux edge and the static Linux edge can start receivers for the pods of their own node. It is for a DaemonSet: each collector lists the pods on its node and starts a receiver for every pod that a rule matches. The gateway, the scrape collector and the Windows edge do not carry these components.
+The Linux edge and the static Linux edge can start receivers for the pods of their own node. It is for a DaemonSet: each collector lists the pods on its node and starts a receiver for every pod that a rule matches. The gateway carries the same components for a Deployment of one replica that watches the pods of the whole cluster (see [The gateway](#the-gateway)). The scrape collector and the Windows edge do not carry them.
 
 | Component | Type | Role |
 |---|---|---|
-| `k8s_observer` | extension | Lists the pods of one node and reports them as endpoints. |
+| `k8s_observer` | extension | Lists pods and reports them as endpoints: the pods of one node on the edge, of the cluster on the gateway. |
 | `receiver_creator` | receiver | Starts a receiver for each endpoint that one of its rules matches, and stops it when the endpoint goes. |
 
-Both are contrib components at v0.164.1. The reference configs are `test/configs/edge-k8s-discovery.yaml` (scrape annotated pods) and `test/configs/edge-k8s-apps.yaml` (one rule for each application receiver).
+Both are contrib components at v0.164.1. The reference configs are `test/configs/edge-k8s-discovery.yaml` (scrape annotated pods) and `test/configs/edge-k8s-apps.yaml` (one rule for each application receiver) for the edge, and `test/configs/gateway-k8s-discovery.yaml` (one Redis rule) and `test/configs/gateway-k8s-apps.yaml` (one rule for each application receiver) for the gateway.
 
-## What the edge compiles in
+## What is compiled in
 
 | Receiver | Type | Reads |
 |---|---|---|
@@ -21,7 +21,7 @@ Both are contrib components at v0.164.1. The reference configs are `test/configs
 | `rabbitmq` | receiver | The RabbitMQ management API. |
 | `nginx` | receiver | The nginx `stub_status` page. |
 
-`memcached` and `kafka_metrics` are not compiled in. `prometheus_simple` is not either: pods are scraped with the full `prometheus` receiver and a templated scrape config. A rule that names a type the build lacks logs `unable to lookup factory` at Error when a pod matches, and the collector keeps running.
+The edge and the gateway compile in all seven. `memcached` and `kafka_metrics` are not compiled in. `prometheus_simple` is not either: pods are scraped with the full `prometheus` receiver and a templated scrape config. A rule that names a type the build lacks logs `unable to lookup factory` at Error when a pod matches, and the collector keeps running.
 
 ## Rules
 
@@ -101,7 +101,33 @@ rules:
     verbs: [get, list, watch]
 ```
 
-`k8s_attributes` needs the same grant and also reads namespaces and nodes. With `namespaces: [a, b]` in the observer config, a namespaced `Role` and `RoleBinding` is enough for the observer; the nodes still need a cluster role.
+The `k8s_attributes` block of the edge reference configs extracts the pod, namespace and node names and a pod label, all read from the pod itself, and its `node_from_env_var` filter is a field selector on pods, so it needs no more than the pod grant. Extra rules widen the grant: labels or annotations of a namespace (or the cluster uid) need `namespaces`, labels or annotations of a node (or `k8s.node.uid`) need `nodes`, and rules that read a ReplicaSet, Deployment, StatefulSet, DaemonSet, Job or CronJob need that resource, each with `get`, `list` and `watch`. With `namespaces: [a, b]` in the observer config, a namespaced `Role` and `RoleBinding` is enough for the observer.
+
+## The gateway
+
+The gateway image carries `k8s_observer`, `receiver_creator` and the six application receivers, so a gateway Deployment can scrape the pods of a cluster itself. The edge rules above apply; these points differ:
+
+- **One replica, the whole cluster.** The reference configs (`gateway-k8s-discovery.yaml`, `gateway-k8s-apps.yaml`) set `observe_pods: true` as the only `observe_*` key and no `node` key, so the observer lists the pods of every namespace. A second replica would list the same pods and scrape each one twice, so the Deployment keeps one replica. The edge DaemonSet keeps the local-node limit: its observer sets `node: ${env:K8S_NODE_NAME}`, and a DaemonSet that scraped cluster-wide would scrape every pod once for each node.
+- **Reference rules.** `gateway-k8s-discovery.yaml` has one rule, for Redis on port 6379. It leaves out the collector's own pod through the `app.kubernetes.io/component` label and matches any other pod that declares the port, so narrow it with a label or namespace test before pointing it at a cluster. `gateway-k8s-apps.yaml` has one rule for each of the six receivers, each matched by the pod label `app.kubernetes.io/name`.
+- **Credentials.** Redis reads `${env:REDIS_PASSWORD}`; leave the variable unset for a server without a password. The other five read their user and password from environment variables too. Nothing is written in the config.
+- **Annotation discovery stays off**, as on the edge, and the same guard checks the gateway configs.
+
+### RBAC
+
+The observer needs `get`, `list` and `watch` on pods across the cluster. The `k8s_attributes` block of the reference configs extracts only the pod, namespace and node names, which come from the pod itself, so it needs the same pod grant and nothing more. Granting it is the cluster owner's job; the gateway image does not create it. A cluster role for the reference configs:
+
+```yaml
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
+```
+
+Bind it to the service account of the gateway Deployment with a `ClusterRoleBinding`. Extra extraction rules widen the grant: labels or annotations of a namespace (or the cluster uid) need `namespaces`, labels or annotations of a node (or `k8s.node.uid`) need `nodes`, and rules that read a ReplicaSet, Deployment, StatefulSet, DaemonSet, Job or CronJob need that resource, each with `get`, `list` and `watch`. With `namespaces: [a, b]` in the observer config, a namespaced `Role` on pods in those namespaces is enough for the observer.
+
+### Failures on the gateway
+
+When the service account cannot list pods, the observer logs the informer's forbidden errors and retries, repeatedly. The gateway adds no warning of its own and no counter for this: the lines are the ones the upstream informer writes. No endpoint arises, no receiver starts, and the gateway keeps running. A Redis target that refuses the connection or needs a password the template does not supply makes the started receiver log a scrape error at each interval, and the gateway keeps running.
 
 ## Which pods make endpoints
 
@@ -156,3 +182,22 @@ Cost on the static Linux edge, each step added to the one before. Sizes are byte
 The eight together add 16,302,080 bytes (9.4%) in this series of builds. The release container build of the same manifests gives 178,106,530 bytes without them and 194,687,138 with all eight, which is 16,580,608 bytes more (9.3%).
 
 The first rows of the table come from a host Go toolchain build (`CGO_ENABLED=0`, `-s -w`, linux/amd64), so they compare with each other and not byte for byte with the release container figures. The order matters: `redis` is the first receiver to bring client libraries for managed services (its cloud authentication), and the receivers after it share them, so each of those costs less than it would alone. The observer and the creator stay under the 0.5 MB limit on their own (`client-go` was already in through `k8s_attributes`).
+
+### Gateway
+
+Cost on the gateway, each step added to the one before. Sizes are bytes of the `otelcol-gateway` binary (`CGO_ENABLED=0`, `-trimpath`, `-s -w`, linux/amd64, host Go toolchain) built from OCB v0.164.0 sources with the repository entrypoint, the way `just build-gateway-linux` builds it.
+
+| Step | Size | Added |
+|---|---|---|
+| The gateway without these components | 217,968,802 | |
+| `k8s_observer` and `receiver_creator` | 218,214,562 | 245,760 |
+| `redis` | 226,742,434 | 8,527,872 |
+| `postgresql` | 228,368,546 | 1,626,112 |
+| `mysql` | 229,671,074 | 1,302,528 |
+| `mongodb` | 233,775,266 | 4,104,192 |
+| `rabbitmq` | 234,299,554 | 524,288 |
+| `nginx` | 234,348,706 | 49,152 |
+
+The eight together add 16,379,904 bytes (7.5%). The costs follow the edge series: `redis` is the first receiver to bring client libraries for managed services, and the receivers after it share them. The observer and the creator add 245,760 bytes on their own.
+
+The release container build (`Dockerfile.gateway`, linux/amd64, the builder stage compiles the binary) gives the same two binary sizes, 217,968,802 and 234,348,706 bytes. The image grows with the binary: its layers add up to 229,801,984 bytes without the components and 246,181,888 with them (`docker history --human=false`, the sum of the sizes, base image included), 16,379,904 bytes more. The compressed image, as `docker save` writes it, is 60,057,600 bytes without them and 64,802,816 with them, 4,745,216 bytes more. `docker image inspect --format '{{.Size}}'` is not used: with the containerd image store its total exceeds the layer sum by about the size of the compressed image (60,040,430 and 64,785,983 bytes).

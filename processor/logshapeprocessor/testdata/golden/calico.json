@@ -1,0 +1,28 @@
+[
+  {
+    "body": "Summarising 4 dataplane reconciliation loops",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "felix/summary.go",
+      "code.line.number": 100,
+      "log.record.original": "2026-11-19 22:53:59.699 [INFO][73] felix/summary.go 100: Summarising 4 dataplane reconciliation loops",
+      "thread.id": 73
+    }
+  },
+  {
+    "body": "Resync took longer than expected",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "felix/sync.go",
+      "code.line.number": 12,
+      "log.record.original": "2026-11-19 22:54:00.100 [WARNING][73] felix/sync.go 12: Resync took longer than expected",
+      "thread.id": 73
+    }
+  }
+]

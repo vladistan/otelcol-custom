@@ -1,0 +1,5 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured access line, names replaced; the others are written from the format
+[httpd] 192.0.2.19 - webuser [20/Nov/2026:00:02:45 +0100] "POST /write?db=metrics HTTP/1.1" 204 0 "-" "InfluxDBClient" 5a1b2c3d-1111-2222-3333-44445555666a 14684
+[httpd] 192.0.2.20 - - [20/Nov/2026:00:02:46 +0100] "GET /ping HTTP/1.1" 204 0 "-" "curl/8" 9f9f9f9f-0000-1111-2222-33334444555a 80
+[httpd] 192.0.2.21 - webuser [20/Nov/2026:00:02:47 +0100] "POST /query?db=metrics HTTP/1.1" 500 31 "-" "InfluxDBClient" 1d2e3f40-aaaa-bbbb-cccc-ddddeeeeffff 20511

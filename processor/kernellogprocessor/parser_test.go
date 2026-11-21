@@ -1,6 +1,8 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore prio nsec
+
 package kernellogprocessor
 
 import (
@@ -25,7 +27,7 @@ func TestIsKernelLog(t *testing.T) {
 		},
 		{
 			name:     "IPVS no destination",
-			input:    `IPVS: rr: TCP 192.0.2.1:4318 - no destination available`,
+			input:    `IPVS: rr: TCP 192.0.2.104:4318 - no destination available`,
 			expected: true,
 		},
 		{
@@ -75,7 +77,7 @@ func TestIsKernelLog(t *testing.T) {
 		},
 		{
 			name:     "not kernel - nginx",
-			input:    `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
+			input:    `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
 			expected: false,
 		},
 		{
@@ -132,11 +134,11 @@ func TestParseKernelLog(t *testing.T) {
 		},
 		{
 			name:              "IPVS no destination",
-			input:             `IPVS: rr: TCP 192.0.2.1:4318 - no destination available`,
+			input:             `IPVS: rr: TCP 192.0.2.104:4318 - no destination available`,
 			expectedSubsystem: "ipvs",
 			expectedSeverity:  "WARN",
 			expectedErrorType: "No Destination",
-			expectedExtra:     map[string]string{"ipvs.scheduler": "rr", "ipvs.protocol": "TCP", "ipvs.destination": "192.0.2.1:4318"},
+			expectedExtra:     map[string]string{"ipvs.scheduler": "rr", "ipvs.protocol": "TCP", "ipvs.destination": "192.0.2.104:4318"},
 		},
 		{
 			name:              "net ratelimit",

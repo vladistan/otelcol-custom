@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vladistan/otelcol-custom/receiver/hwschema"
 	"github.com/vladistan/otelcol-custom/receiver/smartdecode"
 )
 
@@ -297,7 +298,7 @@ func cString(buf []byte, off uint32) (string, error) {
 	if i := bytes.IndexByte(s, 0); i >= 0 {
 		s = s[:i]
 	}
-	return strings.TrimSpace(string(s)), nil
+	return hwschema.ValidUTF8(strings.TrimSpace(string(s))), nil
 }
 
 // diskKind says how the receiver reads a disk.

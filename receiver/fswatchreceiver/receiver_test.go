@@ -6,6 +6,7 @@ package fswatchreceiver
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -95,7 +96,7 @@ func TestStartFailsOnUnsupportedPlatform(t *testing.T) {
 		t.Skip("the Windows build supports the receiver")
 	}
 	cfg := createDefaultConfig().(*Config)
-	cfg.Paths = []string{`D:\CDSProjects`}
+	cfg.Paths = []string{`D:\Projects`}
 	rcv, err := createLogsReceiver(t.Context(), receivertest.NewNopSettings(component.MustNewType(typeStr)), cfg, &flakySink{})
 	if err != nil {
 		t.Fatal(err)
@@ -259,5 +260,41 @@ func TestShutdownBeforeStartIsSafe(t *testing.T) {
 	rcv, _ := newTestReceiver(t, newTree(), func(string, int) (watcher, error) { return newFakeWatcher(), nil })
 	if err := rcv.Shutdown(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTwoRootsKeepTheirOwnNames(t *testing.T) {
+	second := filepath.FromSlash("/second")
+	watchers := map[string]*fakeWatcher{testRoot: newFakeWatcher(), second: newFakeWatcher()}
+	tr := newTree()
+	rcv, sink := newTestReceiver(t, tr, func(root string, _ int) (watcher, error) { return watchers[root], nil })
+	rcv.cfg.Paths = nil
+	rcv.cfg.Roots = []RootConfig{{Path: testRoot, Name: "alpha", Exclude: []string{}}, {Path: second, Name: "beta", Exclude: []string{}}}
+	if err := rcv.Start(t.Context(), componenttest.NewNopHost()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = rcv.Shutdown(context.Background()) })
+
+	created := time.Now().Add(-time.Second)
+	tr.put("a.dx", 1, created)
+	tr.putAbs(filepath.Join(second, "b.dx"), 1, created)
+	watchers[testRoot].msgs <- watchMsg{events: []rawEvent{{actionAdded, "a.dx"}}}
+	watchers[second].msgs <- watchMsg{events: []rawEvent{{actionAdded, "b.dx"}}}
+	eventually(t, "both records", func() bool { return len(records(sink)) == 2 })
+
+	byFile := map[string]string{}
+	for _, ld := range sink.AllLogs() {
+		for i := 0; i < ld.ResourceLogs().Len(); i++ {
+			rl := ld.ResourceLogs().At(i)
+			svc, _ := rl.Resource().Attributes().Get("service.name")
+			recs := rl.ScopeLogs().At(0).LogRecords()
+			for j := 0; j < recs.Len(); j++ {
+				name, _ := recs.At(j).Attributes().Get("file.name")
+				byFile[name.Str()] = svc.Str()
+			}
+		}
+	}
+	if byFile["a.dx"] != "alpha" || byFile["b.dx"] != "beta" {
+		t.Errorf("service names by file %v, want a.dx=alpha and b.dx=beta", byFile)
 	}
 }

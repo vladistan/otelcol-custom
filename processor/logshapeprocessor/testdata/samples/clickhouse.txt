@@ -1,0 +1,4 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured server line; line 2 is written from the format
+2026.11.19 23:01:21.644520 [ 1980900 ] {} <Information> TCPHandler: Client has not sent any data.
+2026.11.19 23:01:22.100000 [ 17 ] {4b1c-77} <Error> executeQuery: Code: 60. DB::Exception: no table

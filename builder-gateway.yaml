@@ -16,6 +16,16 @@ replaces:
   - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
   - github.com/vladistan/otelcol-custom/processor/resourceversionprocessor => ../../processor/resourceversionprocessor
   - github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
+  - github.com/vladistan/otelcol-custom/processor/logshapeprocessor => ../../processor/logshapeprocessor
+  - github.com/vladistan/otelcol-custom/shape/multiline => ../../shape/multiline
+  - github.com/vladistan/otelcol-custom/shape/severity => ../../shape/severity
+  - github.com/vladistan/otelcol-custom/shape/strip => ../../shape/strip
+  # cspell:ignore k8slift
+  - github.com/vladistan/otelcol-custom/shape/body => ../../shape/body
+  - github.com/vladistan/otelcol-custom/shape/httpaccess => ../../shape/httpaccess
+  - github.com/vladistan/otelcol-custom/shape/k8slift => ../../shape/k8slift
+  - github.com/vladistan/otelcol-custom/shape/principal => ../../shape/principal
+  - github.com/vladistan/otelcol-custom/shape/rename => ../../shape/rename
   - github.com/vladistan/otelcol-custom/processor/assetdbprocessor => ../../processor/assetdbprocessor
   - github.com/vladistan/otelcol-custom/processor/macextractorprocessor => ../../processor/macextractorprocessor
   - github.com/vladistan/otelcol-custom/processor/ipextractorprocessor => ../../processor/ipextractorprocessor
@@ -46,6 +56,11 @@ replaces:
   - github.com/vladistan/otelcol-custom/processor/journaldprocessor => ../../processor/journaldprocessor
   - github.com/vladistan/otelcol-custom/processor/identityfillprocessor => ../../processor/identityfillprocessor
   - github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
+  # NetFlow receiver with a local patch: v9 bytes and packets add the IN and OUT counters, and the
+  # absolute flow times of a v9 record are read
+  - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver => ../../receiver/netflowreceiver
+  # Typed rows of the flow table (the contrib ClickHouse exporter writes only the otel schema)
+  - github.com/vladistan/otelcol-custom/exporter/flowlogexporter => ../../exporter/flowlogexporter
 # =============================================================================
 # Extensions
 # =============================================================================
@@ -58,6 +73,8 @@ extensions:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.164.1
   # Google Cloud log entry encoding (for the Pub/Sub receiver; used by otel-cluster)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/encoding/googlecloudlogentryencodingextension v0.164.1
+  # Lists the pods of the cluster and reports them to receiver_creator
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/observer/k8sobserver v0.164.1
 # =============================================================================
 # Receivers
 # =============================================================================
@@ -75,6 +92,8 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/tcplogreceiver v0.164.1
   # Raw UDP log input (syslog fallback)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/udplogreceiver v0.164.1
+  # NetFlow v5, v9 and IPFIX flow records as logs (UDP 2055; optional receiver: a bind failure only warns)
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/netflowreceiver v0.164.1
   # --- Metrics ---
   # Host metrics (CPU, memory, disk, network, load, paging)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.164.1
@@ -89,6 +108,15 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.164.1
   # Kubelet and node metrics
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.164.1
+  # --- Pod discovery and application receivers ---
+  # Starts a receiver for each pod endpoint that a rule in the config matches
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/postgresqlreceiver v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mysqlreceiver v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/mongodbreceiver v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/rabbitmqreceiver v0.164.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.164.1
   # --- Cloud (AWS) ---
   # AWS S3 (CloudTrail, access logs)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/awss3receiver v0.164.1
@@ -136,6 +164,8 @@ processors:
   - gomod: github.com/vladistan/otelcol-custom/processor/resourceversionprocessor v0.0.0
   # Log recombine (multiline log combination without noisy errors)
   - gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
+  # Log shaping (severity, body, rename, strip, multiline, principal)
+  - gomod: github.com/vladistan/otelcol-custom/processor/logshapeprocessor v0.0.0
   # Asset DB enrichment (MAC address to hostname/location lookup)
   - gomod: github.com/vladistan/otelcol-custom/processor/assetdbprocessor v0.0.0
   # MAC address extraction (extracts MACs from log body/attributes)
@@ -209,5 +239,7 @@ exporters:
   # Write to local files (debugging/buffering)
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.164.1
   # --- Debug ---
+  # NetFlow records into the typed flow table (pipeline logs/flowlog only)
+  - gomod: github.com/vladistan/otelcol-custom/exporter/flowlogexporter v0.0.0
   # Console output for debugging
   - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.164.0

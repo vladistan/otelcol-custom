@@ -68,7 +68,7 @@ type NVMeIdentify struct {
 	VendorID uint16
 }
 
-func trimField(b []byte) string { return strings.Trim(string(b), " \x00") }
+func trimField(b []byte) string { return validUTF8(strings.Trim(string(b), " \x00")) }
 
 // ParseNVMeIdentify decodes a 4096 byte Identify Controller answer.
 func ParseNVMeIdentify(buf []byte) (NVMeIdentify, error) {

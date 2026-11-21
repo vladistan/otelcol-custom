@@ -52,9 +52,14 @@ func (r *fswatchReceiver) Start(ctx context.Context, host component.Host) error 
 	if err != nil {
 		return err
 	}
-	match, err := newMatcher(r.cfg.Exclude)
-	if err != nil {
-		return err
+	specs := r.cfg.rootSpecs()
+	matchers := make([]*matcher, len(specs))
+	for i, spec := range specs {
+		m, err := newMatcher(spec.patterns())
+		if err != nil {
+			return err
+		}
+		matchers[i] = m
 	}
 	var store stateStore
 	if r.cfg.StorageID != nil {
@@ -67,10 +72,10 @@ func (r *fswatchReceiver) Start(ctx context.Context, host component.Host) error 
 
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	r.cancel = cancel
-	for _, root := range r.cfg.Paths {
+	for i, spec := range specs {
 		rw := newRootWatch(rootParams{
-			cfg: r.cfg, root: root, logger: r.settings.Logger, next: r.next, tel: tel,
-			tree: r.tree, store: store, open: r.open, now: time.Now, match: match,
+			cfg: r.cfg, root: spec.path, name: spec.name, logger: r.settings.Logger, next: r.next, tel: tel,
+			tree: r.tree, store: store, open: r.open, now: time.Now, match: matchers[i],
 		})
 		rw.backoffMin, rw.backoffMax = r.backoffMin, r.backoffMax
 		r.wg.Add(1)

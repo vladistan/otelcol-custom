@@ -5,6 +5,7 @@ package k8sdiscovery
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,9 +13,25 @@ import (
 )
 
 const (
-	discoveryConfig = "../configs/edge-k8s-discovery.yaml"
-	appsConfig      = "../configs/edge-k8s-apps.yaml"
+	discoveryConfig        = "../configs/edge-k8s-discovery.yaml"
+	appsConfig             = "../configs/edge-k8s-apps.yaml"
+	gatewayDiscoveryConfig = "../configs/gateway-k8s-discovery.yaml"
+	gatewayAppsConfig      = "../configs/gateway-k8s-apps.yaml"
 )
+
+// appsConfigs are the configs that hold one rule for each application receiver.
+var appsConfigs = []string{appsConfig, gatewayAppsConfig}
+
+// creatorOf is the receiver_creator block name of a reference config.
+func creatorOf(path string) string {
+	switch path {
+	case discoveryConfig:
+		return "receiver_creator/pods"
+	case gatewayDiscoveryConfig:
+		return "receiver_creator/redis"
+	}
+	return "receiver_creator/apps"
+}
 
 // Plain maps from a YAML file, to read keys without the collector's own loader.
 type doc = map[string]any
@@ -100,7 +117,7 @@ func TestReferenceConfig_PodLabelsAreAddedAfterTheCreatorAssociatedOnThePodUID(t
 }
 
 func TestReferenceConfig_KeepsAnnotationDiscoveryOff(t *testing.T) {
-	for _, path := range []string{discoveryConfig, appsConfig} {
+	for _, path := range []string{discoveryConfig, appsConfig, gatewayDiscoveryConfig, gatewayAppsConfig} {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -112,42 +129,95 @@ func TestReferenceConfig_KeepsAnnotationDiscoveryOff(t *testing.T) {
 }
 
 func TestAppsConfig_HasOneRuleForEachOfTheSixReceiversAndNoOthers(t *testing.T) {
-	rules := child(t, child(t, child(t, loadDoc(t, appsConfig), "receivers"), "receiver_creator/apps"), "receivers")
+	for _, path := range appsConfigs {
+		t.Run(path, func(t *testing.T) {
+			rules := child(t, child(t, child(t, loadDoc(t, path), "receivers"), "receiver_creator/apps"), "receivers")
 
-	want := []string{"redis", "postgresql", "mysql", "mongodb", "rabbitmq", "nginx"}
-	if len(rules) != len(want) {
-		t.Errorf("got %d rules, want %d", len(rules), len(want))
-	}
-	for _, name := range want {
-		if _, ok := rules[name]; !ok {
-			t.Errorf("no rule for %s", name)
-		}
-	}
-	for _, banned := range []string{"memcached", "kafka_metrics"} {
-		if _, ok := rules[banned]; ok {
-			t.Errorf("a rule for %s: that receiver is not compiled in", banned)
-		}
+			want := []string{"redis", "postgresql", "mysql", "mongodb", "rabbitmq", "nginx"}
+			if len(rules) != len(want) {
+				t.Errorf("got %d rules, want %d", len(rules), len(want))
+			}
+			for _, name := range want {
+				if _, ok := rules[name]; !ok {
+					t.Errorf("no rule for %s", name)
+				}
+			}
+			for _, banned := range []string{"memcached", "kafka_metrics"} {
+				if _, ok := rules[banned]; ok {
+					t.Errorf("a rule for %s: that receiver is not compiled in", banned)
+				}
+			}
+		})
 	}
 }
 
 func TestAppsConfig_CredentialsComeFromTheEnvironmentOnly(t *testing.T) {
-	raw, err := os.ReadFile(appsConfig)
-	if err != nil {
-		t.Fatal(err)
+	for _, path := range []string{appsConfig, gatewayAppsConfig, gatewayDiscoveryConfig} {
+		t.Run(path, func(t *testing.T) {
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for number, line := range strings.Split(string(raw), "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "#") {
+					continue
+				}
+				for _, key := range []string{"password:", "username:"} {
+					if !strings.HasPrefix(trimmed, key) {
+						continue
+					}
+					value := strings.TrimSpace(strings.TrimPrefix(trimmed, key))
+					if !strings.HasPrefix(value, "${env:") && !strings.HasPrefix(value, "${file:") {
+						t.Errorf("line %d: %s is not read from the environment or a file", number+1, trimmed)
+					}
+				}
+			}
+		})
 	}
-	for number, line := range strings.Split(string(raw), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		for _, key := range []string{"password:", "username:"} {
-			if !strings.HasPrefix(trimmed, key) {
-				continue
+}
+
+func TestGatewayConfig_ObserverWatchesTheWholeClusterThroughOnePodsKey(t *testing.T) {
+	for _, path := range []string{gatewayDiscoveryConfig, gatewayAppsConfig} {
+		t.Run(path, func(t *testing.T) {
+			observerCfg := child(t, child(t, loadDoc(t, path), "extensions"), "k8s_observer")
+
+			if _, ok := observerCfg["node"]; ok {
+				t.Errorf("node = %v: a node key limits the observer to one node; the gateway watches the cluster", observerCfg["node"])
 			}
-			value := strings.TrimSpace(strings.TrimPrefix(trimmed, key))
-			if !strings.HasPrefix(value, "${env:") && !strings.HasPrefix(value, "${file:") {
-				t.Errorf("line %d: %s is not read from the environment or a file", number+1, trimmed)
+			if observerCfg["observe_pods"] != true {
+				t.Errorf("observe_pods = %v, want true", observerCfg["observe_pods"])
 			}
-		}
+			for key := range observerCfg {
+				if strings.HasPrefix(key, "observe_") && key != "observe_pods" {
+					t.Errorf("%s is set: the reference observes pods only", key)
+				}
+			}
+		})
+	}
+}
+
+func TestGatewayConfig_OneRedisRuleOnPort6379ThatLeavesOutTheCollectorsOwnPod(t *testing.T) {
+	d := loadDoc(t, gatewayDiscoveryConfig)
+	creator := child(t, child(t, d, "receivers"), "receiver_creator/redis")
+	rules := child(t, creator, "receivers")
+
+	if len(rules) != 1 {
+		t.Fatalf("got %d rules, want exactly one", len(rules))
+	}
+	rule, _ := child(t, rules, "redis")["rule"].(string)
+	if !strings.Contains(rule, "port == 6379") {
+		t.Errorf("rule %q does not name port 6379", rule)
+	}
+	if !strings.Contains(rule, `pod.labels["app.kubernetes.io/component"] != "opentelemetry-collector"`) {
+		t.Errorf("rule %q does not leave out the collector's own pod", rule)
+	}
+	watched, _ := creator["watch_observers"].([]any)
+	if len(watched) != 1 || watched[0] != "k8s_observer" {
+		t.Errorf("watch_observers = %v, want [k8s_observer]", watched)
+	}
+	extensions, _ := child(t, d, "service")["extensions"].([]any)
+	if !slices.Contains(extensions, any("k8s_observer")) {
+		t.Errorf("service.extensions = %v, want k8s_observer in it", extensions)
 	}
 }

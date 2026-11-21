@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+[JOB-RUNNER] {"level":50,"time":1795129202193,"pid":19,"hostname":"app-5d4f7","error":{"name":"TypeError","message":"fetch failed","stack":"TypeError: fetch failed\n    at node:internal/deps/undici"}}
+{"level":30,"time":1795129202193,"pid":7,"hostname":"app-5d4f7","msg":"request completed","statusCode":200}

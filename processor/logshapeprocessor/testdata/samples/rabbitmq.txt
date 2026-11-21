@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+2026-11-20 00:27:56.299641+00:00 [info] <0.18182677.0> User 'monitor' authenticated successfully
+2026-11-20 00:28:01.100000+00:00 [warning] <0.512.0> closing AMQP connection, client unexpectedly disconnected

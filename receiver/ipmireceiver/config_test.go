@@ -15,7 +15,7 @@ import (
 
 func validBMC() BMCConfig {
 	suite := 3
-	return BMCConfig{Name: "pve12", Address: "192.0.2.12", Username: "ro", Password: "secret", Vendor: "supermicro", CipherSuite: &suite}
+	return BMCConfig{Name: "node12", Address: "192.0.2.12", Username: "ro", Password: "secret", Vendor: "supermicro", CipherSuite: &suite}
 }
 
 func validConfig() *Config {
@@ -38,7 +38,7 @@ func TestConfigLoadsAllTenBMCKeysAndTheDefaults(t *testing.T) {
 	cm := confmap.NewFromStringMap(map[string]any{
 		"collection_interval": "30s",
 		"bmcs": []any{map[string]any{
-			"name": "pve12", "address": "192.0.2.12:623", "username": "ro", "password": "secret", "vendor": "supermicro",
+			"name": "node12", "address": "192.0.2.12:623", "username": "ro", "password": "secret", "vendor": "supermicro",
 			"cipher_suite": 3, "ipmi_version": "2.0", "privilege_level": "administrator", "dcmi_power": true, "power_interval": "10m",
 		}, map[string]any{
 			"name": "fw7", "address": "192.0.2.7", "username": "ro", "password": "secret", "vendor": "supermicro", "cipher_suite": 3,
@@ -49,7 +49,7 @@ func TestConfigLoadsAllTenBMCKeysAndTheDefaults(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 
 	full := cfg.BMCs[0].resolved()
-	assert.Equal(t, "pve12", full.Name)
+	assert.Equal(t, "node12", full.Name)
 	assert.Equal(t, "192.0.2.12:623", full.Address)
 	assert.Equal(t, "2.0", full.IPMIVersion)
 	assert.Equal(t, "administrator", full.PrivilegeLevel)

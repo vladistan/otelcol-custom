@@ -15,7 +15,7 @@ import (
 
 func testResource() Resource {
 	return Resource{
-		HostName: "pve12", Vendor: "supermicro", ServerAddress: "192.0.2.12", Protocol: "ipmi",
+		HostName: "node12", Vendor: "supermicro", ServerAddress: "192.0.2.12", Protocol: "ipmi",
 		Model: "X9DRW", Serial: "S123", Firmware: "3.53",
 	}
 }
@@ -49,7 +49,7 @@ func TestResourceCarriesTheSevenAttributes(t *testing.T) {
 	got := attrMap(b.Metrics().ResourceMetrics().At(0).Resource().Attributes())
 
 	assert.Equal(t, map[string]string{
-		"host.name": "pve12", "hw.vendor": "supermicro", "server.address": "192.0.2.12", "hw.bmc.protocol": "ipmi",
+		"host.name": "node12", "hw.vendor": "supermicro", "server.address": "192.0.2.12", "hw.bmc.protocol": "ipmi",
 		"hw.model": "X9DRW", "hw.serial_number": "S123", "hw.firmware_version": "3.53",
 	}, got)
 }
@@ -254,7 +254,7 @@ func TestComponentResourceCarriesItsOverrides(t *testing.T) {
 	assert.Equal(t, "DRIVE-1", got[AttrSerialNumber])
 	assert.Equal(t, "SSD", got[AttrPhysicalDiskType])
 	assert.Equal(t, "X9DRW", got[AttrModel], "an empty override keeps the BMC value")
-	assert.Equal(t, "pve12", got[ResHostName])
+	assert.Equal(t, "node12", got[ResHostName])
 	assert.Equal(t, "S123", attrMap(md.ResourceMetrics().At(0).Resource().Attributes())[AttrSerialNumber], "the BMC resource is unchanged")
 }
 

@@ -73,9 +73,8 @@ func TestDocs_TheWindowsGuideStatesTheReceiversRules(t *testing.T) {
 }
 
 func TestChangelog_RecordsTheReceiverAndItsGrowth(t *testing.T) {
+	// The entry stays in the release section it shipped in, so the whole file is read.
 	log := readRepoFile(t, "CHANGELOG.md")
-	version := strings.TrimSpace(readRepoFile(t, "VERSION"))
-	head := section(t, log, "## [Unreleased]", "\n## [") + section(t, log, "## ["+version+"]", "\n## [")
-	assert.Contains(t, head, "`windiskhealth`")
-	assert.Regexp(t, `otelcol-edge-\d+\.\d+\.\d+-windows-amd64\.exe`, head)
+	assert.Contains(t, log, "`windiskhealth`")
+	assert.Regexp(t, `otelcol-edge-\d+\.\d+\.\d+-windows-amd64\.exe`, log)
 }

@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore vstan
+
 package winlogprocessor
 
 import (
@@ -19,6 +21,7 @@ const (
 	originalMessageTruncatedKey = "original_message.truncated"
 	eventDataPrefix             = "winlog.event_data."
 	keywordsKey                 = "keywords"
+	unsubstitutedKey            = "vstan.winlog.unsubstituted"
 )
 
 type dataField struct{ key, value string }
@@ -40,12 +43,37 @@ func (p *winlogProcessor) shape(record plog.LogRecord, fields *eventFields) {
 	putHeaderAttributes(attrs, body, fields.channel)
 	data := putEventData(attrs, body)
 
+	provider := nestedString(body, "provider", "name")
+	eventID, hasEventID := nestedInt(body, "event_id", "id")
 	message := stringField(body, "message")
 	if message == "" {
-		eventID, hasEventID := nestedInt(body, "event_id", "id")
-		message = fallbackBody(nestedString(body, "provider", "name"), eventID, hasEventID, data)
+		message = fallbackBody(provider, eventID, hasEventID, data)
+	}
+	if hasUnsubstitutedPlaceholders(provider, message, data) {
+		attrs.PutBool(unsubstitutedKey, true)
 	}
 	record.Body().SetStr(message)
+	if hasEventID {
+		p.summarize(record, provider, eventID, message, data)
+	}
+}
+
+// summarize replaces the body with a one-line summary when the event has a
+// template, keeping the rendered text in vstan.winlog.message (except for
+// PowerShell 4104, whose script stays only in ScriptBlockText). The severity of
+// NETLOGON 5774, PowerShell 4104 and StorPort 505 (failed IO) is set by provider
+// and id, with or without a summary.
+func (p *winlogProcessor) summarize(record plog.LogRecord, provider string, id int64, message string, data []dataField) {
+	if line, ok := p.summaries.summarize(provider, id, data, message); ok {
+		if p.summaries.keepsFullText(provider, id) {
+			record.Attributes().PutStr(fullMessageKey, validUTF8(unescapeControls(message)))
+		}
+		record.Body().SetStr(line)
+	}
+	if number, text, ok := p.summaries.severityFor(provider, id, data); ok {
+		record.SetSeverityNumber(number)
+		record.SetSeverityText(text)
+	}
 }
 
 // putHeaderAttributes sets the winlog.* attributes that come from the event
@@ -54,11 +82,12 @@ func putHeaderAttributes(attrs, body pcommon.Map, channel string) {
 	attrs.PutStr("winlog.channel", channel)
 	putNonEmpty(attrs, "winlog.provider_name", nestedString(body, "provider", "name"))
 	putNonEmpty(attrs, "winlog.provider_guid", nestedString(body, "provider", "guid"))
-	putNonEmpty(attrs, "winlog.computer_name", stringField(body, "computer"))
-	putNonEmpty(attrs, "winlog.task", stringField(body, "task"))
-	putNonEmpty(attrs, "winlog.opcode", stringField(body, "opcode"))
+	eventID, hasEventID := nestedInt(body, "event_id", "id")
+	task, opcode := headerLabels(nestedString(body, "provider", "name"), eventID, stringField(body, "task"), stringField(body, "opcode"))
+	putNonEmpty(attrs, "winlog.task", task)
+	putNonEmpty(attrs, "winlog.opcode", opcode)
 	putNonEmpty(attrs, "winlog.user.identifier", nestedString(body, "security", "user_id"))
-	if eventID, ok := nestedInt(body, "event_id", "id"); ok {
+	if hasEventID {
 		attrs.PutInt("winlog.event_id", eventID)
 	}
 	if recordID, ok := body.Get("record_id"); ok && recordID.Type() == pcommon.ValueTypeInt {

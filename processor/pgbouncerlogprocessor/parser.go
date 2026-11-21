@@ -24,8 +24,8 @@ type PgBouncerLogInfo struct {
 }
 
 // PgBouncer log format examples:
-// 2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 login attempt: db=postgres user=postgres tls=no replication=no
-// 2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 closing because: client close request (age=0s)
+// 2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 login attempt: db=postgres user=postgres tls=no replication=no
+// 2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 closing because: client close request (age=0s)
 // 2025-12-31 01:45:00.000 UTC [1] LOG stats: 0 xacts/s, 0 queries/s, in 0 B/s, out 0 B/s, xact 0 us, query 0 us, wait 0 us
 // 2025-12-31 01:45:00.000 UTC [1] WARNING pooler error: no such database: test
 

@@ -1,0 +1,26 @@
+[
+  {
+    "body": "(root) CMD (/usr/local/bin/backup.sh)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "service.name": "cron"
+    },
+    "attributes": {
+      "log.record.original": "cron: (root) CMD (/usr/local/bin/backup.sh)"
+    }
+  },
+  {
+    "body": "(www-data) CMD (php /var/www/cleanup.php)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "service.name": "cron"
+    },
+    "attributes": {
+      "log.record.original": "cron: (www-data) CMD (php /var/www/cleanup.php)"
+    }
+  }
+]

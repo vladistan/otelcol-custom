@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore vstan
+
 //go:build windows
 
 package fswatchreceiver
@@ -211,7 +213,7 @@ func TestWindowsReceiverEndToEnd(t *testing.T) {
 	}
 	eventually(t, "the record for sub.dx", func() bool { return len(records(sink)) == 1 })
 	got := records(sink)[0]
-	if got.attrs["file.name"] != "sub.dx" || got.attrs["file.catchup"] != false {
+	if got.attrs["file.name"] != "sub.dx" || got.attrs["vstan.fswatch.catchup"] != false {
 		t.Fatalf("attrs %v", got.attrs)
 	}
 }

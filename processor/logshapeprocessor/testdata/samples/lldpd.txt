@@ -1,0 +1,3 @@
+# provenance: real
+# evidence: a captured neighbour record, names and addresses replaced
+{"observed_at":"2026-11-20T13:06:13Z","interface":"eno2","via":"LLDP","age":"4 days, 17:24:51","chassis_id":"00:11:22:33:44:55","chassis_name":"switch-48.example.net","chassis_descr":"Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 15.0(1)EX3, RELEASE SOFTWARE (fc2)\nTechnical Support: http://www.cisco.com/techsupport\nCopyright (c) 1986-2013 by Cisco Systems, Inc.\nCompiled Mon 23-Sep-13 18:24 by prod_r","mgmt_ip":["192.0.2.39"],"port_id":"Gi4/0/18","port_descr":"GigabitEthernet4/0/18"}

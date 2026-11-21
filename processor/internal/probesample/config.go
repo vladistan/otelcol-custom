@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore readyz livez
+
 package probesample
 
 import (
@@ -20,11 +22,18 @@ type Config struct {
 	KeepRatio float64 `mapstructure:"keep_ratio"`
 }
 
-// Default returns the built-in probe lists and keep ratio.
+var (
+	defaultPaths  = []string{"/healthz", "/health", "/api/health", "/probe", "/api/healthz", "/ready", "/readyz", "/livez"}
+	defaultAgents = []string{"kube-probe/", "ELB-HealthChecker/", "HealthProbe", "Amazon-Route53-Health-Check-Service"}
+)
+
+// Default returns the built-in probe lists and keep ratio. The agents are the Kubernetes probe,
+// the load balancer health checker, a generic HealthProbe agent and the Route53 health check.
+// A list set in the configuration extends these lists; the sampler always adds the built-in entries.
 func Default() Config {
 	return Config{
-		Paths:     []string{"/healthz", "/health", "/api/health", "/probe", "/api/healthz"},
-		Agents:    []string{"kube-probe/", "ELB-HealthChecker/"},
+		Paths:     append([]string(nil), defaultPaths...),
+		Agents:    append([]string(nil), defaultAgents...),
 		KeepRatio: 0.2,
 	}
 }

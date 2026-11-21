@@ -41,7 +41,7 @@ func bothEnabled(f *fakePVE) *Config {
 	cfg.Guests = GuestsConfig{ScraperConfig: ScraperConfig{
 		Enabled: true, TokenID: "otel@pve!guests", TokenSecret: "guests-secret",
 		CollectionInterval: time.Hour, Timeout: time.Second,
-	}, Node: "pve1"}
+	}, Node: "node1"}
 	return cfg
 }
 
@@ -134,7 +134,8 @@ func TestOnlyResourcesEnabledStartsNoGuestsScraper(t *testing.T) {
 	initialDelay = time.Millisecond
 	t.Cleanup(func() { initialDelay = old })
 	require.NoError(t, r.Start(context.Background(), componenttest.NewNopHost()))
-	require.Eventually(t, func() bool { return f.countOf("/api2/json/cluster/resources") > 0 }, 5*time.Second, 5*time.Millisecond)
+	// 30 s: a loaded machine can take over 4 s to run the first resources scrape; the wait returns as soon as the condition holds.
+	require.Eventually(t, func() bool { return f.countOf("/api2/json/cluster/resources") > 0 }, 30*time.Second, 5*time.Millisecond)
 	require.NoError(t, r.Shutdown(context.Background()))
 	for _, hit := range f.hitList() {
 		assert.NotContains(t, hit, "/nodes/")
@@ -352,12 +353,12 @@ func nodeLines(logs *observer.ObservedLogs) []observer.LoggedEntry {
 func TestStartLogsTheConfiguredGuestsNodeOnce(t *testing.T) {
 	set, logs := settingsWithLogs()
 
-	startAndStop(t, set, guestsOnlyConfig(resourcesFake(t), "pve12"))
+	startAndStop(t, set, guestsOnlyConfig(resourcesFake(t), "node12"))
 
 	lines := nodeLines(logs)
 	require.Len(t, lines, 1)
 	ctx := lines[0].ContextMap()
-	assert.Equal(t, "pve12", ctx["node"])
+	assert.Equal(t, "node12", ctx["node"])
 	assert.Equal(t, "guests.node", ctx["source"])
 }
 

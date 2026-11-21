@@ -117,3 +117,30 @@ func TestOSTreeWalkStopsWhenContextEnds(t *testing.T) {
 		t.Fatalf("reported %d files after cancel", n)
 	}
 }
+
+func TestOSTreeWalkPrunesDefaultExcludedDirectoriesWithoutVisitingThem(t *testing.T) {
+	root := t.TempDir()
+	when := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	writeFile(t, filepath.Join(root, ".tmp.driveupload", "1"), 3, when)
+	writeFile(t, filepath.Join(root, ".tmp.driveupload", "deep", "2"), 3, when)
+	writeFile(t, filepath.Join(root, "sub", "good.dx"), 5, when)
+	m, err := newMatcher(defaultExclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked, visited []string
+	_, err = osTree{}.Walk(t.Context(), root, func(rel string) bool {
+		asked = append(asked, rel)
+		return m.excluded(rel)
+	}, func(f fileInfo) { visited = append(visited, f.path) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(asked)
+	if len(asked) != 2 || asked[0] != ".tmp.driveupload" || asked[1] != "sub" {
+		t.Errorf("directories offered to the pruner %v, want [.tmp.driveupload sub]: nothing below a pruned directory is read", asked)
+	}
+	if want := filepath.Join(root, "sub", "good.dx"); len(visited) != 1 || visited[0] != want {
+		t.Errorf("visited %v, want only %s", visited, want)
+	}
+}

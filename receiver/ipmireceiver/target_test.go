@@ -84,7 +84,7 @@ func TestResourceAttributesComeFromTheTargetAndTheDeviceID(t *testing.T) {
 	got := map[string]string{}
 	attrs.Range(func(k string, v pcommon.Value) bool { got[k] = v.Str(); return true })
 	assert.Equal(t, map[string]string{
-		"host.name": "pve12", "hw.vendor": "supermicro", "server.address": "192.0.2.12", "hw.bmc.protocol": "ipmi",
+		"host.name": "node12", "hw.vendor": "supermicro", "server.address": "192.0.2.12", "hw.bmc.protocol": "ipmi",
 		"hw.firmware_version": "3.26",
 	}, got)
 }
@@ -384,7 +384,7 @@ func TestAuthFailuresAreCountedPerBMC(t *testing.T) {
 	clock.Advance(15 * time.Minute)
 	r.scrape(t)
 
-	assert.Equal(t, []string{"pve12", "pve12"}, r.authFails)
+	assert.Equal(t, []string{"node12", "node12"}, r.authFails)
 }
 
 func TestTimeoutAndRefusedDoNotBackOffBeyondTheNextScrape(t *testing.T) {
@@ -573,7 +573,7 @@ func TestAnAdministratorAuthFailureCountsAndBacksOffLikeAnyOther(t *testing.T) {
 
 	r.scrape(t)
 
-	assert.Equal(t, []string{"pve12"}, r.authFails)
+	assert.Equal(t, []string{"node12"}, r.authFails)
 	clock.Advance(time.Minute)
 	r.scrape(t)
 	assert.Equal(t, []string{"user", "administrator", "user"}, board.dials, "the power session is not retried inside the back-off")

@@ -127,21 +127,28 @@ func TestServiceNameOnGroupsRecordsOfOneProviderInOrder(t *testing.T) {
 	}
 }
 
-func TestServiceNameOnKeepsTheFallbackForAnEmptyProvider(t *testing.T) {
+func TestServiceNameOnLeavesServiceNameUnsetForAnEmptyProvider(t *testing.T) {
 	out := consume(t, serviceNameOn(), providerBatch("", "NETLOGON"))
 	names, _ := resourceNames(out)
-	if len(names) != 2 || names[0] != fallbackServiceName || names[1] != "NETLOGON" {
-		t.Fatalf("service.name values = %v, want [%s NETLOGON]", names, fallbackServiceName)
+	if len(names) != 2 || names[0] != "" || names[1] != "NETLOGON" {
+		t.Fatalf("service.name values = %q, want [\"\" NETLOGON]", names)
 	}
 }
 
-func TestServiceNameOnKeepsTheFallbackForAnAbsentProvider(t *testing.T) {
+func TestServiceNameOnLeavesServiceNameUnsetForAnAbsentProvider(t *testing.T) {
 	logs := providerBatch("x")
 	record := logs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	record.Body().Map().Remove("provider")
 	names, _ := resourceNames(consume(t, serviceNameOn(), logs))
+	if len(names) != 1 || names[0] != "" {
+		t.Fatalf("service.name values = %q, want one unset name", names)
+	}
+}
+
+func TestServiceNameOffKeepsTheFallbackForAnEmptyProvider(t *testing.T) {
+	names, _ := resourceNames(consume(t, &Config{}, providerBatch("")))
 	if len(names) != 1 || names[0] != fallbackServiceName {
-		t.Fatalf("service.name values = %v, want one %q", names, fallbackServiceName)
+		t.Fatalf("service.name values = %q, want one %q", names, fallbackServiceName)
 	}
 }
 

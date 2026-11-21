@@ -1,0 +1,14 @@
+[
+  {
+    "body": "Synced 0 production policies and 0 draft/published (by ID) from DB to in-memory registry",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "LiteLLM Proxy",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "policy_registry.py",
+      "code.line.number": 577,
+      "log.record.original": "07:13:58 - LiteLLM Proxy:INFO: policy_registry.py:577 - Synced 0 production policies and 0 draft/published (by ID) from DB to in-memory registry"
+    }
+  }
+]

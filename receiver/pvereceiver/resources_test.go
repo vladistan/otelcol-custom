@@ -20,21 +20,21 @@ import (
 )
 
 const resourcesFixture = `{"data":[
- {"id":"node/pve1","type":"node","node":"pve1","status":"online","cpu":0.12,"maxcpu":8,"mem":4294967296,"maxmem":17179869184,"disk":1000,"maxdisk":2000,"uptime":86400},
- {"id":"node/pve2","type":"node","node":"pve2","status":"offline"},
- {"id":"qemu/100","type":"qemu","node":"pve1","vmid":100,"name":"web","status":"running","cpu":0.05,"maxcpu":2,"mem":1000,"maxmem":2000,"disk":0,"maxdisk":3000,"netin":11,"netout":22,"diskread":33,"diskwrite":44,"uptime":3600,"tags":"prod;web","hastate":"started"},
- {"id":"qemu/101","type":"qemu","node":"pve1","vmid":101,"name":"old","status":"stopped","maxcpu":1,"maxmem":1073741824,"maxdisk":4000},
- {"id":"qemu/9000","type":"qemu","node":"pve1","vmid":9000,"name":"tmpl","status":"stopped","template":1,"maxcpu":1,"maxmem":1,"maxdisk":1},
- {"id":"lxc/200","type":"lxc","node":"pve1","vmid":200,"name":"ct","status":"running","cpu":0.01,"maxcpu":1,"mem":5,"maxmem":6,"disk":7,"maxdisk":8,"netin":1,"netout":2,"diskread":3,"diskwrite":4,"uptime":100},
- {"id":"qemu/300","type":"qemu","node":"pve2","vmid":300,"name":"stale","status":"unknown"},
- {"id":"storage/pve1/local","type":"storage","node":"pve1","storage":"local","status":"available","disk":100,"maxdisk":1000,"shared":0,"content":"iso,vztmpl","plugintype":"dir"},
- {"id":"storage/pve1/ceph","type":"storage","node":"pve1","storage":"ceph","status":"available","disk":200,"maxdisk":2000,"shared":1,"content":"images","plugintype":"rbd"},
- {"id":"sdn/pve1/localnetwork","type":"sdn","node":"pve1","status":"ok","sdn":"localnetwork"},
+ {"id":"node/node1","type":"node","node":"node1","status":"online","cpu":0.12,"maxcpu":8,"mem":4294967296,"maxmem":17179869184,"disk":1000,"maxdisk":2000,"uptime":86400},
+ {"id":"node/node2","type":"node","node":"node2","status":"offline"},
+ {"id":"qemu/100","type":"qemu","node":"node1","vmid":100,"name":"web","status":"running","cpu":0.05,"maxcpu":2,"mem":1000,"maxmem":2000,"disk":0,"maxdisk":3000,"netin":11,"netout":22,"diskread":33,"diskwrite":44,"uptime":3600,"tags":"prod;web","hastate":"started"},
+ {"id":"qemu/101","type":"qemu","node":"node1","vmid":101,"name":"old","status":"stopped","maxcpu":1,"maxmem":1073741824,"maxdisk":4000},
+ {"id":"qemu/9000","type":"qemu","node":"node1","vmid":9000,"name":"tmpl","status":"stopped","template":1,"maxcpu":1,"maxmem":1,"maxdisk":1},
+ {"id":"lxc/200","type":"lxc","node":"node1","vmid":200,"name":"ct","status":"running","cpu":0.01,"maxcpu":1,"mem":5,"maxmem":6,"disk":7,"maxdisk":8,"netin":1,"netout":2,"diskread":3,"diskwrite":4,"uptime":100},
+ {"id":"qemu/300","type":"qemu","node":"node2","vmid":300,"name":"stale","status":"unknown"},
+ {"id":"storage/node1/local","type":"storage","node":"node1","storage":"local","status":"available","disk":100,"maxdisk":1000,"shared":0,"content":"iso,vztmpl","plugintype":"dir"},
+ {"id":"storage/node1/ceph","type":"storage","node":"node1","storage":"ceph","status":"available","disk":200,"maxdisk":2000,"shared":1,"content":"images","plugintype":"rbd"},
+ {"id":"sdn/node1/localnetwork","type":"sdn","node":"node1","status":"ok","sdn":"localnetwork"},
  {"id":"pool/prod","type":"pool","poolid":"prod"}
 ]}`
 
 const (
-	clusterStatusFixture = `{"data":[{"type":"cluster","name":"lab","nodes":2,"quorate":1},{"type":"node","name":"pve1","nodeid":1,"online":1,"level":"","local":1},{"type":"node","name":"pve2","nodeid":2,"online":0,"level":""}]}`
+	clusterStatusFixture = `{"data":[{"type":"cluster","name":"lab","nodes":2,"quorate":1},{"type":"node","name":"node1","nodeid":1,"online":1,"level":"","local":1},{"type":"node","name":"node2","nodeid":2,"online":0,"level":""}]}`
 	versionFixture       = `{"data":{"version":"8.0.3","release":"8.0","repoid":"bbf3993334bfa916"}}`
 )
 
@@ -168,7 +168,7 @@ func TestUnitsTypesAndAttributesOfTheResourceMetrics(t *testing.T) {
 	require.Len(t, up, 1)
 	assert.Equal(t, "1", up[0].unit)
 	assert.Equal(t, "qemu", up[0].attrs["pve.resource.type"])
-	assert.Equal(t, "pve1", up[0].attrs["pve.node"])
+	assert.Equal(t, "node1", up[0].attrs["pve.node"])
 	assert.Equal(t, "running", up[0].attrs["status"])
 
 	cpu := find(pts, "pve.resource.cpu.utilization", "pve.resource.id", "qemu/100")
@@ -204,8 +204,8 @@ func TestStatusMapsToUp(t *testing.T) {
 	pts := scrapeResources(t, newResources(t, resourcesFake(t), nil))
 
 	for id, want := range map[string]float64{
-		"node/pve1": 1, "node/pve2": 0, "qemu/100": 1, "qemu/101": 0, "lxc/200": 1,
-		"qemu/300": 0, "storage/pve1/local": 1,
+		"node/node1": 1, "node/node2": 0, "qemu/100": 1, "qemu/101": 0, "lxc/200": 1,
+		"qemu/300": 0, "storage/node1/local": 1,
 	} {
 		got := find(pts, "pve.resource.up", "pve.resource.id", id)
 		require.Len(t, got, 1, id)
@@ -219,17 +219,17 @@ func TestOfflineNodeKeepsTheOthersAndMarksItsGuestsUnknown(t *testing.T) {
 	stale := find(pts, "pve.resource.up", "pve.resource.id", "qemu/300")
 	require.Len(t, stale, 1)
 	assert.Equal(t, "unknown", stale[0].attrs["status"])
-	assert.Equal(t, "pve2", stale[0].attrs["pve.node"])
+	assert.Equal(t, "node2", stale[0].attrs["pve.node"])
 	assert.NotEmpty(t, find(pts, "pve.resource.cpu.utilization", "pve.resource.id", "qemu/100"), "other nodes keep their data")
 }
 
 func TestStorageMetricsAndInfo(t *testing.T) {
 	pts := scrapeResources(t, newResources(t, resourcesFake(t), nil))
 
-	shared := find(pts, "pve.storage.shared", "pve.resource.id", "storage/pve1/ceph")
+	shared := find(pts, "pve.storage.shared", "pve.resource.id", "storage/node1/ceph")
 	require.Len(t, shared, 1)
 	assert.InDelta(t, 1, shared[0].value, 1e-9)
-	local := find(pts, "pve.storage.shared", "pve.resource.id", "storage/pve1/local")
+	local := find(pts, "pve.storage.shared", "pve.resource.id", "storage/node1/local")
 	assert.InDelta(t, 0, local[0].value, 1e-9)
 	info := find(pts, "pve.storage.info", "storage", "local")
 	require.Len(t, info, 1)
@@ -251,7 +251,7 @@ func TestFiveInfoGaugesWithHAStateOnlyForManagedGuests(t *testing.T) {
 
 	nodes := find(pts, "pve.node.info")
 	require.Len(t, nodes, 2)
-	assert.Equal(t, "1", find(pts, "pve.node.info", "name", "pve1")[0].attrs["nodeid"])
+	assert.Equal(t, "1", find(pts, "pve.node.info", "name", "node1")[0].attrs["nodeid"])
 	version := find(pts, "pve.version.info")
 	require.Len(t, version, 1)
 	assert.Equal(t, "8.0.3", version[0].attrs["version"])
@@ -353,14 +353,14 @@ func TestEachOptionalKeyMakesExactlyItsCall(t *testing.T) {
 	}{
 		"subscription": {
 			set:   func(c *Config) { c.Resources.Subscription = true },
-			paths: []string{"/api2/json/nodes/pve1/subscription"},
+			paths: []string{"/api2/json/nodes/node1/subscription"},
 			body:  `{"data":{"status":"Active","level":"c"}}`,
 			want:  "pve.subscription.status",
 		},
 		"replication": {
 			set:   func(c *Config) { c.Resources.Replication = true },
 			paths: []string{"/api2/json/cluster/replication"},
-			body:  `{"data":[{"id":"100-0","guest":100,"source":"pve1","target":"pve2"}]}`,
+			body:  `{"data":[{"id":"100-0","guest":100,"source":"node1","target":"node2"}]}`,
 			want:  "pve.replication.job",
 		},
 		"backup_info": {
@@ -371,7 +371,7 @@ func TestEachOptionalKeyMakesExactlyItsCall(t *testing.T) {
 		},
 		"guest_config": {
 			set:   func(c *Config) { c.Resources.GuestConfig = true },
-			paths: []string{"/api2/json/nodes/pve1/qemu/100/config", "/api2/json/nodes/pve1/qemu/101/config", "/api2/json/nodes/pve1/qemu/9000/config", "/api2/json/nodes/pve1/lxc/200/config"},
+			paths: []string{"/api2/json/nodes/node1/qemu/100/config", "/api2/json/nodes/node1/qemu/101/config", "/api2/json/nodes/node1/qemu/9000/config", "/api2/json/nodes/node1/lxc/200/config"},
 			body:  `{"data":{"onboot":1}}`,
 			want:  "pve.guest.onboot",
 		},
@@ -415,7 +415,7 @@ func TestOnlyNodeGuestAndStorageEntriesAreReported(t *testing.T) {
 	for _, p := range find(pts, "pve.resource.up") {
 		assert.Contains(t, []string{"node", "qemu", "lxc", "storage"}, p.attrs["pve.resource.type"], p.attrs["pve.resource.id"])
 	}
-	assert.Empty(t, find(pts, "pve.resource.up", "pve.resource.id", "sdn/pve1/localnetwork"), "an SDN zone is not a node")
+	assert.Empty(t, find(pts, "pve.resource.up", "pve.resource.id", "sdn/node1/localnetwork"), "an SDN zone is not a node")
 	assert.Empty(t, find(pts, "pve.resource.up", "pve.resource.id", "pool/prod"))
 	assert.Len(t, find(pts, "pve.resource.up"), 9, "two nodes, five guests and two storages: nothing else")
 }
@@ -432,7 +432,7 @@ func TestCounterStartStaysWhileUptimeGrowsAndMovesWhenTheGuestRestarts(t *testin
 	f := resourcesFake(t)
 	s := newResources(t, f, nil)
 	body := func(uptime int) string {
-		return `{"data":[{"id":"qemu/100","type":"qemu","node":"pve1","vmid":100,"name":"web","status":"running","netin":1,"netout":2,"uptime":` + strconv.Itoa(uptime) + `}]}`
+		return `{"data":[{"id":"qemu/100","type":"qemu","node":"node1","vmid":100,"name":"web","status":"running","netin":1,"netout":2,"uptime":` + strconv.Itoa(uptime) + `}]}`
 	}
 	scrapeAt := func(now time.Time, uptime int) []time.Time {
 		f.ok("/api2/json/cluster/resources", body(uptime))

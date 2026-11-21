@@ -24,6 +24,12 @@ readonly REQUIRED_IN_EDGE=(
 	"$CONTRIB/netflowreceiver"
 )
 readonly EDGE_MANIFESTS=(builder-edge.yaml builder-edge-static.yaml)
+# The gateway image carries the patched netflow receiver and the exporter of the flow table.
+readonly REQUIRED_IN_GATEWAY=(
+	"$CONTRIB/netflowreceiver"
+	"github.com/vladistan/otelcol-custom/exporter/flowlogexporter"
+	"github.com/vladistan/otelcol-custom/processor/logshapeprocessor"
+)
 # Receivers the scrape image must list: the Proxmox VE and SNMP pollers run in the scrape pod.
 readonly REQUIRED_RECEIVERS_IN_SCRAPE=(
 	"github.com/vladistan/otelcol-custom/receiver/pvereceiver"
@@ -86,6 +92,20 @@ for edge in "${EDGE_MANIFESTS[@]}"; do
 		done
 	fi
 done
+
+gateway="$dir/builder-gateway.yaml"
+if [ -f "$gateway" ]; then
+	for module in "${REQUIRED_IN_GATEWAY[@]}"; do
+		if ! grep -Eq -- "^[[:space:]]*-[[:space:]]+${module//./\\.}[[:space:]]+=>[[:space:]]+\.\./\.\./" "$gateway"; then
+			echo "FAIL: builder-gateway.yaml does not replace $module with a local copy"
+			failed=1
+		fi
+		if ! grep -Eq -- "^[[:space:]]*-[[:space:]]+gomod:[[:space:]]+${module//./\\.}[[:space:]]+" "$gateway"; then
+			echo "FAIL: builder-gateway.yaml does not list $module"
+			failed=1
+		fi
+	done
+fi
 
 if [ -f "$scrape" ]; then
 	for module in "${REQUIRED_RECEIVERS_IN_SCRAPE[@]}"; do

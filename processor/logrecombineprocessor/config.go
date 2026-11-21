@@ -63,6 +63,15 @@ type Config struct {
 	// Oldest sources are flushed when exceeded to prevent memory growth.
 	// Default: 1000
 	MaxSources int `mapstructure:"max_sources"`
+
+	// StripANSI removes ANSI colour codes from the combine field and from a plain string body.
+	// Default: true
+	StripANSI bool `mapstructure:"strip_ansi"`
+
+	// DropBlank drops a record whose combine field or plain string body is only white space or
+	// ANSI codes, written as text or as escapes (a bare "\r\n" record).
+	// Default: true
+	DropBlank bool `mapstructure:"drop_blank"`
 }
 
 var _ component.Config = (*Config)(nil)

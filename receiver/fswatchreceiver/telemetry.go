@@ -26,7 +26,7 @@ func newTelemetry(ts component.TelemetrySettings) (*telemetry, error) {
 		unit       string
 	}{
 		{&tel.emitted, "otelcol_fswatch_records_emitted", "File records passed on.", "{record}"},
-		{&tel.excluded, "otelcol_fswatch_excluded", "Files left out by an exclude pattern.", "{file}"},
+		{&tel.excluded, "otelcol_fswatch_records_excluded", "Files left out by an exclude pattern, by root name.", "{file}"},
 		{&tel.vanished, "otelcol_fswatch_vanished", "Files gone before they could be read.", "{file}"},
 		{&tel.overflows, "otelcol_fswatch_overflows", "Directory watch buffer overflows.", "{event}"},
 		{&tel.rescans, "otelcol_fswatch_rescans", "Tree rescans started after a loss or reconnect.", "{scan}"},

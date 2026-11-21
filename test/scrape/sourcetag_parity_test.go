@@ -265,6 +265,7 @@ func TestOTTLThenSourceTagEqualsSourceTagAlone(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			want := runChain(t, c.input, tagMaker(t, c.provider))
 			got := runChain(t, c.input, ottlMaker(t, c.fixture), tagMaker(t, c.provider))
+			ignoreInfoDefault(got, want)
 
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("OTTL then sourcetag differs from sourcetag\n got: %+v\nwant: %+v", got, want)
@@ -287,18 +288,33 @@ func TestSourceTagThenOTTLEqualsOTTLAlone(t *testing.T) {
 }
 
 // withoutAdditions removes what the code adds on top of the OTTL it replaces, so everything else must still match:
-// the resource cloud.service.name, and INFO on a record the OTTL leaves without a severity.
+// the resource cloud.service.name. The severity default is the other way round: the OTTL gives INFO to a record
+// with no severity, the code leaves it unset (see ignoreInfoDefault).
 func withoutAdditions(got, want []snapshot) []snapshot {
 	out := make([]snapshot, len(got))
 	for i, g := range got {
 		res := maps.Clone(g.Resource)
 		delete(res, "cloud.service.name")
 		g.Resource = res
-		if i < len(want) && want[i].Severity == plog.SeverityNumberUnspecified &&
-			g.Severity == plog.SeverityNumberInfo && g.Text == "INFO" {
-			g.Severity, g.Text = want[i].Severity, want[i].Text
-		}
 		out[i] = g
 	}
+	ignoreInfoDefault(out, want)
 	return out
+}
+
+// ignoreInfoDefault sets the severity of every record of a that the OTTL gave the default INFO to the
+// unset severity of the record in b, and the other way round. The code no longer defaults an unknown
+// severity to INFO, and the OTTL block it replaces still does.
+func ignoreInfoDefault(a, b []snapshot) {
+	for i := range a {
+		if i >= len(b) {
+			return
+		}
+		switch {
+		case a[i].Severity == plog.SeverityNumberUnspecified && b[i].Severity == plog.SeverityNumberInfo && b[i].Text == "INFO":
+			b[i].Severity, b[i].Text = a[i].Severity, a[i].Text
+		case b[i].Severity == plog.SeverityNumberUnspecified && a[i].Severity == plog.SeverityNumberInfo && a[i].Text == "INFO":
+			a[i].Severity, a[i].Text = b[i].Severity, b[i].Text
+		}
+	}
 }

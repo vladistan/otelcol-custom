@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore vstan
+
 package fswatchreceiver
 
 import (
@@ -17,7 +19,7 @@ import (
 
 const (
 	emittedMetric   = "otelcol_fswatch_records_emitted"
-	excludedMetric  = "otelcol_fswatch_excluded"
+	excludedMetric  = "otelcol_fswatch_records_excluded"
 	vanishedMetric  = "otelcol_fswatch_vanished"
 	overflowMetric  = "otelcol_fswatch_overflows"
 	rescansMetric   = "otelcol_fswatch_rescans"
@@ -45,7 +47,7 @@ func TestLiveEventEmitsOneRecord(t *testing.T) {
 		t.Fatalf("want 2 records, got %d", len(got))
 	}
 	first := got[0]
-	if first.body != "file created" || first.severity != plog.SeverityNumberInfo {
+	if first.body != "created" || first.severity != plog.SeverityNumberInfo {
 		t.Errorf("body %q severity %v", first.body, first.severity)
 	}
 	if !first.ts.Equal(created) || !first.obs.Equal(r.clock.Now()) {
@@ -53,12 +55,13 @@ func TestLiveEventEmitsOneRecord(t *testing.T) {
 	}
 	want := map[string]any{
 		"file.path": path, "file.name": "run.DX", "file.extension": "DX", "file.size": int64(0),
-		"file.dir_relative": filepath.Join("sub", "deep"), "file.root": testRoot, "file.catchup": false,
+		"file.directory": filepath.Dir(path), "log.source": "fswatch",
+		"vstan.fswatch.dir_relative": filepath.Join("sub", "deep"), "vstan.fswatch.root": testRoot, "vstan.fswatch.catchup": false,
 	}
 	if !reflect.DeepEqual(first.attrs, want) {
 		t.Errorf("attrs\n got %v\nwant %v", first.attrs, want)
 	}
-	if got[1].attrs["file.dir_relative"] != "." || got[1].attrs["file.path"] != top || got[1].attrs["file.size"] != int64(2048) {
+	if got[1].attrs["vstan.fswatch.dir_relative"] != "." || got[1].attrs["file.path"] != top || got[1].attrs["file.size"] != int64(2048) {
 		t.Errorf("top-level file attrs: %v", got[1].attrs)
 	}
 }
@@ -162,7 +165,7 @@ func TestDirectoryMovedInEmitsItsFiles(t *testing.T) {
 		t.Fatalf("want 3 records for the files, got %d: %v", len(got), names(got))
 	}
 	for _, rec := range got {
-		if rec.attrs["file.dir_relative"] != "run1" || rec.attrs["file.catchup"] != false {
+		if rec.attrs["vstan.fswatch.dir_relative"] != "run1" || rec.attrs["vstan.fswatch.catchup"] != false {
 			t.Errorf("attrs %v", rec.attrs)
 		}
 	}
@@ -255,9 +258,6 @@ func TestWriteCompleteRecordFollowsCreationAfterStableSize(t *testing.T) {
 	if len(got) != 1 || got[0].body != logBody || got[0].attrs["file.size"] != int64(10) {
 		t.Fatalf("the creation record goes out at once, got %+v", got)
 	}
-	if _, has := got[0].attrs["file.size_final"]; has {
-		t.Fatalf("the creation record must not carry file.size_final: %v", got[0].attrs)
-	}
 
 	for i := int64(1); i <= 5; i++ {
 		r.clock.Advance(oneSecond)
@@ -277,7 +277,7 @@ func TestWriteCompleteRecordFollowsCreationAfterStableSize(t *testing.T) {
 		t.Fatalf("want 2 records, got %d", len(got))
 	}
 	done := got[1]
-	if done.body != completeBody || done.attrs["file.size"] != int64(510) || done.attrs["file.size_final"] != int64(510) {
+	if !isComplete(done.body) || done.attrs["file.size"] != int64(510) {
 		t.Errorf("write-complete record %+v", done)
 	}
 	if !done.ts.Equal(r.clock.Now()) || r.counter(completedMetric) != 1 {
@@ -303,11 +303,8 @@ func TestFileStillChangingAtSettleTimeoutGetsSecondRecordWithoutFinalSize(t *tes
 		r.tick()
 	}
 	got := r.records()
-	if len(got) != 2 || got[1].body != completeBody {
+	if len(got) != 2 || !isComplete(got[1].body) {
 		t.Fatalf("want the creation and the write-complete record, got %d", len(got))
-	}
-	if _, has := got[1].attrs["file.size_final"]; has {
-		t.Errorf("file.size_final must be absent at the timeout: %v", got[1].attrs)
 	}
 	if r.counter(timeoutsMetric) != 1 || r.counter(completedMetric) != 1 {
 		t.Errorf("settle_timeouts %d, completed %d", r.counter(timeoutsMetric), r.counter(completedMetric))
@@ -345,7 +342,7 @@ func TestFailedWriteCompleteDeliveryIsRetried(t *testing.T) {
 	r.clock.Advance(oneSecond)
 	r.tick()
 	got := r.records()
-	if len(got) != 2 || got[1].body != completeBody {
+	if len(got) != 2 || !isComplete(got[1].body) {
 		t.Fatalf("want the retried write-complete record, got %d records", len(got))
 	}
 }
@@ -357,7 +354,7 @@ func TestCaughtUpFileGetsTheSameSecondRecord(t *testing.T) {
 	r.clock.Advance(3 * oneSecond)
 	r.tick()
 	got := r.records()
-	if len(got) != 2 || got[1].body != completeBody || got[1].attrs["file.size_final"] != int64(5) || got[1].attrs["file.catchup"] != true {
+	if len(got) != 2 || !isComplete(got[1].body) || got[1].attrs["file.size"] != int64(5) || got[1].attrs["vstan.fswatch.catchup"] != true {
 		t.Fatalf("want a creation and a write-complete record for the caught-up file, got %+v", got)
 	}
 }
@@ -437,7 +434,7 @@ func TestRestartChecksRecentFilesAndSendsStableOnes(t *testing.T) {
 	down.start()
 	down.tick()
 	got := down.records()
-	if len(got) != 2 || got[1].body != completeBody || got[1].attrs["file.size_final"] != int64(5) || got[1].attrs["file.catchup"] != true {
+	if len(got) != 2 || !isComplete(got[1].body) || got[1].attrs["file.size"] != int64(5) || got[1].attrs["vstan.fswatch.catchup"] != true {
 		t.Fatalf("want the creation record and a catch-up write-complete record, got %+v", got)
 	}
 	down.tick()
@@ -481,7 +478,7 @@ func TestRestartKeepsWatchingAFileStillBeingWritten(t *testing.T) {
 	}
 	down.clock.Advance(3 * oneSecond)
 	down.tick()
-	if got := down.records(); len(got) != 2 || got[1].body != completeBody {
+	if got := down.records(); len(got) != 2 || !isComplete(got[1].body) {
 		t.Fatalf("want the write-complete record once the size held still, got %d records", len(got))
 	}
 }
@@ -524,17 +521,14 @@ func TestStartAtBeginningSendsOneRecordForAFileAlreadyStable(t *testing.T) {
 	r.start()
 	r.tick()
 	got := r.records()
-	if len(got) != 2 || got[0].body != logBody || got[0].attrs["file.size_final"] != int64(9) || got[1].body != logBody {
-		t.Fatalf("want one record with file.size_final for the old file and a plain one for the young file, got %+v", got)
-	}
-	if _, has := got[1].attrs["file.size_final"]; has {
-		t.Fatalf("the young file is still in its settle window: %v", got[1].attrs)
+	if len(got) != 2 || got[0].body != logBody || got[0].attrs["file.size"] != int64(9) || got[1].body != logBody {
+		t.Fatalf("want one record with the final size for the old file and a plain one for the young file, got %+v", got)
 	}
 
 	r.clock.Advance(3 * oneSecond)
 	r.tick()
 	got = r.records()
-	if len(got) != 3 || got[2].body != completeBody || got[2].attrs["file.name"] != "young.dx" || got[2].attrs["file.size_final"] != int64(3) {
+	if len(got) != 3 || !isComplete(got[2].body) || got[2].attrs["file.name"] != "young.dx" || got[2].attrs["file.size"] != int64(3) {
 		t.Fatalf("the young file takes the two-record path, got %+v", got)
 	}
 
@@ -571,8 +565,8 @@ func TestFirstStartBeginningEmitsEverythingIgnoringMaxCatchup(t *testing.T) {
 		t.Fatalf("want 3 records, got %d", len(got))
 	}
 	for _, rec := range got {
-		if rec.attrs["file.catchup"] != true {
-			t.Errorf("catchup %v", rec.attrs["file.catchup"])
+		if rec.attrs["vstan.fswatch.catchup"] != true {
+			t.Errorf("catchup %v", rec.attrs["vstan.fswatch.catchup"])
 		}
 	}
 	if r.warnings("max_catchup") != 0 {
@@ -584,9 +578,10 @@ func TestFirstStartBeginningEmitsEverythingIgnoringMaxCatchup(t *testing.T) {
 func (r *rig) restart() *rig {
 	next := newRig(r.t, func(n *rig) { n.cfg = r.cfg })
 	next.store, next.tree, next.sink, next.clock = r.store, r.tree, r.sink, r.clock
-	m, _ := newMatcher(r.cfg.Exclude)
+	spec := r.cfg.rootSpecs()[0]
+	m, _ := newMatcher(spec.patterns())
 	next.rw = newRootWatch(rootParams{
-		cfg: r.cfg, root: testRoot, logger: next.rw.logger, next: r.sink, tel: next.rw.tel,
+		cfg: r.cfg, root: testRoot, name: spec.name, logger: next.rw.logger, next: r.sink, tel: next.rw.tel,
 		tree: r.tree, store: r.store, now: r.clock.Now, match: m,
 	})
 	return next
@@ -610,8 +605,8 @@ func TestCatchUpAfterRestart(t *testing.T) {
 		t.Fatalf("want 3 catch-up records, got %d", len(got))
 	}
 	for i, rec := range got {
-		if rec.attrs["file.catchup"] != true {
-			t.Errorf("record %d catchup %v", i, rec.attrs["file.catchup"])
+		if rec.attrs["vstan.fswatch.catchup"] != true {
+			t.Errorf("record %d catchup %v", i, rec.attrs["vstan.fswatch.catchup"])
 		}
 	}
 	if !reflect.DeepEqual(names(got), []string{"while-down1.dx", "while-down2.dx", "while-down3.dx"}) {
@@ -697,7 +692,7 @@ func TestOverflowRescansAndEmitsLostFiles(t *testing.T) {
 	if len(got) != 2000 {
 		t.Fatalf("want 2000 records, got %d", len(got))
 	}
-	if got[0].attrs["file.catchup"] != true {
+	if got[0].attrs["vstan.fswatch.catchup"] != true {
 		t.Error("rescan records are catch-up records")
 	}
 	if r.counter(overflowMetric) != 1 || r.counter(rescansMetric) != 1 || r.warnings("overflow") != 1 {
@@ -811,7 +806,7 @@ func TestSentinelFreezesWhileConsumerFails(t *testing.T) {
 	r.clock.Advance(minuteAndSecond)
 	r.tick()
 	got := r.records()
-	if len(got) != 1 || got[0].attrs["file.catchup"] != true {
+	if len(got) != 1 || got[0].attrs["vstan.fswatch.catchup"] != true {
 		t.Fatalf("want the file once after recovery, got %v", got)
 	}
 	r.clock.Advance(2 * oneSecond)

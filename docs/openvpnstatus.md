@@ -1,3 +1,5 @@
+<!-- cspell:ignore vstan -->
+
 # OpenVPN status receiver
 
 The `openvpnstatus` receiver polls an OpenVPN status file and, for each new snapshot, emits metrics for every connected client. Log records, one per client, are available with `output`. It is in the Linux edge builds only; the Windows edge build does not carry it.
@@ -43,7 +45,7 @@ A UTF-8 byte order mark at the start of the file is ignored.
 
 ## Metrics
 
-Each new snapshot gives these metrics, one point per client. Every point carries the attributes `common_name` and `real_address`, and its time is the snapshot time.
+Each new snapshot gives these metrics, one point per client. Every point carries the attributes `user.name` and `client.address`, and its time is the snapshot time. A client that OpenVPN shows as `UNDEF` also carries `unauthenticated` true. The metrics carry no port: the byte totals of all sessions from one address are added into one series.
 
 | Metric | Type | Unit | Value |
 |---|---|---|---|
@@ -51,7 +53,7 @@ Each new snapshot gives these metrics, one point per client. Every point carries
 | `openvpn.client.bytes_sent` | sum, cumulative, monotonic | `By` | Bytes sent to the client in this session. |
 | `openvpn.client.connected_since` | gauge | `s` | Start of the session, in Unix seconds. An absolute time, not a duration; a backend that turns the unit into a name suffix shows `_seconds`. |
 
-`real_address` is the client's IP address. The port is dropped, a protocol prefix such as `udp4:` is ignored, and an IPv4-mapped IPv6 address (`::ffff:192.0.2.1`) is written as plain IPv4. The warning for a row whose address is not an IP address does not repeat the address. A row whose address is not an IP address is skipped like any row that cannot be parsed.
+`client.address` is the client's IP address. The metric attributes drop the port, a protocol prefix such as `udp4:` is ignored, and an IPv4-mapped IPv6 address (`::ffff:192.0.2.1`) is written as plain IPv4. The warning for a row whose address is not an IP address does not repeat the address. A row whose address is not an IP address is skipped like any row that cannot be parsed.
 
 OpenVPN restarts the byte counts at zero for each session. The two sums therefore start at the session start: the start time of each point is the connect time, so a reconnect shows as a counter reset. The connect time is the `Connected Since (time_t)` column of status versions 2 and 3, and otherwise the `Connected Since` text read as time in the collector host's local time zone. When neither can be read, the points have no start time and the gauge has no point for that client.
 
@@ -59,7 +61,7 @@ Status version 1, the default of the `status` directive, has no epoch: its snaps
 
 The connect time is a gauge, not an attribute, because an attribute would start a new series for both byte counters at every reconnect, and the text in the file has no time zone.
 
-Two sessions of one `common_name` from one IP address, for example clients behind one NAT, share one series: the bytes are added, the start is the earlier connect time. The port was the only thing that told them apart. When the later session ends, the sum falls and the start does not change, so a backend sees a decrease without a reset marker: a Prometheus-style `rate()` reads a reset and counts the remaining total as new traffic once. When the earlier session ends, the start moves forward and the reset is seen.
+Two sessions of one `user.name` from one IP address, for example clients behind one NAT, share one series: the bytes are added, the start is the earlier connect time. The port was the only thing that told them apart. When the later session ends, the sum falls and the start does not change, so a backend sees a decrease without a reset marker: a Prometheus-style `rate()` reads a reset and counts the remaining total as new traffic once. When the earlier session ends, the start moves forward and the reset is seen.
 
 The IP address is part of the series. A client that changes its address, such as a roaming laptop, starts new series for all three metrics, and the old ones stop.
 
@@ -71,15 +73,17 @@ With `output: logs` or `both`, each client row becomes one log record with an em
 
 | Attribute | Type | Value |
 |---|---|---|
-| `common_name` | string | The client certificate name; `UNDEF` when OpenVPN has none. |
-| `real_address` | string | The client's IP address, without the port. |
-| `bytes_received` | int | Bytes received from the client. |
-| `bytes_sent` | int | Bytes sent to the client. |
-| `connected_since` | string | The date text from the file, unchanged. |
+| `user.name` | string | The client certificate name; `UNDEF` when OpenVPN has none. |
+| `unauthenticated` | bool | true when the name is `UNDEF`; absent otherwise. |
+| `client.address` | string | The client's IP address, without the port. |
+| `client.port` | int | The port of the client address, when the row has one. |
+| `vstan.openvpn.bytes_received` | int | Bytes received from the client. |
+| `vstan.openvpn.bytes_sent` | int | Bytes sent to the client. |
+| `vstan.openvpn.connected_since` | string | The date text from the file, unchanged. |
 | `virtual_address` | string | With `join_routing_table` only. |
 | `last_ref` | string | With `join_routing_table` only. |
 
-The join matches a routing row on `common_name` and the full client address as written in the file, port included, so the join is exact even though only the IP is emitted. A client with no row at its own address gets neither attribute, so a second session of one name never takes the first session's row.
+The join matches a routing row on the client name and the full client address as written in the file, port included, so the join is exact even though the address is emitted without the port. A client with no row at its own address gets neither attribute, so a second session of one name never takes the first session's row.
 
 ## Snapshots and restarts
 

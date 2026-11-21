@@ -1,0 +1,6 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured access line, addresses replaced; the others are written from the format
+203.0.113.9 - - [20/Nov/2026:00:26:38 +0000] "POST /api/7/envelope/ HTTP/1.1" 200 41 "-" "sentry.python/2.35.0" "198.51.100.23, 203.0.113.50"
+192.0.2.7 - - [20/Nov/2026:00:26:39 +0000] "GET /healthz HTTP/1.1" 200 2 "-" "kube-probe/1.36" "-"
+192.0.2.7 - alice [20/Nov/2026:00:26:40 +0000] "GET /missing HTTP/1.1" 403 12 "https://example.org/a" "curl/8" "-"
+198.51.100.9 - - [20/Nov/2026:00:26:41 +0000] "GET /upstream HTTP/1.1" 502 150 "-" "Mozilla/5.0 (X11; Linux x86_64)" "-"

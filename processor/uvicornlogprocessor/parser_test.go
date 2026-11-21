@@ -15,7 +15,7 @@ func TestIsUvicornLog(t *testing.T) {
 	}{
 		{
 			name:     "info level",
-			input:    `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
+			input:    `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
 			expected: true,
 		},
 		{
@@ -40,7 +40,7 @@ func TestIsUvicornLog(t *testing.T) {
 		},
 		{
 			name:     "nginx log - not uvicorn",
-			input:    `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582 "-" "kube-probe/1.33" "-"`,
+			input:    `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582 "-" "kube-probe/1.33" "-"`,
 			expected: false,
 		},
 		{
@@ -91,10 +91,10 @@ func TestParseUvicornLog(t *testing.T) {
 	}{
 		{
 			name:           "simple GET request",
-			input:          `INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
+			input:          `INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK`,
 			expectNil:      false,
 			expectedLevel:  "INFO",
-			expectedIP:     "10.233.68.104",
+			expectedIP:     "198.51.100.104",
 			expectedPort:   "55370",
 			expectedMethod: "GET",
 			expectedPath:   "/api/healthz/",
@@ -199,7 +199,7 @@ func TestParseUvicornLog(t *testing.T) {
 		},
 		{
 			name:      "nginx log",
-			input:     `10.233.67.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
+			input:     `198.51.100.85 - - [31/Dec/2025:03:56:10 +0000] "GET /healthz/ HTTP/1.1" 200 582`,
 			expectNil: true,
 		},
 	}

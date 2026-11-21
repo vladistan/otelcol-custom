@@ -1,0 +1,106 @@
+cspell:ignore kaudit awselb gcpaudit
+Benchmarks of the logshape branches against the block each one replaced. Raw output: logshape-raw.txt.
+
+host: Darwin 25.6.0 x86_64, go version go1.26.8 darwin/amd64
+command: cd test/bench && go test -run=NONE -bench='LogshapeVsBlock|LogshapeNoBlock|LogshapeCloudTrail' -benchmem -benchtime=300x -count=10 .
+load at start: 8.45 9.49 13.73
+load at end: 10.62 12.35 12.12
+Unit:    ns/record = ns/op / 1000 (1000-record batch, fresh copy per iteration, copy outside the timer)
+Method:  median of n runs (n below), range = min-max; allocs = allocs/op / 1000, bytes = B/op / 1000
+changed: share of output records that differ from the input (new body, new attribute or a severity)
+Verdict: ratio = logshape median / block median; SLOWER when the ratio is above 1.00
+         where a block-aligned row exists the logshape rows are compared with it, not with block;
+         the block-aligned ratio is its median over the block median
+
+Formats that had a standalone processor (config: the processor defaults; logshape: default config)
+
+format     impl               median         range   n  allocs   bytes changed  ratio  verdict
+nginx      block               15251  15171-15601   10    34.5    2550    1.00   1.00
+           block-aligned       15366  15185-17647   10    34.5    2548    1.00   1.01  (block with the options logshape defaults turn on)
+           logshape-table      22696  22363-22961   10    77.8    5461    1.00   1.48  SLOWER  vs block-aligned
+           logshape-branch     22266  21998-24631   10    77.8    5463    1.00   1.45  SLOWER  vs block-aligned
+redis      block                1928   1896-1988    10    13.6     703    1.00   1.00
+           logshape-table       4608   4515-4795    10    33.1    2140    1.00   2.39  SLOWER
+           logshape-branch      4510   4349-5000    10    33.1    2143    1.00   2.34  SLOWER
+postgres   block                2061   2000-2235    10    11.2     569    1.00   1.00
+           logshape-table       3746   3698-3956    10    24.0    1133    1.00   1.82  SLOWER
+           logshape-branch      3338   3240-3408    10    24.0    1134    1.00   1.62  SLOWER
+sentry     block                5808   5239-6116    10    18.4    1531    1.00   1.00
+           block-aligned        5199   5130-6004    10    20.0    1656    1.00   0.90  (block with the options logshape defaults turn on)
+           logshape-table      13860  13476-14771   10    56.5    4056    1.00   2.67  SLOWER  vs block-aligned
+           logshape-branch     12948  12432-13987   10    56.5    4056    1.00   2.49  SLOWER  vs block-aligned
+klog       block                7828   7567-7986    10    28.4    2092    1.00   1.00
+           logshape-table      10242  10047-10725   10    51.5    2972    1.00   1.31  SLOWER
+           logshape-branch      9938   9742-10484   10    51.5    2975    1.00   1.27  SLOWER
+uvicorn    block                2140   2098-2218    10    13.2    1217    0.60   1.00
+           logshape-table       5310   5164-5382    10    34.0    2015    1.00   2.48  SLOWER
+           logshape-branch      5262   5130-5428    10    34.0    2016    1.00   2.46  SLOWER
+logrus     block                5394   5315-5833    10    38.9    2522    1.00   1.00
+           block-aligned        5356   5286-5707    10    38.9    2523    1.00   0.99  (block with the options logshape defaults turn on)
+           logshape-table       7687   7562-7927    10    53.3    3324    1.00   1.44  SLOWER  vs block-aligned
+           logshape-branch      7122   6884-7279    10    53.3    3316    1.00   1.33  SLOWER  vs block-aligned
+cisco      block               10804  10727-10937   10    22.3    1585    1.00   1.00
+           logshape-table      15524  15140-16281   10    55.3    3542    1.00   1.44  SLOWER
+           logshape-branch     14258  14141-16014   10    53.3    3378    1.00   1.32  SLOWER
+syslog     block                3242   3214-3275    10    15.7    1017    1.00   1.00
+           logshape-table       6982   6882-7046    10    40.4    2494    1.00   2.15  SLOWER
+           logshape-branch      5546   5333-5751    10    40.4    2491    1.00   1.71  SLOWER
+
+CloudTrail: the OTTL block of the scrape collector (test/scrape/testdata/ottl-aws-deployed.yaml) against the source tagger and logshape
+
+impl                           median         range   n  allocs   bytes changed  ratio  verdict
+ottl                             2485   2434-2599    10    24.2     628    1.00   1.00
+sourcetag+logshape-table         5770   5695-6249    10    56.5    3016    1.00   2.32  SLOWER
+sourcetag+logshape-branch        4802   4750-4960    10    56.5    2969    1.00   1.93  SLOWER
+
+Formats with no block in the repository: what logshape costs (no comparison)
+
+format       table median         range branch median allocs(table)   n changed
+calico               7922   7831-8318            4505          25.0  10    1.00
+clickhouse           7966   7408-8661            4852          24.6  10    1.00
+collector           12160  12009-12394          12186          91.8  10    1.00
+coredns              7258   7177-7406            6132          33.3  10    1.00
+cron                 3910   3869-4215            3158          25.1  10    1.00
+gcpjson             15505  15390-15951          15340         175.5  10    1.00
+gocd                 6562   6416-6738            4918          28.0  10    1.00
+influx               6890   6816-7014            5857          40.7  10    1.00
+k8s                  9346   9270-9462            8765          54.4  10    1.00
+kaudit              12998  12895-15815          11942          57.6  10    1.00
+litellm              8612   8496-8782            6284          27.1  10    1.00
+lldpd               19252  19143-19544          12186         109.0  10    1.00
+logfmt               7166   7044-7390            5912          37.8  10    1.00
+mongod              28056  27318-31080          27972         303.6  10    1.00
+mosquitto            4852   4767-4935            2856          16.0  10    1.00
+oauth2proxy         18196  17949-19182          14770          48.0  10    1.00
+pino                20684  20164-22510          21142         213.1  10    1.00
+rabbitmq             6876   6790-7071            4158          19.0  10    1.00
+smartd               4724   4636-4862            3646          18.0  10    1.00
+ssmagent             5788   5596-6137            3606          21.1  10    1.00
+stallcheck           5116   5009-5371            3216          23.0  10    1.00
+tracing             14712  14354-15503          14286         157.0  10    1.00
+
+Formats slower than their block (logshape-table, ratio above 1.00):
+  nginx (vs block-aligned): ratio 1.48, SLOWER
+  redis: ratio 2.39, SLOWER
+  postgres: ratio 1.82, SLOWER
+  sentry (vs block-aligned): ratio 2.67, SLOWER
+  klog: ratio 1.31, SLOWER
+  uvicorn: ratio 2.48, SLOWER
+  logrus (vs block-aligned): ratio 1.44, SLOWER
+  cisco: ratio 1.44, SLOWER
+  syslog: ratio 2.15, SLOWER
+  cloudtrail: ratio 2.32, SLOWER
+
+Where the time goes (redis, logshape-branch; pprof of go test -bench=LogshapeVsBlock/redis/impl=logshape-branch -benchtime=6000x -cpuprofile)
+
+  ConsumeLogs 6.94 s cum: route 5.10 s; of it the branch parse 3.73 s (regexp FindStringSubmatch 2.06 s) and claims 0.38 s
+  groups.add 1.55 s (fmt.Sprint of the resource attributes, 0.85 s): the regroup key is built for every record whose
+  branch set service.name; the scratch LogRecord.CopyTo 0.45 s
+  Allocations (pprof alloc_objects, one run of the same benchmark): CopyTo 16.9%, safeParse 12.3%, groups.add 6.1% of 97.8 million
+  Each branch runs its regex twice on the line (claims, then parse) and copies the record, resource and scope before it parses.
+
+Limits: the sample files hold 1 to 8 lines each, cycled to 1000 records, so a format with few lines is a narrow input.
+The uvicorn block handles 3 of 5 sample lines (changed 0.60); logshape handles all 5, so its extra work is part of its time.
+The block-aligned rows show the gap is not the options: nginx 1.01, sentry 0.90 and logrus 0.99 of the block median.
+Not benchmarked: formats keyed by attributes with no sample lines (flow, openvpn, awselb, s3access, gcplb, gcpaudit,
+eksaudit, serialconsole, stderrhint, pbs, pve); they have no block in the repository either.

@@ -37,13 +37,13 @@ func NewBuilder(scope string, res Resource, now time.Time) *Builder {
 	md := pmetric.NewMetrics()
 	rm := md.ResourceMetrics().AppendEmpty()
 	attrs := rm.Resource().Attributes()
-	attrs.PutStr(ResHostName, res.HostName)
-	attrs.PutStr(AttrVendor, res.Vendor)
-	attrs.PutStr(ResAddress, res.ServerAddress)
-	attrs.PutStr(ResProtocol, res.Protocol)
+	attrs.PutStr(ResHostName, ValidUTF8(res.HostName))
+	attrs.PutStr(AttrVendor, ValidUTF8(res.Vendor))
+	attrs.PutStr(ResAddress, ValidUTF8(res.ServerAddress))
+	attrs.PutStr(ResProtocol, ValidUTF8(res.Protocol))
 	for key, v := range map[string]string{AttrModel: res.Model, AttrSerialNumber: res.Serial, AttrFirmwareVersion: res.Firmware} {
 		if v != "" {
-			attrs.PutStr(key, v)
+			attrs.PutStr(key, ValidUTF8(v))
 		}
 	}
 	sm := rm.ScopeMetrics().AppendEmpty()
@@ -59,7 +59,7 @@ func (b *Builder) Component(overrides map[string]string) *Builder {
 	b.md.ResourceMetrics().At(0).Resource().Attributes().CopyTo(rm.Resource().Attributes())
 	for k, v := range overrides {
 		if v != "" {
-			rm.Resource().Attributes().PutStr(k, v)
+			rm.Resource().Attributes().PutStr(k, ValidUTF8(v))
 		}
 	}
 	sm := rm.ScopeMetrics().AppendEmpty()
@@ -102,9 +102,9 @@ func (b *Builder) sensor(name, unit, id, hwName, parent string, v float64) pmetr
 }
 
 func identity(dp pmetric.NumberDataPoint, id, name, parent string) {
-	dp.Attributes().PutStr(AttrID, id)
-	dp.Attributes().PutStr(AttrName, name)
-	dp.Attributes().PutStr(AttrParent, parent)
+	dp.Attributes().PutStr(AttrID, ValidUTF8(id))
+	dp.Attributes().PutStr(AttrName, ValidUTF8(name))
+	dp.Attributes().PutStr(AttrParent, ValidUTF8(parent))
 }
 
 // Temperature adds hw.temperature in degrees Celsius.
@@ -114,7 +114,7 @@ func (b *Builder) Temperature(id, name, parent string, celsius float64) {
 
 // TemperatureLimit adds hw.temperature.limit with its hw.limit_type.
 func (b *Builder) TemperatureLimit(id, name, parent, limitType string, celsius float64) {
-	b.sensor(MetricTemperatureLimit, UnitCelsius, id, name, parent, celsius).Attributes().PutStr(AttrLimitType, limitType)
+	b.sensor(MetricTemperatureLimit, UnitCelsius, id, name, parent, celsius).Attributes().PutStr(AttrLimitType, ValidUTF8(limitType))
 }
 
 // FanSpeed adds hw.fan.speed in rpm.
@@ -179,13 +179,13 @@ func (b *Builder) StatusWith(hwType, id, name, current string, extra map[string]
 	for _, s := range States {
 		dp := b.point(MetricStatus, UnitRatio)
 		dp.SetIntValue(boolInt(s == current))
-		dp.Attributes().PutStr(AttrID, id)
-		dp.Attributes().PutStr(AttrName, name)
-		dp.Attributes().PutStr(AttrType, hwType)
+		dp.Attributes().PutStr(AttrID, ValidUTF8(id))
+		dp.Attributes().PutStr(AttrName, ValidUTF8(name))
+		dp.Attributes().PutStr(AttrType, ValidUTF8(hwType))
 		dp.Attributes().PutStr(AttrState, s)
 		for k, v := range extra {
 			if v != "" {
-				dp.Attributes().PutStr(k, v)
+				dp.Attributes().PutStr(k, ValidUTF8(v))
 			}
 		}
 	}
@@ -201,7 +201,7 @@ func (b *Builder) LogicalDiskLimit(id, name, parent string, bytes float64, extra
 	dp := b.sensor(MetricLogicalDiskLimit, UnitBytes, id, name, parent, bytes)
 	for k, v := range extra {
 		if v != "" {
-			dp.Attributes().PutStr(k, v)
+			dp.Attributes().PutStr(k, ValidUTF8(v))
 		}
 	}
 }
@@ -247,7 +247,7 @@ func (b *Builder) ScrapeErrors(group string, total int64) {
 	dp := sum.DataPoints().AppendEmpty()
 	dp.SetTimestamp(b.ts)
 	dp.SetIntValue(total)
-	dp.Attributes().PutStr(AttrPathGroup, group)
+	dp.Attributes().PutStr(AttrPathGroup, ValidUTF8(group))
 }
 
 // BMCUp adds hw.bmc.up. A down BMC carries the reason; an up one does not.
@@ -258,7 +258,7 @@ func (b *Builder) BMCUp(up bool, reason string) {
 		return
 	}
 	dp.SetIntValue(0)
-	dp.Attributes().PutStr(AttrReason, reason)
+	dp.Attributes().PutStr(AttrReason, ValidUTF8(reason))
 }
 
 // FRUInfo adds inventory.bmc.fru.info, an info gauge of value 1 with the
@@ -266,10 +266,10 @@ func (b *Builder) BMCUp(up bool, reason string) {
 func (b *Builder) FRUInfo(fruType string, fields map[string]string) {
 	dp := b.point(MetricBMCFRUInfo, UnitRatio)
 	dp.SetIntValue(1)
-	dp.Attributes().PutStr(AttrFRUType, fruType)
+	dp.Attributes().PutStr(AttrFRUType, ValidUTF8(fruType))
 	for k, v := range fields {
 		if v != "" {
-			dp.Attributes().PutStr(k, v)
+			dp.Attributes().PutStr(k, ValidUTF8(v))
 		}
 	}
 }
@@ -278,7 +278,7 @@ func (b *Builder) FRUInfo(fruType string, fields map[string]string) {
 func (b *Builder) InventoryStatus(source string, read bool) {
 	dp := b.point(MetricInventoryStatus, UnitRatio)
 	dp.SetIntValue(boolInt(read))
-	dp.Attributes().PutStr(AttrInventorySource, source)
+	dp.Attributes().PutStr(AttrInventorySource, ValidUTF8(source))
 }
 
 // BMCScrapeDuration adds hw.bmc.scrape.duration in seconds.

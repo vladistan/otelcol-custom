@@ -1,0 +1,7 @@
+# provenance: invented
+# One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
+# cspell:ignore UPID vzdump qmstart Exim vstan
+{"provenance": "invented", "body": "[\\x1b[0;32m  OK  \\x1b[0m] Started Daily apt download activities.\\r\\n", "attributes": {"cloud.resource_id": "serialconsole.googleapis.com/serial_port_1_output", "is_text_escaped": true, "gcp.label.compute.googleapis.com/resource_name": "host-a"}, "resource": {}}
+{"provenance": "invented", "body": "[\\x1b[0;1;31mFAILED\\x1b[0m] Failed to start Docker Application Container Engine.\\r\\n", "attributes": {"cloud.resource_id": "serialconsole.googleapis.com/serial_port_1_output", "is_text_escaped": true, "gcp.label.compute.googleapis.com/resource_name": "host-a"}, "resource": {}}
+{"provenance": "invented", "body": "[\\x1b[0;31m*     \\x1b[0m] A start job is running for Wait for Network (11s / 1min 30s)\\r", "attributes": {"cloud.resource_id": "serialconsole.googleapis.com/serial_port_1_output", "is_text_escaped": true, "gcp.label.compute.googleapis.com/resource_name": "host-a"}, "resource": {}}
+{"provenance": "invented", "body": "[    1.234567] Linux version 6.1.0\\r\\n", "attributes": {"cloud.resource_id": "serialconsole.googleapis.com/serial_port_1_output", "is_text_escaped": true, "gcp.label.compute.googleapis.com/resource_name": "host-a"}, "resource": {}}

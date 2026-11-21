@@ -1,0 +1,98 @@
+[
+  {
+    "body": "one",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "alpha",
+      "service.name": "sshd"
+    },
+    "attributes": {
+      "log.record.original": "Dec 31 10:05:00 alpha sshd[1]: one",
+      "log.source": "syslog",
+      "process.pid": 1,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "padded wrapper",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "alpha",
+      "service.name": "sshd"
+    },
+    "attributes": {
+      "log.record.original": "  Dec 31 10:05:00 alpha sshd[2]: padded wrapper  ",
+      "log.source": "syslog",
+      "process.pid": 2,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "Accepted publickey for tyler",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "nas",
+      "service.name": "sshd"
+    },
+    "attributes": {
+      "log.record.original": "2026-11-20T00:03:18.148343+01:00 nas sshd[12]: Accepted publickey for tyler",
+      "log.source": "syslog",
+      "process.pid": 12,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "host.name": "nas",
+      "service.name": "smartd"
+    },
+    "attributes": {
+      "log.record.original": "1 2026-11-20T00:03:18.148343+01:00 nas smartd 1517 - - Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+      "log.source": "syslog",
+      "process.pid": 1517,
+      "vstan.smartd.device": "/dev/sda",
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "Failed to connect to Systems Manager",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "[ssm-agent-worker]",
+    "resource": {
+      "host.name": "docker-host",
+      "service.name": "amazon-ssm-agent"
+    },
+    "attributes": {
+      "log.record.original": "2026-11-20T00:03:18.148343+01:00 docker-host amazon-ssm-agent[1517]: 2026-11-20 00:03:18.1234 WARN [ssm-agent-worker] Failed to connect to Systems Manager",
+      "log.source": "syslog",
+      "process.pid": 1517,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "123: *Dec 31 10:05:00.123: %LINK-3-UPDOWN: Interface Gi0/1, changed state to down",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "LINK"
+    },
+    "attributes": {
+      "network.interface.name": "Gi0/1",
+      "vstan.cisco.facility": "LINK",
+      "vstan.cisco.mnemonic": "UPDOWN",
+      "vstan.cisco.severity": "3"
+    }
+  }
+]

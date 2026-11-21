@@ -16,12 +16,12 @@ func TestIsPgBouncerLog(t *testing.T) {
 	}{
 		{
 			name:     "login attempt",
-			input:    "2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 login attempt: db=postgres user=postgres tls=no replication=no",
+			input:    "2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 login attempt: db=postgres user=postgres tls=no replication=no",
 			expected: true,
 		},
 		{
 			name:     "closing connection",
-			input:    "2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 closing because: client close request (age=0s)",
+			input:    "2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 closing because: client close request (age=0s)",
 			expected: true,
 		},
 		{
@@ -74,7 +74,7 @@ func TestParsePgBouncerLog(t *testing.T) {
 	}{
 		{
 			name:  "login attempt with connection info",
-			input: "2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 login attempt: db=postgres user=postgres tls=no replication=no",
+			input: "2025-12-31 01:46:17.407 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 login attempt: db=postgres user=postgres tls=no replication=no",
 			expected: &PgBouncerLogInfo{
 				Timestamp:    time.Date(2025, 12, 31, 1, 46, 17, 407000000, time.UTC),
 				PID:          1,
@@ -82,14 +82,14 @@ func TestParsePgBouncerLog(t *testing.T) {
 				ConnectionID: "C-0x7f828e6b34c0",
 				Database:     "postgres",
 				User:         "postgres",
-				ClientIP:     "172.18.0.60",
+				ClientIP:     "203.0.113.60",
 				ClientPort:   39630,
 				Message:      "login attempt: db=postgres user=postgres tls=no replication=no",
 			},
 		},
 		{
 			name:  "closing connection",
-			input: "2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@172.18.0.60:39630 closing because: client close request (age=0s)",
+			input: "2025-12-31 01:46:17.429 UTC [1] LOG C-0x7f828e6b34c0: postgres/postgres@203.0.113.60:39630 closing because: client close request (age=0s)",
 			expected: &PgBouncerLogInfo{
 				Timestamp:    time.Date(2025, 12, 31, 1, 46, 17, 429000000, time.UTC),
 				PID:          1,
@@ -97,7 +97,7 @@ func TestParsePgBouncerLog(t *testing.T) {
 				ConnectionID: "C-0x7f828e6b34c0",
 				Database:     "postgres",
 				User:         "postgres",
-				ClientIP:     "172.18.0.60",
+				ClientIP:     "203.0.113.60",
 				ClientPort:   39630,
 				Message:      "closing because: client close request (age=0s)",
 			},

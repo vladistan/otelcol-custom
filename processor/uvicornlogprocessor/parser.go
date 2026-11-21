@@ -25,7 +25,7 @@ type UvicornLogInfo struct {
 
 // Uvicorn access log format: LEVEL:     CLIENT_ADDR - "METHOD PATH PROTOCOL" STATUS_CODE STATUS_TEXT
 // Examples:
-//   - INFO:     10.233.68.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK
+//   - INFO:     198.51.100.104:55370 - "GET /api/healthz/ HTTP/1.1" 200 OK
 //   - WARNING:  192.168.1.1:8080 - "POST /api/submit HTTP/1.1" 400 Bad Request
 //   - ERROR:    10.0.0.1 - "GET /api/error HTTP/1.1" 500 Internal Server Error
 var uvicornLogPattern = regexp.MustCompile(

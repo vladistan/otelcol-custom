@@ -14,7 +14,7 @@ func TestLongPath(t *testing.T) {
 	tests := []struct {
 		name, in, want string
 	}{
-		{"short path is unchanged", `D:\CDSProjects`, `D:\CDSProjects`},
+		{"short path is unchanged", `D:\Projects`, `D:\Projects`},
 		{"248 characters is unchanged", `D:\` + strings.Repeat("a", 245), `D:\` + strings.Repeat("a", 245)},
 		{"long drive path gets the prefix", long, `\\?\` + long},
 		{"long UNC path gets the UNC prefix", uncLong, `\\?\UNC\` + strings.TrimPrefix(uncLong, `\\`)},
@@ -46,15 +46,15 @@ func TestIsUNC(t *testing.T) {
 }
 
 func TestRootKey(t *testing.T) {
-	a := rootKey(`D:\CDSProjects`)
-	b := rootKey(`d:\cdsprojects\`)
+	a := rootKey(`D:\Projects`)
+	b := rootKey(`d:\projects\`)
 	if a != b {
 		t.Fatalf("keys differ: %q vs %q", a, b)
 	}
-	if a != `fswatch/d:\cdsprojects` {
+	if a != `fswatch/d:\projects` {
 		t.Fatalf("got %q", a)
 	}
-	if c := rootKey(`D:/CDSProjects/`); c != a {
+	if c := rootKey(`D:/Projects/`); c != a {
 		t.Fatalf("forward slashes give %q, want %q", c, a)
 	}
 }

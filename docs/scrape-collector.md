@@ -148,7 +148,7 @@ The receiver type is `aws_s3`. The old name `awss3` still loads and logs a depre
 
 ### Source tagging
 
-The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The processor also sets the resource `cloud.service.name` from `log.source` when every sourced record of the resource agrees on one source and the resource has none (`cloudtrail`, `s3`, `elasticloadbalancing`, `eks`, `logs` and `auth0` on AWS; `cloudaudit.googleapis.com`, `run.googleapis.com` and `loadbalancing.googleapis.com` on GCP; `monitor` on Azure). The `auth0` receiver sets `cloud.provider` to `auth0`, with `cloud.account.id` and `cloud.region` from the envelope when it has them. `sourcetag/gcp` takes `cloud.region` from `gcp.label.location`, then `gcp.label.region`, then `gcp.label.zone` with the one-letter zone suffix dropped (`europe-west3-b` gives `europe-west3`, `global` stays), for every GCP source including `gcp.audit` and `gcp.lb`, and gives a record with no severity INFO; `sourcetag/azure` does the same for severity. Load balancer logs from S3 (ALB and NLB) get `cloud.region` and `cloud.account.id` from the target group or certificate ARN in their lines; a classic load balancer line holds no ARN, so those two stay out. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
+The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The processor also sets the resource `cloud.service.name` from `log.source` when every sourced record of the resource agrees on one source and the resource has none (`cloudtrail`, `s3`, `elasticloadbalancing`, `eks`, `logs` and `auth0` on AWS; `cloudaudit.googleapis.com`, `run.googleapis.com` and `loadbalancing.googleapis.com` on GCP; `monitor` on Azure). The `auth0` receiver sets `cloud.provider` to `auth0`, with `cloud.account.id` and `cloud.region` from the envelope when it has them. `sourcetag/gcp` takes `cloud.region` from `gcp.label.location`, then `gcp.label.region`, then `gcp.label.zone` with the one-letter zone suffix dropped (`europe-west3-b` gives `europe-west3`, `global` stays), for every GCP source including `gcp.audit` and `gcp.lb`. No provider sets a severity: a record that arrives with none stays unset, and a CloudTrail record with `aws.error.code` is the one case raised to WARN. Load balancer logs from S3 (ALB and NLB) get `cloud.region` and `cloud.account.id` from the target group or certificate ARN in their lines; a classic load balancer line holds no ARN, so those two stay out. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
 
 ```yaml
 processors:
@@ -174,7 +174,7 @@ service:
 | `gcp` | `gcp.audit` (audit), `gcp.cloudrun` (application), `gcp.lb` (access) | `cloud.provider`, `service.name`, `cloud.region`, `cloud.account.id` |
 | `azure` | `azure.activity` (audit) | `cloud.provider` |
 
-The `aws.eks` source needs the resource attributes `cloudwatch.log.group.name` (starting with `/aws/eks/`) and `cloudwatch.log.stream`. A record that already has a `log.source`, such as `auth0`, keeps it, except for `aws.cloudtrail`, `aws.s3access` and `aws.elb` (when the scope `encoding.format` matches), `gcp.audit` and `azure.activity`, which overwrite it. `aws.eks`, `aws.cloudwatch`, `gcp.cloudrun` and `gcp.lb` only fill a missing one. Severity is INFO when unset, WARN for a CloudTrail record with `aws.error.code`.
+The `aws.eks` source needs the resource attributes `cloudwatch.log.group.name` (starting with `/aws/eks/`) and `cloudwatch.log.stream`. A record that already has a `log.source`, such as `auth0`, keeps it, except for `aws.cloudtrail`, `aws.s3access` and `aws.elb` (when the scope `encoding.format` matches), `gcp.audit` and `azure.activity`, which overwrite it. `aws.eks`, `aws.cloudwatch`, `gcp.cloudrun` and `gcp.lb` only fill a missing one. Severity stays unset when the record has none, and is WARN for a CloudTrail record with `aws.error.code`.
 
 `otelcol_sourcetag_records_unsourced` counts records that leave the processor without `log.source`, per `provider`. A rise after a roll means a source stopped matching its rule.
 
@@ -344,7 +344,7 @@ How a scrape runs:
   Each scrape calls Get Sensor Reading for the selected sensors only. A sensor with no reading, one marked not present
   and a sensor type outside the table give no point and no error.
 - The session uses `privilege_level`; sensors and the SDR need only `user`, and a higher value logs one warning at
-  start. The cipher suite is the one set per BMC. The receiver never tries other suites: each try is one more failed
+  start, unless `dcmi_power` is on, because DCMI power needs an administrator account anyway. The cipher suite is the one set per BMC. The receiver never tries other suites: each try is one more failed
   login on an account the boards share.
 - `ipmi_version: 1.5` and `auto` use IPMI 1.5 session authentication, which has no session integrity check. Use them
   for old boards only; `2.0` with a cipher suite is the default. The login-failure back-off covers IPMI 2.0 only:
@@ -384,7 +384,7 @@ Lambda. A pod reaches the lab only if its network policy allows it: TCP 8006 to 
 devices. `netflow` stays in the edge builds only: it listens on a UDP port for exporters, which the scrape pod
 does not expose. A sample with both is `test/configs/scrape-pve-snmp.yaml`.
 
-**`pve`.** Run one instance per node, such as `pve/pve12`, and set `guests.node` on every instance. The guest
+**`pve`.** Run one instance per node, such as `pve/node12`, and set `guests.node` on every instance. The guest
 scraper reads `/nodes/<guests.node>/...` and nothing else. When `guests.node` is empty it takes the short host name
 of the machine the collector runs on, which in a pod is the pod name and no PVE node: every call then fails with
 an error from PVE and no guest series appear. Each instance logs one info line at start with the node it chose

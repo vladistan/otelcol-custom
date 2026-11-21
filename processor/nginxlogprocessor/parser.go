@@ -30,7 +30,7 @@ type NginxLogInfo struct {
 
 // Nginx combined log format regex
 // Format: $remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$http_x_forwarded_for"
-// Example: 192.0.2.1 - - [31/Dec/2025:00:30:00 +0000] "POST /api/2/envelope/ HTTP/1.1" 200 41 "-" "sentry.go/0.40.0" "192.0.2.1:46331"
+// Example: 192.0.2.84 - - [31/Dec/2025:00:30:00 +0000] "POST /api/2/envelope/ HTTP/1.1" 200 41 "-" "sentry.go/0.40.0" "192.0.2.84:46331"
 var nginxCombinedRegex = regexp.MustCompile(
 	`^(\S+)\s+-\s+(\S+)\s+\[([^\]]+)\]\s+"([^"]+)"\s+(\d+)\s+(\d+)\s+"([^"]*)"\s+"([^"]*)"(?:\s+"([^"]*)")?`,
 )

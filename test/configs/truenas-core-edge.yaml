@@ -81,6 +81,11 @@ processors:
     role: edge
   normalizedload:
     cpu_count: 0
+  # Shapes the raw syslog lines of /var/log/messages: host, service and pid of the header, the
+  # time, and the inner line of smartd and cron. It runs before resource/host, which only inserts
+  # the fallback service.name when the line gave none.
+  logshape:
+    branches: [syslog, smartd, cron]
 exporters:
   otlp_http:
     endpoint: http://otel-main.example.invalid:4318
@@ -107,5 +112,5 @@ service:
       exporters: [otlp_http]
     logs:
       receivers: [filelog/messages]
-      processors: [memory_limiter, resource_detection, resource/host, resourceversion]
+      processors: [memory_limiter, logshape, resource_detection, resource/host, resourceversion]
       exporters: [otlp_http]

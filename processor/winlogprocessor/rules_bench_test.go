@@ -103,3 +103,42 @@ func benchmarkServiceName(b *testing.B, on bool) {
 
 func BenchmarkConsumeMixedProvidersServiceNameOff(b *testing.B) { benchmarkServiceName(b, false) }
 func BenchmarkConsumeMixedProvidersServiceNameOn(b *testing.B)  { benchmarkServiceName(b, true) }
+
+// summaryBatch cycles the seven summarized events so each record builds a summary.
+func summaryBatch(n int) plog.Logs {
+	cases := summaryCases()
+	logs := plog.NewLogs()
+	records := logs.ResourceLogs().AppendEmpty().ScopeLogs().AppendEmpty().LogRecords()
+	for i := 0; i < n; i++ {
+		cases[i%len(cases)].event.toLogRecord().CopyTo(records.AppendEmpty())
+	}
+	return logs
+}
+
+func benchmarkSummaries(b *testing.B, cfg *Config) {
+	set := processortest.NewNopSettings(component.MustNewType(typeStr))
+	proc, err := NewFactory().CreateLogs(context.Background(), set, cfg, consumertest.NewNop())
+	if err != nil {
+		b.Fatalf("create processor: %v", err)
+	}
+	template := summaryBatch(1000)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		logs := plog.NewLogs()
+		template.CopyTo(logs)
+		b.StartTimer()
+		if err := proc.ConsumeLogs(context.Background(), logs); err != nil {
+			b.Fatalf("consume: %v", err)
+		}
+	}
+}
+
+func BenchmarkConsumeSummaries(b *testing.B) {
+	benchmarkSummaries(b, &Config{DNContractions: []string{dnSuffix}})
+}
+
+func BenchmarkConsumeSummariesAndServiceName(b *testing.B) {
+	benchmarkSummaries(b, &Config{DNContractions: []string{dnSuffix}, ServiceNameFromProvider: true})
+}

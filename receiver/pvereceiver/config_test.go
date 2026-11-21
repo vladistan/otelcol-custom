@@ -16,7 +16,7 @@ import (
 
 func validConfig() *Config {
 	cfg := createDefaultConfig().(*Config)
-	cfg.BaseURLs = []string{"https://pve1.example:8006"}
+	cfg.BaseURLs = []string{"https://node1.example:8006"}
 	cfg.Resources.Enabled = true
 	cfg.Resources.TokenID = "otel@pve!resources"
 	cfg.Resources.TokenSecret = "resources-secret" // pragma: allowlist secret
@@ -114,7 +114,7 @@ func TestConfigLoadsFromTheConfigurationKeys(t *testing.T) {
 			"collection_interval": "30s", "timeout": "8s", "subscription": true,
 		},
 		"guests": map[string]any{
-			"enabled": true, "token_id": "otel@pve!g", "token_secret": "gs", "node": "pve12",
+			"enabled": true, "token_id": "otel@pve!g", "token_secret": "gs", "node": "node12",
 		},
 	})
 	cfg := createDefaultConfig().(*Config)
@@ -125,7 +125,7 @@ func TestConfigLoadsFromTheConfigurationKeys(t *testing.T) {
 	assert.Equal(t, "/etc/pve-ca.pem", cfg.CAFile)
 	assert.Equal(t, 30*time.Second, cfg.Resources.CollectionInterval)
 	assert.True(t, cfg.Resources.Subscription)
-	assert.Equal(t, "pve12", cfg.Guests.Node)
+	assert.Equal(t, "node12", cfg.Guests.Node)
 	assert.Equal(t, 15*time.Minute, cfg.Guests.CollectionInterval, "an unset key keeps its default")
 	assert.NoError(t, cfg.Validate())
 }

@@ -180,10 +180,9 @@ func cloudTrailBody(attrs pcommon.Map, lr plog.LogRecord) {
 	}
 }
 
+// awsSeverity raises a CloudTrail record with an error code to WARN and writes the text of INFO and
+// WARN. A record with no severity stays unset.
 func awsSeverity(attrs pcommon.Map, lr plog.LogRecord) {
-	if lr.SeverityNumber() == plog.SeverityNumberUnspecified {
-		lr.SetSeverityNumber(plog.SeverityNumberInfo)
-	}
 	if attrIs(attrs, sourceAttr, sourceCloudTrail) && hasValue(attrs, errorCodeAttr) {
 		lr.SetSeverityNumber(plog.SeverityNumberWarn)
 	}
@@ -230,14 +229,6 @@ func regionOfZone(zone string) string {
 	return zone
 }
 
-// defaultInfo gives a record with no severity INFO, the default of every cloud source.
-func defaultInfo(lr plog.LogRecord) {
-	if lr.SeverityNumber() == plog.SeverityNumberUnspecified {
-		lr.SetSeverityNumber(plog.SeverityNumberInfo)
-		lr.SetSeverityText("INFO")
-	}
-}
-
 // gcpRecord sets gcp.audit with no nil guard: an audit resource id outranks any source set earlier.
 func gcpRecord(res, _ pcommon.Map, lr plog.LogRecord) {
 	attrs := lr.Attributes()
@@ -249,7 +240,6 @@ func gcpRecord(res, _ pcommon.Map, lr plog.LogRecord) {
 	setCategoryFor(attrs, sourceGCPAudit, categoryAudit)
 	setCategoryFor(attrs, sourceGCPLB, categoryAccess)
 	setCategoryFor(attrs, sourceGCPRun, categoryApplication)
-	defaultInfo(lr)
 }
 
 func azureResource(res pcommon.Map) {
@@ -259,5 +249,4 @@ func azureResource(res pcommon.Map) {
 func azureRecord(_, _ pcommon.Map, lr plog.LogRecord) {
 	lr.Attributes().PutStr(sourceAttr, sourceAzure)
 	lr.Attributes().PutStr(categoryAttr, categoryAudit)
-	defaultInfo(lr)
 }

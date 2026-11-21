@@ -191,7 +191,7 @@ func TestGCP_NoLocationLabelLeavesTheRegionAbsent(t *testing.T) {
 	wantAbsent(t, res, "cloud.region")
 }
 
-func TestGCP_RecordsWithoutSeverityGetInfo(t *testing.T) {
+func TestGCP_RecordsWithoutSeverityStayUnset(t *testing.T) {
 	for name, res := range map[string]map[string]string{
 		"audit":     {"cloud.resource_id": "cloudaudit.googleapis.com%2Factivity"},
 		"cloud run": {"gcp.resource_type": "cloud_run_revision"},
@@ -201,8 +201,8 @@ func TestGCP_RecordsWithoutSeverityGetInfo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, lr := tag(t, "gcp", input{res: res})
 
-			if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
-				t.Errorf("severity = %v/%q, want INFO/INFO", lr.SeverityNumber(), lr.SeverityText())
+			if lr.SeverityNumber() != plog.SeverityNumberUnspecified || lr.SeverityText() != "" {
+				t.Errorf("severity = %v/%q, want unset", lr.SeverityNumber(), lr.SeverityText())
 			}
 		})
 	}
@@ -224,10 +224,10 @@ func TestGCP_ANoticeKeepsItsOwnText(t *testing.T) {
 	}
 }
 
-func TestAzure_RecordsWithoutSeverityGetInfoAndASetOneIsKept(t *testing.T) {
+func TestAzure_RecordsWithoutSeverityStayUnsetAndASetOneIsKept(t *testing.T) {
 	_, lr := tag(t, "azure", input{})
-	if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
-		t.Errorf("severity = %v/%q, want INFO/INFO", lr.SeverityNumber(), lr.SeverityText())
+	if lr.SeverityNumber() != plog.SeverityNumberUnspecified || lr.SeverityText() != "" {
+		t.Errorf("severity = %v/%q, want unset", lr.SeverityNumber(), lr.SeverityText())
 	}
 
 	_, lr = tag(t, "azure", input{severity: plog.SeverityNumberWarn, severityText: "Warning"})

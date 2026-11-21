@@ -1,0 +1,4 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+{"timestamp":"2026-11-19T22:41:04.100000Z","level":"INFO","fields":{"message":"Inserted 2 rows","rows":2},"target":"rust_consumer::strategies::writer"}
+{"timestamp":"2026-11-19T22:41:05Z","level":"WARN","fields":{"message":"slow batch"},"target":"rust_consumer::strategies::writer"}

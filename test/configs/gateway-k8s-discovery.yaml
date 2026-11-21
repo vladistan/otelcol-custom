@@ -1,0 +1,65 @@
+# Gateway as a one-replica Kubernetes Deployment: scrape the Redis pods of the whole cluster, with the pod
+# name and namespace on the metrics.
+#
+# Validate: otelcol-gateway validate --config test/configs/gateway-k8s-discovery.yaml
+#
+# The observer has no `node` key, so it lists the pods of every namespace. Run one replica: two replicas
+# would scrape each pod twice. The service account needs get, list and watch on pods across the cluster;
+# the k8s_attributes block below extracts only names, so it needs nothing more. Granting it is the
+# cluster owner's job. See docs/k8s-discovery.md for the rules and the failure table.
+#
+# The rule matches every pod port 6379 and leaves out the collector's own pod through the label the
+# Deployment puts on it. Add a label or namespace test to narrow it. Annotation discovery stays off:
+# only the rule below starts receivers.
+#
+# REDIS_PASSWORD comes from a Secret as an environment variable; leave it unset for a server without a
+# password. No password is written in this file.
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13133
+  k8s_observer:
+    auth_type: serviceAccount
+    observe_pods: true
+receivers:
+  receiver_creator/redis:
+    watch_observers: [k8s_observer]
+    receivers:
+      redis:
+        rule: type == "port" && port == 6379 && pod.labels["app.kubernetes.io/component"] != "opentelemetry-collector"
+        config:
+          endpoint: '`endpoint`'
+          collection_interval: 60s
+          password: ${env:REDIS_PASSWORD}
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  # The creator puts k8s.pod.uid on every scrape; this adds the node and the labels. A uid with no pod
+  # (a pod that just ended) passes through without them.
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    extract:
+      metadata:
+        - k8s.pod.name
+        - k8s.namespace.name
+        - k8s.node.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+  batch:
+    timeout: 10s
+exporters:
+  # Replace with the exporter of the gateway's metrics pipeline.
+  debug:
+    verbosity: basic
+service:
+  extensions: [health_check, k8s_observer]
+  pipelines:
+    metrics/redis:
+      receivers: [receiver_creator/redis]
+      processors: [memory_limiter, k8s_attributes, batch]
+      exporters: [debug]

@@ -23,7 +23,7 @@ Everything else in the values stays: receivers, `resource/k8s`, `k8s_attributes`
 
 `k8sevent` also keeps its own attributes (`k8s.pod.name`, `k8s.pod.restarts`, `k8s.pod.ready`, `k8s.node.name`, `k8s.event.source`). Other object kinds pass unchanged. The cluster name is never set by the processor.
 
-`test/bench/k8sevent_parity_test.go` runs the OTTL block from the kube-v0 values and the processor on the same records and compares every field the block sets.
+`test/bench/k8sevent_parity_test.go` runs the OTTL block from the cluster-a values and the processor on the same records and compares every field the block sets.
 
 ## Filling host.name and service.name
 
@@ -63,11 +63,11 @@ identityfill:
 
 | Cluster | `k8s.cluster.name` | Notes |
 |---|---|---|
-| kube-v0 (GCP) | `kube-v0` | Keeps the `googlecloud*` receivers and `resource_detection/gcp`. |
+| cluster-a (GCP) | `cluster-a` | Keeps the `googlecloud*` receivers and `resource_detection/gcp`. |
 | apps-eks-v0 (AWS) | `apps-eks-v0` | Parity not yet checked against its values. |
 | site-k8s | `site-k8s` | Parity not yet checked against its values. |
 
-For apps-eks-v0 and site-k8s the fragment applies after their own `transform/k8s_objects` block is confirmed to match the kube-v0 block. Until then, parity is proven on kube-v0 only.
+For apps-eks-v0 and site-k8s the fragment applies after their own `transform/k8s_objects` block is confirmed to match the cluster-a block. Until then, parity is proven on cluster-a only.
 
 ## Components
 

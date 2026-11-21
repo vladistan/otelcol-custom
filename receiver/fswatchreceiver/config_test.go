@@ -11,7 +11,7 @@ import (
 
 func validConfig() *Config {
 	cfg := createDefaultConfig().(*Config)
-	cfg.Paths = []string{`D:\CDSProjects`}
+	cfg.Paths = []string{`D:\Projects`}
 	return cfg
 }
 
@@ -36,8 +36,8 @@ func TestValidate(t *testing.T) {
 		{"valid UNC path", func(c *Config) { c.Paths = []string{`\\lab\share\runs`} }, ""},
 		{"valid two roots", func(c *Config) { c.Paths = []string{`D:\a`, `E:\b`} }, ""},
 		{"no paths", func(c *Config) { c.Paths = nil }, "paths must hold at least one root"},
-		{"relative path", func(c *Config) { c.Paths = []string{`CDSProjects`} }, "must be absolute"},
-		{"drive without separator", func(c *Config) { c.Paths = []string{`D:CDSProjects`} }, "must be absolute"},
+		{"relative path", func(c *Config) { c.Paths = []string{`Projects`} }, "must be absolute"},
+		{"drive without separator", func(c *Config) { c.Paths = []string{`D:Projects`} }, "must be absolute"},
 		{"glob star", func(c *Config) { c.Paths = []string{`D:\CDS*`} }, "glob character"},
 		{"glob question", func(c *Config) { c.Paths = []string{`D:\CDS?`} }, "glob character"},
 		{"glob bracket", func(c *Config) { c.Paths = []string{`D:\CDS[1]`} }, "glob character"},

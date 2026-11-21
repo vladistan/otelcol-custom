@@ -209,12 +209,21 @@ fixture fail-no-service 1 'receivers:
 
 expect_exit_code "a missing file is a usage error" 2 "$CHECK" "$SCRATCH/absent.yaml"
 
-# Docs and CHANGELOG: the Unreleased section and the section of the version in VERSION, so the
-# entry is found before and after the release heading is cut.
-awk -v v="$(tr -d '\n' <"$ROOT/VERSION")" '/^## \[/ {f = ($0 ~ /^## \[Unreleased\]/ || index($0, "[" v "]") > 0); next} f' "$ROOT/CHANGELOG.md" >"$SCRATCH/unreleased"
-expect_grep "the CHANGELOG names the processes scraper" '`processes` scraper' "$SCRATCH/unreleased"
-expect_grep "the CHANGELOG says the series reached ClickHouse from one host" 'reached ClickHouse from one host' "$SCRATCH/unreleased"
-expect_grep "the CHANGELOG names system.processes.count and created" 'system\.processes\.count.*system\.processes\.created' "$SCRATCH/unreleased"
+# Docs and CHANGELOG: the entry stays in the release section it shipped in, so the whole file is read.
+readonly CHANGELOG="$ROOT/CHANGELOG.md"
+expect_grep "the CHANGELOG names the processes scraper" '`processes` scraper' "$CHANGELOG"
+expect_grep "the CHANGELOG says the series reached ClickHouse from one host" 'reached ClickHouse from one host' "$CHANGELOG"
+expect_grep "the CHANGELOG names system.processes.count and created" 'system\.processes\.count.*system\.processes\.created' "$CHANGELOG"
+
+# All three phrases must be present; the second case proves the check still fails without them.
+changelog_phrases() {
+	grep -Eq -- '`processes` scraper' "$1" &&
+		grep -Eq -- 'reached ClickHouse from one host' "$1" &&
+		grep -Eq -- 'system\.processes\.count.*system\.processes\.created' "$1"
+}
+grep -Ev -- '`processes` scraper|reached ClickHouse from one host|system\.processes\.count' "$CHANGELOG" >"$SCRATCH/changelog-stripped" || true
+expect_exit_code "the CHANGELOG phrases are found in the committed file" 0 changelog_phrases "$CHANGELOG"
+expect_exit_code "the CHANGELOG phrases are missing once the entry is removed" 1 changelog_phrases "$SCRATCH/changelog-stripped"
 grep 'system\.processes\.count' "$TELEMETRY_DOC" >"$SCRATCH/row" || true
 expect_grep "the telemetry doc lists system.processes.count and created in one row" 'system\.processes\.count.*system\.processes\.created' "$SCRATCH/row"
 expect_grep "the telemetry doc gives the type as sum" '\| sum \|' "$SCRATCH/row"

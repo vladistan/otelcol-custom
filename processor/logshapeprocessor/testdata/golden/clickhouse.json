@@ -1,0 +1,25 @@
+[
+  {
+    "body": "Client has not sent any data.",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "TCPHandler",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026.11.19 23:01:21.644520 [ 1980900 ] {} \u003cInformation\u003e TCPHandler: Client has not sent any data.",
+      "thread.id": 1980900
+    }
+  },
+  {
+    "body": "Code: 60. DB::Exception: no table",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "executeQuery",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026.11.19 23:01:22.100000 [ 17 ] {4b1c-77} \u003cError\u003e executeQuery: Code: 60. DB::Exception: no table",
+      "thread.id": 17,
+      "vstan.clickhouse.query_id": "4b1c-77"
+    }
+  }
+]

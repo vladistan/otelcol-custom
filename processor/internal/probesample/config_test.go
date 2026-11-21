@@ -1,6 +1,8 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore readyz livez
+
 package probesample
 
 import (
@@ -17,8 +19,8 @@ func TestConfigValidates(t *testing.T) {
 func TestDefault_MatchesDocumentedDefaults(t *testing.T) {
 	cfg := Default()
 
-	wantPaths := []string{"/healthz", "/health", "/api/health", "/probe", "/api/healthz"}
-	wantAgents := []string{"kube-probe/", "ELB-HealthChecker/"}
+	wantPaths := []string{"/healthz", "/health", "/api/health", "/probe", "/api/healthz", "/ready", "/readyz", "/livez"}
+	wantAgents := []string{"kube-probe/", "ELB-HealthChecker/", "HealthProbe", "Amazon-Route53-Health-Check-Service"}
 	if len(cfg.Paths) != len(wantPaths) || len(cfg.Agents) != len(wantAgents) {
 		t.Fatalf("default lists = %v / %v", cfg.Paths, cfg.Agents)
 	}

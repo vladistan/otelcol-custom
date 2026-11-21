@@ -42,6 +42,10 @@ func createLogsProcessor(
 	if err != nil {
 		return nil, err
 	}
+	summaries, err := newSummarizer(config)
+	if err != nil {
+		return nil, err
+	}
 	tel, err := newTelemetry(set.TelemetrySettings)
 	if err != nil {
 		return nil, err
@@ -53,6 +57,7 @@ func createLogsProcessor(
 		maxOriginalBytes: config.OriginalMessageMaxBytes,
 		logger:           set.Logger,
 		serviceFromEvent: config.ServiceNameFromProvider,
+		summaries:        summaries,
 	}
 	if config.DropSummary.Enabled {
 		p.summary = newDropSummary()

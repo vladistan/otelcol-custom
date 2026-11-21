@@ -1,0 +1,45 @@
+[
+  {
+    "body": "Starting HTTP server",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "otlp",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "otlpreceiver/otlp.go",
+      "code.line.number": 175,
+      "log.record.original": "2026-11-06T21:12:29.299Z\tinfo\totlpreceiver@v0.164.0/otlp.go:175\tStarting HTTP server\t{\"otelcol.component.id\": \"otlp\", \"otelcol.component.kind\": \"receiver\", \"endpoint\": \"127.0.0.1:14418\"}",
+      "otel.component.name": "otlp",
+      "vstan.collector.endpoint": "127.0.0.1:14418"
+    }
+  },
+  {
+    "body": "Starting HTTP server",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "otlp",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "otlpreceiver/otlp.go",
+      "code.line.number": 175,
+      "log.record.original": "otelcol-contrib[1186]: 2026-11-06T21:12:29.299Z#011info#011otlpreceiver@v0.164.0/otlp.go:175#011Starting HTTP server#011{\"otelcol.component.id\": \"otlp\", \"otelcol.component.kind\": \"receiver\", \"endpoint\": \"127.0.0.1:14418\"}",
+      "otel.component.name": "otlp",
+      "process.pid": 1186,
+      "vstan.collector.endpoint": "127.0.0.1:14418"
+    }
+  },
+  {
+    "body": "Started watching file",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "filelog",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "fileconsumer/file.go",
+      "code.line.number": 470,
+      "log.record.original": "2026-11-06T16:12:29.299-0500\tinfo\tfileconsumer/file.go:470\tStarted watching file\t{\"otelcol.component.id\": \"filelog\", \"otelcol.component.kind\": \"receiver\", \"path\": \"/var/log/app.log\"}",
+      "otel.component.name": "filelog",
+      "vstan.collector.path": "/var/log/app.log"
+    }
+  }
+]

@@ -58,7 +58,7 @@ func (s *scraper) scrape(now time.Time) pmetric.Metrics {
 	}
 	s.noSensorsLogged, s.errorLogged = false, false
 
-	b := newBuilder(md, pcommon.NewTimestampFromTime(now))
+	b := newBuilder(s.logger, md, pcommon.NewTimestampFromTime(now))
 	for _, r := range readings {
 		if s.selected(r) {
 			b.add(r)
@@ -87,15 +87,28 @@ func matchAny(globs []string, key string) bool {
 
 // builder adds each metric to the scope the first time a point needs it.
 type builder struct {
+	logger  *zap.Logger
 	sm      pmetric.ScopeMetrics
 	ts      pcommon.Timestamp
 	metrics map[string]pmetric.Gauge
+	noType  map[kind]bool
 }
 
-func newBuilder(md pmetric.Metrics, ts pcommon.Timestamp) *builder {
+func newBuilder(logger *zap.Logger, md pmetric.Metrics, ts pcommon.Timestamp) *builder {
 	sm := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty()
 	sm.Scope().SetName(scopeName)
-	return &builder{sm: sm, ts: ts, metrics: map[string]pmetric.Gauge{}}
+	return &builder{logger: logger, sm: sm, ts: ts, metrics: map[string]pmetric.Gauge{}, noType: map[kind]bool{}}
+}
+
+// hwType returns the hw.type of the sensor kind. A kind with no value logs one debug line and
+// gives no type.
+func (b *builder) hwType(k kind) (string, bool) {
+	v, ok := hwTypeOf(k)
+	if !ok && !b.noType[k] {
+		b.noType[k] = true
+		b.logger.Debug("The sensor kind has no hw.type value; its metrics go without it", zap.Int("kind", int(k)))
+	}
+	return v, ok
 }
 
 func (b *builder) gauge(name, unit string) pmetric.Gauge {
@@ -116,6 +129,9 @@ func (b *builder) point(g pmetric.Gauge, r reading) pmetric.NumberDataPoint {
 	dp.Attributes().PutStr("hw.id", r.id)
 	dp.Attributes().PutStr("hw.name", r.name)
 	dp.Attributes().PutStr("hw.parent", r.parent)
+	if t, ok := b.hwType(r.kind); ok {
+		dp.Attributes().PutStr("hw.type", t)
+	}
 	return dp
 }
 

@@ -1,0 +1,29 @@
+Performance work on logshape: the ratio of logshape (the whole table) to the block it replaced, after each change.
+
+Command: cd test/bench && go test -run=NONE -bench='LogshapeVsBlock|LogshapeCloudTrail' -benchmem -benchtime=300x -count=10 .
+Host:    darwin/amd64, go1.26.8, load average about 8 to 15; one run of each, n = 10 runs per benchmark, median shown.
+Unit:    ns/record (1000-record batch, fresh copy per iteration, copy outside the timer); allocs = allocs/op / 1000.
+Block:   the standalone processor; for nginx, sentry and logrus the block with the options logshape turns on (block-aligned);
+         for cloudtrail the OTTL block, against the source tagger and logshape.
+
+ratio = logshape median / block median (target: 1.2 or less)
+
+format      block ns |   before ratio |  regroup ratio |  scratch ratio |     memo ratio |    final ratio | allocs block/logshape before -> final
+nginx          15165 |    22684  1.50 |    21997  1.41 |    20367  1.30 |    16668  1.02 |    16886  1.10 | 34.5/77.8 -> 34.5/39.8
+redis           1922 |     4478  2.33 |     3878  1.97 |     3196  1.59 |     3122  1.69 |     2770  1.48 | 13.6/33.1 -> 13.6/13.0
+postgres        2202 |     3574  1.62 |     3622  1.84 |     2880  1.47 |     2704  1.47 |     2664  1.41 | 11.2/24.0 -> 11.2/11.0
+sentry          5184 |    13212  2.55 |    11968  2.27 |    11185  2.22 |     6842  1.38 |     6604  1.34 | 20.0/56.5 -> 20.0/23.1
+klog            7224 |     9656  1.34 |     9231  1.32 |     8479  1.22 |     7008  0.99 |     6961  1.01 | 28.4/51.5 -> 28.4/35.9
+uvicorn         2076 |     5224  2.52 |     5078  2.48 |     4212  2.11 |     3786  1.79 |     3440  1.74 | 13.2/34.0 -> 13.2/18.4
+logrus          5304 |     7594  1.43 |     7380  1.42 |     6490  1.28 |     7024  1.27 |     6265  1.24 | 38.9/53.3 -> 38.9/41.9
+cisco          10562 |    15256  1.44 |    14132  1.36 |    12786  1.24 |    12207  1.10 |    11916  1.18 | 22.3/55.3 -> 22.3/29.2
+syslog          3265 |     7054  2.16 |     6944  2.16 |     5438  1.76 |     5282  1.68 |     5132  1.64 | 15.7/40.4 -> 15.7/17.1
+cloudtrail      2446 |     5586  2.28 |     3634  1.53 |     2992  1.26 |     3006  1.24 |     2682  1.14 | 24.2/56.5 -> 24.2/21.3
+
+  before   before the performance work
+  regroup  after the regroup key
+  scratch  after the scratch reuse
+  memo     after the shared match
+  final    after the gate and group shortcuts
+
+Raw output of the first (before) and last (final) run: logshape-perf2-before-raw.txt, logshape-perf2-final-raw.txt.

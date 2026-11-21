@@ -26,6 +26,7 @@ type winlogProcessor struct {
 	maxOriginalBytes int
 	logger           *zap.Logger
 	serviceFromEvent bool // service.name per event from winlog.provider_name
+	summaries        *summarizer
 
 	summary *dropSummary // nil when the summary is off
 	stop    chan struct{}

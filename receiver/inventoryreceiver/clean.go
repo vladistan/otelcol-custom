@@ -22,10 +22,11 @@ var placeholders = map[string]bool{
 	"type1productconfigid": true, "123456789": true, "0123456789": true, "0123456789abcdef": true,
 }
 
-// cleanValue returns the text of a firmware string without control characters
-// or invalid bytes, or "" when it is empty, too fill-like to be data, or a placeholder.
+// cleanValue returns the text of a firmware string without control characters,
+// with each invalid byte replaced by U+FFFD (the policy of hwschema.ValidUTF8),
+// or "" when it is empty, too fill-like to be data, or a placeholder.
 func cleanValue(s string) string {
-	s = strings.ToValidUTF8(s, "")
+	// Map turns every invalid byte into one U+FFFD.
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1

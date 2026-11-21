@@ -5,6 +5,7 @@ package probesample
 
 import (
 	"math/rand/v2"
+	"slices"
 	"strings"
 )
 
@@ -21,11 +22,17 @@ func New(cfg Config, draw func() float64) *Sampler {
 	if draw == nil {
 		draw = rand.Float64
 	}
-	paths := make(map[string]struct{}, len(cfg.Paths))
-	for _, p := range cfg.Paths {
+	paths := make(map[string]struct{}, len(defaultPaths)+len(cfg.Paths))
+	for _, p := range append(append([]string(nil), defaultPaths...), cfg.Paths...) {
 		paths[p] = struct{}{}
 	}
-	return &Sampler{paths: paths, agents: cfg.Agents, ratio: cfg.KeepRatio, draw: draw}
+	agents := append([]string(nil), defaultAgents...)
+	for _, a := range cfg.Agents {
+		if !slices.Contains(agents, a) {
+			agents = append(agents, a)
+		}
+	}
+	return &Sampler{paths: paths, agents: agents, ratio: cfg.KeepRatio, draw: draw}
 }
 
 // Classify reports whether a record is a health probe: status 200 or 302, and

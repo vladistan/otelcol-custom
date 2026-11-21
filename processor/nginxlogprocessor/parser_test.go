@@ -16,16 +16,16 @@ func TestParseNginxLog(t *testing.T) {
 	}{
 		{
 			name:  "combined format with x-forwarded-for",
-			input: `192.0.2.1 - - [31/Dec/2025:00:30:00 +0000] "POST /api/2/envelope/ HTTP/1.1" 200 41 "-" "sentry.go/0.40.0" "192.0.2.1:46331"`,
+			input: `192.0.2.84 - - [31/Dec/2025:00:30:00 +0000] "POST /api/2/envelope/ HTTP/1.1" 200 41 "-" "sentry.go/0.40.0" "192.0.2.84:46331"`,
 			expected: &NginxLogInfo{
-				ClientAddr:   "192.0.2.1",
+				ClientAddr:   "192.0.2.84",
 				Method:       "POST",
 				Path:         "/api/2/envelope/",
 				Protocol:     "HTTP/1.1",
 				StatusCode:   200,
 				BodyBytes:    41,
 				UserAgent:    "sentry.go/0.40.0",
-				ForwardedFor: "192.0.2.1:46331",
+				ForwardedFor: "192.0.2.84:46331",
 				CleanMessage: "POST /api/2/envelope/ 200",
 			},
 		},
@@ -45,26 +45,26 @@ func TestParseNginxLog(t *testing.T) {
 		},
 		{
 			name:  "combined format with query string and referer",
-			input: `192.0.2.1 - - [31/Dec/2025:00:01:40 +0000] "GET /api/0/organizations/sentry/issues/?collapse=stats&limit=25 HTTP/1.1" 200 2 "https://sentry.r4.example.com/issues/" "Mozilla/5.0 (Macintosh)" "192.0.2.1:51244"`,
+			input: `192.0.2.39 - - [31/Dec/2025:00:01:40 +0000] "GET /api/0/organizations/sentry/issues/?collapse=stats&limit=25 HTTP/1.1" 200 2 "https://sentry.example.com/issues/" "Mozilla/5.0 (Macintosh)" "192.0.2.39:51244"`,
 			expected: &NginxLogInfo{
-				ClientAddr:   "192.0.2.1",
+				ClientAddr:   "192.0.2.39",
 				Method:       "GET",
 				Path:         "/api/0/organizations/sentry/issues/",
 				Query:        "collapse=stats&limit=25",
 				Protocol:     "HTTP/1.1",
 				StatusCode:   200,
 				BodyBytes:    2,
-				Referer:      "https://sentry.r4.example.com/issues/",
+				Referer:      "https://sentry.example.com/issues/",
 				UserAgent:    "Mozilla/5.0 (Macintosh)",
-				ForwardedFor: "192.0.2.1:51244",
+				ForwardedFor: "192.0.2.39:51244",
 				CleanMessage: "GET /api/0/organizations/sentry/issues/?collapse=stats&limit=25 200",
 			},
 		},
 		{
 			name:  "health check with elb",
-			input: `172.31.1.150 - - [31/Dec/2025:00:29:05 +0000] "GET / HTTP/1.1" 302 0 "-" "ELB-HealthChecker/2.0" "-"`,
+			input: `203.0.113.150 - - [31/Dec/2025:00:29:05 +0000] "GET / HTTP/1.1" 302 0 "-" "ELB-HealthChecker/2.0" "-"`,
 			expected: &NginxLogInfo{
-				ClientAddr:   "172.31.1.150",
+				ClientAddr:   "203.0.113.150",
 				Method:       "GET",
 				Path:         "/",
 				Protocol:     "HTTP/1.1",
@@ -76,16 +76,16 @@ func TestParseNginxLog(t *testing.T) {
 		},
 		{
 			name:  "json wrapped format",
-			input: `{"text":"192.0.2.1 - - [31/Dec/2025:00:30:00 +0000] \"POST /api/2/envelope/ HTTP/1.1\" 200 41 \"-\" \"sentry.go/0.40.0\" \"192.0.2.1:46331\""}`,
+			input: `{"text":"192.0.2.84 - - [31/Dec/2025:00:30:00 +0000] \"POST /api/2/envelope/ HTTP/1.1\" 200 41 \"-\" \"sentry.go/0.40.0\" \"192.0.2.84:46331\""}`,
 			expected: &NginxLogInfo{
-				ClientAddr:   "192.0.2.1",
+				ClientAddr:   "192.0.2.84",
 				Method:       "POST",
 				Path:         "/api/2/envelope/",
 				Protocol:     "HTTP/1.1",
 				StatusCode:   200,
 				BodyBytes:    41,
 				UserAgent:    "sentry.go/0.40.0",
-				ForwardedFor: "192.0.2.1:46331",
+				ForwardedFor: "192.0.2.84:46331",
 				CleanMessage: "POST /api/2/envelope/ 200",
 			},
 		},
@@ -158,7 +158,7 @@ func TestIsNginxLog(t *testing.T) {
 		input    string
 		expected bool
 	}{
-		{`192.0.2.1 - - [31/Dec/2025:00:30:00 +0000] "POST /api HTTP/1.1" 200 41`, true},
+		{`192.0.2.84 - - [31/Dec/2025:00:30:00 +0000] "POST /api HTTP/1.1" 200 41`, true},
 		{`127.0.0.1 - user [31/Dec/2025:00:30:03 +0000] "GET / HTTP/1.1" 302 0`, true},
 		{`{"level":"info","ts":1735603800,"msg":"Starting server"}`, false},
 		{`Dec 31 00:30:00 host sshd[1234]: Connection from 192.168.1.1`, false},

@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# Guards the pod discovery sample configs and the builder manifests:
-#   - no sample config turns annotation discovery on (a discovery block with enabled: true);
-#   - every receiver_creator block names watch_observers, and each observer it names is listed in
-#     service.extensions;
-#   - no builder manifest compiles prometheus_simple; pods are scraped with the prometheus receiver;
-#   - the redis, postgresql, mysql, mongodb, rabbitmq and nginx receivers are compiled only into
-#     builder-edge.yaml and builder-edge-static.yaml, and no manifest compiles memcached or kafka_metrics.
-# Annotation discovery lets anyone who can edit a pod annotation start receivers, so only rules
-# in the config start them.
+# Guards the pod discovery sample configs and builder manifests. Annotation discovery lets anyone who can
+# edit a pod annotation start receivers, so only rules in the config may start them.
+#
+# Checks: discovery.enabled is never on; each receiver_creator names observers that service.extensions
+# lists; no manifest compiles prometheus_simple, memcached or kafka_metrics; the six application receivers
+# are in the edge and gateway manifests only; the gateway has k8s_observer, receiver_creator and redis at
+# the edge version with no replaces line.
 #
 # Usage: check-k8s-discovery-config.sh [--manifest FILE]... [CONFIG...]
 #   CONFIG  default: test/configs/*.yaml
@@ -189,6 +187,37 @@ done
 
 readonly APP_RECEIVERS='receiver/(redis|postgresql|mysql|mongodb|rabbitmq|nginx)receiver([[:space:]]|$)'
 readonly BANNED_RECEIVERS='receiver/(memcached|kafkametrics)receiver([[:space:]]|$)'
+readonly CONTRIB='github.com/open-telemetry/opentelemetry-collector-contrib'
+
+# Prints the version a manifest gives a contrib module, or nothing.
+module_version() {
+	grep -oE "$CONTRIB/$2 v[0-9][0-9.]*" "$1" | awk '{print $2}' | head -n 1 || [ $? -eq 1 ]
+}
+
+# The gateway carries the observer, the creator and the redis receiver at the edge version, as released
+# contrib modules (a replaces line would point them at local code).
+check_gateway_components() {
+	local manifest="$1" base="$2" edge want got module
+	edge="$(dirname -- "$manifest")/builder-edge.yaml"
+	for module in extension/observer/k8sobserver receiver/receivercreator receiver/redisreceiver; do
+		got="$(module_version "$manifest" "$module")"
+		if [ -z "$got" ]; then
+			echo "FAIL: $base: does not compile $module"
+			failed=1
+			continue
+		fi
+		want=""
+		[ ! -f "$edge" ] || want="$(module_version "$edge" "$module")"
+		if [ -n "$want" ] && [ "$got" != "$want" ]; then
+			echo "FAIL: $base: $module is at $got, builder-edge.yaml has $want"
+			failed=1
+		fi
+		if grep -qE "$CONTRIB/$module[[:space:]]*=>" "$manifest"; then
+			echo "FAIL: $base: has a replaces line for $module"
+			failed=1
+		fi
+	done
+}
 
 for manifest in "${manifests[@]}"; do
 	base="${manifest##*/}"
@@ -198,9 +227,10 @@ for manifest in "${manifests[@]}"; do
 	fi
 	case "$base" in
 	builder-edge.yaml | builder-edge-static.yaml) ;;
+	builder-gateway.yaml) check_gateway_components "$manifest" "$base" ;;
 	*)
 		if found="$(grep -oE "$APP_RECEIVERS" "$manifest")"; then
-			echo "FAIL: $base: compiles an application receiver (${found//$'\n'/, }); only the Linux edge manifests carry them"
+			echo "FAIL: $base: compiles an application receiver (${found//$'\n'/, }); only the Linux edge and gateway manifests carry them"
 			failed=1
 		fi
 		;;

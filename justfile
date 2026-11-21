@@ -306,6 +306,22 @@ check-dockerfile-copies:
 test-check-dockerfile-copies:
     scripts/test-check-dockerfile-copies.sh
 
+# Fail unless every builder manifest lists the logshape processor and replaces it and its helper modules.
+check-logshape-in-builds:
+    scripts/check-logshape-in-builds.sh
+
+# Tests for check-logshape-in-builds; no network.
+test-check-logshape-in-builds:
+    scripts/test-check-logshape-in-builds.sh
+
+# Fail unless the gateway manifest still lists the nine standalone log processors and the docs date their removal.
+check-logshape-retired-processors:
+    scripts/check-logshape-retired-processors.sh
+
+# Tests for check-logshape-retired-processors; no network.
+test-check-logshape-retired-processors:
+    scripts/test-check-logshape-retired-processors.sh
+
 # Fail when a shipped build compiles without -trimpath (build paths would change the checksum).
 check-trimpath:
     scripts/check-trimpath.sh
@@ -453,6 +469,8 @@ verify-gateway:
     ./build/gateway/otelcol-gateway components
     ./build/gateway/otelcol-gateway validate --config test/configs/gateway-tcpcheck.yaml
     ./build/gateway/otelcol-gateway validate --config test/configs/gateway-remotewrite.yaml
+    ./build/gateway/otelcol-gateway validate --config test/configs/gateway-k8s-discovery.yaml
+    REDIS_PASSWORD=x POSTGRES_USER=x POSTGRES_PASSWORD=x MYSQL_USER=x MYSQL_PASSWORD=x MONGODB_USER=x MONGODB_PASSWORD=x RABBITMQ_USER=x RABBITMQ_PASSWORD=x ./build/gateway/otelcol-gateway validate --config test/configs/gateway-k8s-apps.yaml
 
 # ECR repository for gateway
 ecr_registry := "123456789012.dkr.ecr.us-east-1.amazonaws.com"
@@ -570,6 +588,14 @@ test-custom:
     @echo "Checking that the Dockerfiles copy the directories the manifests replace from..."
     just test-check-dockerfile-copies
     just check-dockerfile-copies
+    @echo ""
+    @echo "Checking that every manifest builds the logshape processor..."
+    just test-check-logshape-in-builds
+    just check-logshape-in-builds
+    @echo ""
+    @echo "Checking that the retired log processors stay listed until their removal..."
+    just test-check-logshape-retired-processors
+    just check-logshape-retired-processors
 
     @echo "Checking the SNMP secrets in the sample configs..."
     just test-check-snmp-secrets

@@ -1,0 +1,28 @@
+[
+  {
+    "body": "Loaded 3 pipelines",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.function.name": "ConfigRepository",
+      "code.line.number": 123,
+      "log.record.original": "jvm 1    | 2026-11-19 22:00:01,123 INFO  [qtp1-5] ConfigRepository:123 - Loaded 3 pipelines",
+      "thread.name": "qtp1-5"
+    }
+  },
+  {
+    "body": "Slow poll",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.function.name": "MaterialUpdate",
+      "code.line.number": 7,
+      "log.record.original": "jvm 1    | 2026-11-19 22:00:02,000 WARN  [qtp1-6] MaterialUpdate:7 - Slow poll",
+      "thread.name": "qtp1-6"
+    }
+  }
+]

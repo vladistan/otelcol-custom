@@ -1,0 +1,23 @@
+[
+  {
+    "body": "Inserted 2 rows",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "rust_consumer::strategies::writer",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"timestamp\":\"2026-11-19T22:41:04.100000Z\",\"level\":\"INFO\",\"fields\":{\"message\":\"Inserted 2 rows\",\"rows\":2},\"target\":\"rust_consumer::strategies::writer\"}",
+      "vstan.tracing.rows": 2
+    }
+  },
+  {
+    "body": "slow batch",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "rust_consumer::strategies::writer",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"timestamp\":\"2026-11-19T22:41:05Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"slow batch\"},\"target\":\"rust_consumer::strategies::writer\"}"
+    }
+  }
+]

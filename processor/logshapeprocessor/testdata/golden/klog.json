@@ -1,0 +1,71 @@
+[
+  {
+    "body": "Connect to server serverID=903ebd76",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "client.go",
+      "code.line.number": 214,
+      "log.record.original": "I1119 23:05:39.184859       1 client.go:214] \"Connect to server\" serverID=\"903ebd76\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "Watch failed err=\"context deadline exceeded\"",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "reflector.go",
+      "code.line.number": 561,
+      "log.record.original": "W1119 23:05:40.001000       1 reflector.go:561] \"Watch failed\" err=\"context deadline exceeded\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "Unhandled error err=\"connection refused\"",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "controller.go",
+      "code.line.number": 95,
+      "log.record.original": "E1119 23:05:41.123456       7 controller.go:95] \"Unhandled error\" err=\"connection refused\"",
+      "process.pid": 7
+    }
+  },
+  {
+    "body": "updated ClusterIP allocator for Service CIDR 198.51.100.0/18",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "cidrallocator.go",
+      "code.line.number": 277,
+      "log.record.original": "I1119 23:05:42.000000       1 cidrallocator.go:277] \"updated ClusterIP allocator for Service CIDR 198.51.100.0/18\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "Probe failed probeType=Readiness",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "k8s.namespace.name": "kube-system",
+      "k8s.pod.name": "kube-apiserver-node-1"
+    },
+    "attributes": {
+      "code.file.path": "prober.go",
+      "code.line.number": 120,
+      "k8s.pod.uid": "uid-1",
+      "log.record.original": "I1220 03:18:01.710490    1233 prober.go:120] \"Probe failed\" probeType=\"Readiness\" pod=\"kube-system/kube-apiserver-node-1\" podUID=\"uid-1\"",
+      "process.pid": 1233
+    }
+  }
+]

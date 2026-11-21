@@ -1,7 +1,7 @@
 # OpenTelemetry Collector Deployment for apps-eks-v0
 # Singleton collector running k8sclusterreceiver to emit cluster-wide metrics
 # (pod phase, node conditions, deployment desired/available, etc.) and forward
-# to the central collector in kube-v0.
+# to the central collector in cluster-a.
 #
 # Must run as a single replica - k8sclusterreceiver queries the API server for
 # cluster-wide state, so multiple replicas would duplicate every metric.
@@ -46,7 +46,7 @@ config:
   receivers:
     # [K8s Objects Receiver]
     # (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/k8sobjectsreceiver)
-    # Mirrors kube-v0's otel-cluster — same receiver, same transform/k8s_objects
+    # Mirrors cluster-a's otel-cluster — same receiver, same transform/k8s_objects
     # shape, so k8s object/event data exists on every cluster, not just GCP.
     k8sobjects:
       objects:
@@ -86,7 +86,7 @@ config:
             timeout: 5s
         # Other links have no probe target because their endpoints do not
         # accept TCP from this VPC; those are monitored via absence of the
-        # live kube-v0 producer stream instead.
+        # live cluster-a producer stream instead.
         - endpoint: 192.0.2.34:8007 # backup server
           dialer:
             timeout: 5s
@@ -119,7 +119,7 @@ config:
           value: production
           action: upsert
     # Extract useful fields from structured k8s object bodies. Same as
-    # the transform in kube-v0-values-cluster.yaml; see that file for the
+    # the transform in cluster-a-values-cluster.yaml; see that file for the
     # rationale comments (nil-guard ordering, etc).
     transform/k8s_objects:
       error_mode: ignore
@@ -209,7 +209,7 @@ config:
           - batch
         exporters:
           - otlphttp
-      # K8s object/event watch (events + pods) — same shape as kube-v0's
+      # K8s object/event watch (events + pods) — same shape as cluster-a's
       # otel-cluster, so object/event data exists on every cluster.
       logs:
         receivers:
@@ -222,7 +222,7 @@ config:
         exporters:
           - otlphttp
       # Reachability probes; resource/cluster stamps k8s.cluster.name so
-      # series from this prober are distinguishable from the kube-v0 one.
+      # series from this prober are distinguishable from the cluster-a one.
       metrics/tcpcheck:
         receivers:
           - tcp_check

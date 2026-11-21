@@ -33,6 +33,7 @@ COPY cmd ./cmd
 COPY extension ./extension
 COPY processor ./processor
 COPY receiver ./receiver
+COPY shape ./shape
 COPY stanza ./stanza
 COPY builder-scrape.yaml ./
 

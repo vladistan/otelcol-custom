@@ -26,7 +26,7 @@ import (
 const (
 	qemuList = `{"data":[{"vmid":100,"name":"web","status":"running"},{"vmid":101,"name":"old","status":"stopped"},{"vmid":102,"name":"noagent","status":"running"}]}`
 	lxcList  = `{"data":[{"vmid":200,"name":"ct","status":"running"},{"vmid":201,"name":"off","status":"stopped"}]}`
-	prefix   = "/api2/json/nodes/pve1"
+	prefix   = "/api2/json/nodes/node1"
 )
 
 func agentBody(result string) string { return `{"data":{"result":` + result + `}}` }
@@ -59,14 +59,14 @@ func newGuests(t *testing.T, f *fakePVE, mutate func(*Config)) *guestsHarness {
 	cfg.Guests = GuestsConfig{ScraperConfig: ScraperConfig{
 		Enabled: true, TokenID: "otel@pve!guests", TokenSecret: "guests-secret",
 		CollectionInterval: 15 * time.Minute, Timeout: time.Second,
-	}, Node: "pve1"}
+	}, Node: "node1"}
 	if mutate != nil {
 		mutate(cfg)
 	}
 	c, err := newAPIClient(cfg, cfg.Guests.TokenID, cfg.Guests.TokenSecret)
 	require.NoError(t, err)
 	core, logs := observer.New(zapcore.DebugLevel)
-	return &guestsHarness{s: newGuestsScraper(zap.New(core), cfg, c, "pve1"), logs: logs}
+	return &guestsHarness{s: newGuestsScraper(zap.New(core), cfg, c, "node1"), logs: logs}
 }
 
 // factRecords returns the change-event records in order, each as its attributes plus the body.
@@ -155,14 +155,14 @@ func TestOnlyTheConfiguredNodeIsCalled(t *testing.T) {
 // guests.node, never from the address of the API that answers.
 func TestTwoNodesThroughOneEndpointEachReadOnlyTheirOwnPath(t *testing.T) {
 	f := newFakePVE(t, false)
-	for _, node := range []string{"pve12", "pve13"} {
+	for _, node := range []string{"node12", "node13"} {
 		f.ok("/api2/json/nodes/"+node+"/qemu", `{"data":[{"vmid":100,"name":"web","status":"running"}]}`)
 		f.ok("/api2/json/nodes/"+node+"/lxc", `{"data":[]}`)
 		for _, call := range []string{"get-osinfo", "get-host-name", "network-get-interfaces", "get-fsinfo"} {
 			f.ok("/api2/json/nodes/"+node+"/qemu/100/agent/"+call, agentBody(`[]`))
 		}
 	}
-	for _, node := range []string{"pve12", "pve13"} {
+	for _, node := range []string{"node12", "node13"} {
 		h := newGuests(t, f, func(c *Config) { c.Guests.Node = node })
 		h.s.node = node
 
@@ -174,7 +174,7 @@ func TestTwoNodesThroughOneEndpointEachReadOnlyTheirOwnPath(t *testing.T) {
 		assert.Equal(t, 1, f.countOf("/api2/json/nodes/"+node+"/qemu"))
 	}
 	for _, hit := range f.hitList() {
-		assert.True(t, strings.HasPrefix(hit, "/api2/json/nodes/pve12/") || strings.HasPrefix(hit, "/api2/json/nodes/pve13/"), hit)
+		assert.True(t, strings.HasPrefix(hit, "/api2/json/nodes/node12/") || strings.HasPrefix(hit, "/api2/json/nodes/node13/"), hit)
 	}
 }
 
@@ -190,7 +190,7 @@ func TestFirstSweepGivesOneRecordPerFactAndAChangedAddressGivesOneMore(t *testin
 	assert.Equal(t, "10.0.0.5", facts["addresses"], "loopback and link-local addresses are not facts")
 	assert.Len(t, first, 3+1+1, "three facts for guest 100, the container addresses and the unavailable agent of 102")
 	assert.Equal(t, "pve guest fact", first[0]["body"])
-	assert.Equal(t, "pve1", first[0]["pve.node"])
+	assert.Equal(t, "node1", first[0]["pve.node"])
 
 	f.ok(prefix+"/qemu/100/agent/network-get-interfaces", agentBody(`[{"name":"eth0","ip-addresses":[{"ip-address":"10.0.0.6","ip-address-type":"ipv4","prefix":24}]}]`))
 	_, second := sweep(t, h, t0.Add(time.Hour))
@@ -360,8 +360,8 @@ func TestStartOffsetsDifferBetweenScrapers(t *testing.T) {
 }
 
 func TestLocalNodeIsTheShortHostname(t *testing.T) {
-	assert.Equal(t, "pve12", shortHostname("pve12.lab.example"))
-	assert.Equal(t, "pve12", shortHostname("pve12"))
+	assert.Equal(t, "node12", shortHostname("node12.lab.example"))
+	assert.Equal(t, "node12", shortHostname("node12"))
 }
 
 func TestLocalNodeReadsTheHostNameAndRejectsAFailureOrAnEmptyName(t *testing.T) {
@@ -372,8 +372,8 @@ func TestLocalNodeReadsTheHostNameAndRejectsAFailureOrAnEmptyName(t *testing.T) 
 		wantNode string
 		wantErr  string
 	}{
-		{name: "fqdn", host: "pve12.lab.example", wantNode: "pve12"},
-		{name: "short", host: "pve12", wantNode: "pve12"},
+		{name: "fqdn", host: "node12.lab.example", wantNode: "node12"},
+		{name: "short", host: "node12", wantNode: "node12"},
 		{name: "read fails", hostErr: errors.New("no host name"), wantErr: "no host name"},
 		{name: "empty", host: "", wantErr: "empty"},
 		{name: "leading dot", host: ".lab.example", wantErr: "empty"},
@@ -515,7 +515,7 @@ func TestLockedGuestGivesOneSeriesAndUnlockedGuestNone(t *testing.T) {
 	assert.InDelta(t, 1, got[0].value, 1e-9)
 	assert.Equal(t, "1", got[0].unit)
 	assert.Equal(t, pmetric.MetricTypeGauge, got[0].kind)
-	assert.Equal(t, map[string]string{"pve.vmid": "100", "pve.node": "pve1", "type": "qemu", "state": "backup"}, got[0].attrs)
+	assert.Equal(t, map[string]string{"pve.vmid": "100", "pve.node": "node1", "type": "qemu", "state": "backup"}, got[0].attrs)
 }
 
 func TestLockSeriesPerStateAndForUnknownValues(t *testing.T) {

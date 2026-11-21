@@ -1,0 +1,46 @@
+[
+  {
+    "body": "Device: /dev/ada3, 8 Offline uncorrectable sectors",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, 8 Offline uncorrectable sectors",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  },
+  {
+    "body": "Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+      "vstan.smartd.device": "/dev/sda"
+    }
+  },
+  {
+    "body": "Device: /dev/ada3, FAILED SMART self-check. BACKUP DATA NOW!",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, FAILED SMART self-check. BACKUP DATA NOW!",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  },
+  {
+    "body": "Device: /dev/ada3, SMART Prefailure Attribute: 1 Raw_Read_Error_Rate changed from 100 to 99",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, SMART Prefailure Attribute: 1 Raw_Read_Error_Rate changed from 100 to 99",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  }
+]

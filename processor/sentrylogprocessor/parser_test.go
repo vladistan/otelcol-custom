@@ -30,7 +30,7 @@ func TestIsSentryLog(t *testing.T) {
 		},
 		{
 			name:     "nginx combined log",
-			input:    `172.31.1.225 - - [31/Dec/2025:02:30:21 +0000] "GET / HTTP/1.1" 302 0 "-" "ELB-HealthChecker/2.0" "-"`,
+			input:    `203.0.113.225 - - [31/Dec/2025:02:30:21 +0000] "GET / HTTP/1.1" 302 0 "-" "ELB-HealthChecker/2.0" "-"`,
 			expected: false,
 		},
 		{
@@ -73,7 +73,7 @@ func TestParseSentryLog(t *testing.T) {
 	}{
 		{
 			name:           "access log with all fields",
-			input:          "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' is_frontend_request='False' path='/' caller_ip='172.31.1.225' user_agent='ELB-HealthChecker/2.0' rate_limited='False' request_duration_seconds='0.0029540061950683594' rate_limit_type='DNE')",
+			input:          "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' is_frontend_request='False' path='/' caller_ip='203.0.113.225' user_agent='ELB-HealthChecker/2.0' rate_limited='False' request_duration_seconds='0.0029540061950683594' rate_limit_type='DNE')",
 			expectNil:      false,
 			expectedLevel:  "INFO",
 			expectedLogger: "sentry.access.api",
@@ -242,7 +242,7 @@ func TestBuildCleanedMessage(t *testing.T) {
 
 func TestAccessLogParsing(t *testing.T) {
 	// Real example from sentry-self-hosted-web-1
-	input := "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' is_frontend_request='False' path='/' caller_ip='172.31.1.225' user_agent='ELB-HealthChecker/2.0' rate_limited='False' request_duration_seconds='0.0029540061950683594' rate_limit_type='DNE')"
+	input := "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' is_frontend_request='False' path='/' caller_ip='203.0.113.225' user_agent='ELB-HealthChecker/2.0' rate_limited='False' request_duration_seconds='0.0029540061950683594' rate_limit_type='DNE')"
 
 	info := ParseSentryLog(input)
 	if info == nil {
@@ -268,8 +268,8 @@ func TestAccessLogParsing(t *testing.T) {
 	if info.Response != "302" {
 		t.Errorf("Response = %q, want 302", info.Response)
 	}
-	if info.CallerIP != "172.31.1.225" {
-		t.Errorf("CallerIP = %q, want 172.31.1.225", info.CallerIP)
+	if info.CallerIP != "203.0.113.225" {
+		t.Errorf("CallerIP = %q, want 203.0.113.225", info.CallerIP)
 	}
 	if info.UserAgent != "ELB-HealthChecker/2.0" {
 		t.Errorf("UserAgent = %q, want ELB-HealthChecker/2.0", info.UserAgent)

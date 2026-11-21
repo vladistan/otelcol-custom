@@ -1,0 +1,3 @@
+# provenance: real
+# evidence: a captured row, names removed
+07:13:58 - LiteLLM Proxy:INFO: policy_registry.py:577 - Synced 0 production policies and 0 draft/published (by ID) from DB to in-memory registry

@@ -1,0 +1,7 @@
+# provenance: invented
+# evidence: the layout follows a captured line; the values are written for the test, not a capture
+1:M 19 Nov 2026 23:22:37.151 * Background saving terminated with success
+5688:C 31 Dec 2025 03:04:22.141 * RDB: 0 MB of memory used by copy-on-write
+1:S 19 Nov 2026 23:22:38.000 # replica lost
+1:M 19 Nov 2026 23:22:39.000 . debug message here
+1:M 19 Nov 2026 23:22:40.000 - verbose message here

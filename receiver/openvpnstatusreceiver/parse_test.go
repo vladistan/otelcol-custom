@@ -31,9 +31,9 @@ func TestParseSnapshotV1TwoClientsReturnsBothClients(t *testing.T) {
 	assert.Equal(t, "2026-11-13 10:00:00", snap.identity)
 	assert.True(t, localTime(t, "2026-11-13 10:00:00").Equal(snap.at))
 	assert.Equal(t, []client{
-		{commonName: "alice", realAddress: "203.0.113.5:51234", ip: "203.0.113.5", bytesReceived: 1000, bytesSent: 2000,
+		{commonName: "alice", realAddress: "203.0.113.5:51234", ip: "203.0.113.5", port: 51234, bytesReceived: 1000, bytesSent: 2000,
 			connectedSince: "2026-11-13 09:00:00", connectedAt: localTime(t, "2026-11-13 09:00:00")},
-		{commonName: "bob", realAddress: "198.51.100.7:40222", ip: "198.51.100.7", bytesReceived: 3000, bytesSent: 4000,
+		{commonName: "bob", realAddress: "198.51.100.7:40222", ip: "198.51.100.7", port: 40222, bytesReceived: 3000, bytesSent: 4000,
 			connectedSince: "2026-11-13 09:30:00", connectedAt: localTime(t, "2026-11-13 09:30:00")},
 	}, snap.clients)
 	assert.Equal(t, []route{
@@ -52,12 +52,12 @@ func TestParseSnapshotV2AndV3EveryLayoutMatchesTheV1Clients(t *testing.T) {
 			assert.True(t, time.Unix(1794564000, 0).Equal(snap.at))
 			require.Len(t, snap.clients, 2)
 			assert.Equal(t, client{
-				commonName: "alice", realAddress: "203.0.113.5:51234", ip: "203.0.113.5",
+				commonName: "alice", realAddress: "203.0.113.5:51234", ip: "203.0.113.5", port: 51234,
 				bytesReceived: 1000, bytesSent: 2000, connectedSince: "2026-11-13 09:00:00",
 				connectedAt: time.Unix(1794560400, 0),
 			}, snap.clients[0])
 			assert.Equal(t, client{
-				commonName: "bob", realAddress: "198.51.100.7:40222", ip: "198.51.100.7",
+				commonName: "bob", realAddress: "198.51.100.7:40222", ip: "198.51.100.7", port: 40222,
 				bytesReceived: 3000, bytesSent: 4000, connectedSince: "2026-11-13 09:30:00",
 				connectedAt: time.Unix(1794562200, 0),
 			}, snap.clients[1])

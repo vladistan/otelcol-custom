@@ -1,0 +1,27 @@
+[
+  {
+    "body": "nri: Done StopPodSandbox",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "pkg/nri/nri.go",
+      "code.function.name": "nri.(*plugin).StopPodSandbox.func1",
+      "log.record.original": "{\"logging.googleapis.com/operation\":\"nri.(*plugin).StopPodSandbox.func1()\",\"logging.googleapis.com/sourceLocation\":\"pkg/nri/nri.go\",\"message\":\"nri: Done StopPodSandbox\",\"severity\":\"info\",\"timestamp\":\"2026-11-19T22:42:00.250Z\"}"
+    }
+  },
+  {
+    "body": "slow request",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "a/b.go",
+      "code.function.name": "pkg.Run",
+      "code.line.number": 42,
+      "log.record.original": "{\"message\":\"slow request\",\"severity\":\"WARNING\",\"timestamp\":\"2026-11-19T22:42:01Z\",\"logging.googleapis.com/sourceLocation\":{\"file\":\"a/b.go\",\"line\":\"42\",\"function\":\"pkg.Run\"}}"
+    }
+  }
+]

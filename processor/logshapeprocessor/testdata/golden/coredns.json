@@ -1,0 +1,50 @@
+[
+  {
+    "body": "REFUSED A example.org. 70us",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.42",
+      "client.port": 56818,
+      "dns.question.name": "example.org.",
+      "log.record.original": "[INFO] 198.51.100.42:56818 - 13677 \"A IN example.org. udp 24 false 512\" REFUSED qr,aa,rd,ra 24 0.000070318s",
+      "vstan.dns.duration": 0.000070318,
+      "vstan.dns.question.type": "A",
+      "vstan.dns.response_code": "REFUSED"
+    }
+  },
+  {
+    "body": "SERVFAIL A nohost. 70us",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.42",
+      "client.port": 56819,
+      "dns.question.name": "nohost.",
+      "log.record.original": "[INFO] 198.51.100.42:56819 - 13678 \"A IN nohost. udp 24 false 512\" SERVFAIL qr,aa,rd,ra 24 0.000070318s",
+      "vstan.dns.duration": 0.000070318,
+      "vstan.dns.question.type": "A",
+      "vstan.dns.response_code": "SERVFAIL"
+    }
+  },
+  {
+    "body": "SERVFAIL AAAA example.org. 12.3ms",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "2001:db8::7",
+      "client.port": 5353,
+      "dns.question.name": "example.org.",
+      "log.record.original": "[2001:db8::7]:5353 - 4 \"AAAA IN example.org. tcp 41 true 65535\" SERVFAIL qr,rd,ra 98 0.0123s",
+      "vstan.dns.duration": 0.0123,
+      "vstan.dns.question.type": "AAAA",
+      "vstan.dns.response_code": "SERVFAIL"
+    }
+  }
+]

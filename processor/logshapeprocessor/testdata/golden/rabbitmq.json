@@ -1,0 +1,24 @@
+[
+  {
+    "body": "User 'monitor' authenticated successfully",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-20 00:27:56.299641+00:00 [info] \u003c0.18182677.0\u003e User 'monitor' authenticated successfully",
+      "vstan.rabbitmq.pid": "\u003c0.18182677.0\u003e"
+    }
+  },
+  {
+    "body": "closing AMQP connection, client unexpectedly disconnected",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-20 00:28:01.100000+00:00 [warning] \u003c0.512.0\u003e closing AMQP connection, client unexpectedly disconnected",
+      "vstan.rabbitmq.pid": "\u003c0.512.0\u003e"
+    }
+  }
+]

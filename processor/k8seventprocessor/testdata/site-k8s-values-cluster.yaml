@@ -1,7 +1,7 @@
 # OpenTelemetry Collector Deployment for site MicroK8s Cluster
 # Singleton collector running k8sclusterreceiver to emit cluster-wide metrics
 # (pod phase, node conditions, deployment desired/available, etc.) and forward
-# to the central collector in kube-v0.
+# to the central collector in cluster-a.
 #
 # Must run as a single replica - k8sclusterreceiver queries the API server for
 # cluster-wide state, so multiple replicas would duplicate every metric.
@@ -43,7 +43,7 @@ config:
   receivers:
     # [K8s Objects Receiver]
     # (https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/k8sobjectsreceiver)
-    # Mirrors kube-v0's otel-cluster — same receiver, same transform/k8s_objects
+    # Mirrors cluster-a's otel-cluster — same receiver, same transform/k8s_objects
     # shape, so k8s object/event data exists on every cluster, not just GCP.
     k8sobjects:
       objects:
@@ -136,7 +136,7 @@ config:
           value: production
           action: upsert
     # Extract useful fields from structured k8s object bodies. Ported from
-    # kube-v0's otel-cluster — see that values-cluster.yaml for the full
+    # cluster-a's otel-cluster — see that values-cluster.yaml for the full
     # rationale comments (nil-guard ordering, etc).
     transform/k8s_objects:
       error_mode: ignore
@@ -224,7 +224,7 @@ config:
           - batch
         exporters:
           - otlphttp
-      # K8s object/event watch (events + pods) — same shape as kube-v0's
+      # K8s object/event watch (events + pods) — same shape as cluster-a's
       # otel-cluster, so object/event data exists on every cluster.
       logs:
         receivers:

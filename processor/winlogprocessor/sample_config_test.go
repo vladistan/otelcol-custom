@@ -67,3 +67,13 @@ func TestSampleWinlogBlockTurnsOnTheServiceNameOption(t *testing.T) {
 		t.Error("the Windows edge sample must set service_name_from_provider: true")
 	}
 }
+
+func TestSampleWinlogBlockListsTheDNContractionAndMSSQLKeys(t *testing.T) {
+	cfg := loadSampleWinlogConfig(t)
+	if len(cfg.DNContractions) == 0 {
+		t.Error("the Windows edge sample must show dn_contractions")
+	}
+	if len(cfg.MSSQLActions) == 0 {
+		t.Error("the Windows edge sample must show mssql_actions")
+	}
+}

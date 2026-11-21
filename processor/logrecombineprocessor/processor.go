@@ -226,6 +226,10 @@ func (p *logsProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 func (p *logsProcessor) processRecord(ctx context.Context, outputLogs plog.Logs, record plog.LogRecord, resource pcommon.Resource, scope pcommon.InstrumentationScope) {
 	now := time.Now()
 
+	if p.clean(record) {
+		return
+	}
+
 	// Check for exclude attribute - if set to "true", pass through immediately
 	if p.config.ExcludeAttribute != "" {
 		if val, ok := record.Attributes().Get(p.config.ExcludeAttribute); ok && val.Str() == "true" {
@@ -424,6 +428,7 @@ func (p *logsProcessor) setValueInMap(val pcommon.Value, path []string, value st
 func (p *logsProcessor) addEntryToLogs(logs plog.Logs, entry *bufferedEntry) {
 	// Set the combined field value before adding
 	p.setFieldValue(entry.record, p.combineField, entry.combinedTo)
+	markException(entry.record, entry.combinedTo)
 
 	rl := logs.ResourceLogs().AppendEmpty()
 	entry.resource.CopyTo(rl.Resource())

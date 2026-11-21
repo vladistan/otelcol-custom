@@ -18,6 +18,9 @@ import (
 // from the SMART list for this scrape.
 var errDriveGone = errors.New("the controller does not know the drive (status 12)")
 
+// msgNoPowerState is the warning for a drive whose CHECK POWER MODE returned no ATA registers.
+const msgNoPowerState = "The controller gave no power state for a drive, so SMART leaves it alone"
+
 // passTransport sends allow-listed ATA commands (ATA PASS-THROUGH(16)) and SCSI log page reads
 // (LOG SENSE) to one drive in an MFI_CMD_PD_SCSI_IO frame. The frame layout is not confirmed on a
 // controller. The allow list is checked here and again before the frame reaches the kernel.
@@ -145,8 +148,8 @@ func (s *scraper) readOneSAS(dev device, c controller, st *ctrlState, target uin
 }
 
 // readPowerState sends CHECK POWER MODE. standby is true for an answer of 0x00 or 0x01; unknown is
-// true when the controller returns no ATA registers, and the drive is then left alone so SMART
-// never wakes a spun-down drive.
+// true when the controller returns no ATA registers. The drive is then left alone, unless
+// smart_when_power_unknown is set: with it set SMART is read, and that can wake a spun-down drive.
 func readPowerState(tr passTransport) (standby, unknown bool, err error) {
 	res, err := tr.ATA(smartdecode.CheckPowerModeCommand())
 	if err != nil {
@@ -167,8 +170,8 @@ func (s *scraper) readOneSmart(dev device, c controller, st *ctrlState, target u
 	case err != nil:
 	case standby:
 		return &smartResult{state: smartStandby}, false
-	case unknown:
-		s.warnOnce(st, fmt.Sprintf("smart-power-%d", target), "The controller gave no power state for a drive, so SMART leaves it alone",
+	case unknown && !s.cfg.SmartWhenPowerUnknown:
+		s.warnOnce(st, fmt.Sprintf("smart-power-%d", target), msgNoPowerState,
 			zap.String("controller", c.id()), zap.Uint8("device_id", target))
 		return &smartResult{state: smartUnavailable}, false
 	}

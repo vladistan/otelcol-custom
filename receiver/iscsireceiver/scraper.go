@@ -62,6 +62,7 @@ func (s *scraper) scrape(now time.Time) pmetric.Metrics {
 		return md
 	}
 	s.noSessionsLogged, s.errorLogged = false, false
+	sessions = cleanSessions(sessions)
 
 	ts := pcommon.NewTimestampFromTime(now)
 	sm := md.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty()

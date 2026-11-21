@@ -30,6 +30,9 @@ type Config struct {
 	Smart bool `mapstructure:"smart"`
 	// SmartInterval is the least time between two SMART reads of one drive.
 	SmartInterval time.Duration `mapstructure:"smart_interval"`
+	// SmartWhenPowerUnknown reads SMART from a drive whose power state the controller does not return.
+	// That read can wake a spun-down drive. Used only with smart; off by default.
+	SmartWhenPowerUnknown bool `mapstructure:"smart_when_power_unknown"`
 	// CreateNode creates /dev/megaraid_sas_ioctl_node when it is missing; needs CAP_MKNOD.
 	CreateNode bool `mapstructure:"create_node"`
 	// Events configures the controller event log, sent as logs.

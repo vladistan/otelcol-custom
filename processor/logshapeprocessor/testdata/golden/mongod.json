@@ -1,0 +1,41 @@
+[
+  {
+    "body": "Connection ended remote=192.0.2.10:53714 connectionCount=23",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "NETWORK",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 53714,
+      "log.record.original": "{\"t\":{\"$date\":\"2026-11-19T22:45:00.123+00:00\"},\"s\":\"I\",\"c\":\"NETWORK\",\"id\":22944,\"ctx\":\"conn1131180\",\"msg\":\"Connection ended\",\"attr\":{\"remote\":\"192.0.2.10:53714\",\"uuid\":{\"uuid\":{\"$uuid\":\"1a2b3c4d-0000-4000-8000-00000000ab01\"}},\"connectionId\":1131180,\"connectionCount\":23}}",
+      "vstan.mongod.connection_count": 23,
+      "vstan.mongod.connection_id": 1131180,
+      "vstan.mongod.ctx": "conn1131180",
+      "vstan.mongod.id": 22944,
+      "vstan.mongod.uuid": {
+        "uuid": {
+          "$uuid": "1a2b3c4d-0000-4000-8000-00000000ab01"
+        }
+      }
+    }
+  },
+  {
+    "body": "Authentication succeeded principal=__system remote=192.0.2.10:53720",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "ACCESS",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 53720,
+      "log.record.original": "{\"t\":{\"$date\":\"2026-11-19T22:45:01.000+00:00\"},\"s\":\"I\",\"c\":\"ACCESS\",\"id\":20250,\"ctx\":\"conn1131181\",\"msg\":\"Authentication succeeded\",\"attr\":{\"mechanism\":\"SCRAM-SHA-256\",\"speculative\":true,\"principalName\":\"__system\",\"authenticationDatabase\":\"local\",\"remote\":\"192.0.2.10:53720\",\"extraInfo\":{}}}",
+      "user.name": "__system",
+      "vstan.mongod.authentication_database": "local",
+      "vstan.mongod.ctx": "conn1131181",
+      "vstan.mongod.id": 20250,
+      "vstan.mongod.mechanism": "SCRAM-SHA-256",
+      "vstan.mongod.speculative": true
+    }
+  }
+]

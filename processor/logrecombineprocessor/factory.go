@@ -30,12 +30,14 @@ func createDefaultConfig() component.Config {
 		CombineField:        "body.MESSAGE",
 		SourceIdentifier:    "body._PID",
 		ContainerIdentifier: "body.CONTAINER_ID",
-		IsFirstEntryPattern: `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`,
+		IsFirstEntryPattern: `^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}|time=")`,
 		CombineWith:         "\n",
 		GapTimeout:          10 * time.Millisecond,
 		MaxTimeout:          80 * time.Millisecond,
 		MaxBatchSize:        50,
 		MaxSources:          1000,
+		StripANSI:           true,
+		DropBlank:           true,
 	}
 }
 

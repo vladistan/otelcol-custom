@@ -129,6 +129,7 @@ func (s *scraper) emitLUNs(sm pmetric.ScopeMetrics, ts pcommon.Timestamp, picked
 	stateGauge := newGauge(sm, metricLUNState, hwschema.UnitRatio)
 	warned := map[string]bool{}
 	for _, l := range picked {
+		l = cleanLUN(l)
 		ses := sessions[l.session]
 		id := ses.target + "/" + ses.portal + "/" + strconv.Itoa(l.id)
 		if l.err != nil {
@@ -205,4 +206,31 @@ func dropIfEmpty(sm pmetric.ScopeMetrics, name string) {
 	sm.Metrics().RemoveIf(func(m pmetric.Metric) bool {
 		return m.Name() == name && m.Gauge().DataPoints().Len() == 0
 	})
+}
+
+// cleanSessions returns the sessions with each raw byte of their text values
+// replaced by U+FFFD, so no label sent from them is invalid UTF-8.
+func cleanSessions(in []session) []session {
+	out := make([]session, len(in))
+	for i, ses := range in {
+		ses.target = hwschema.ValidUTF8(ses.target)
+		ses.tpgt = hwschema.ValidUTF8(ses.tpgt)
+		ses.state = hwschema.ValidUTF8(ses.state)
+		ses.portal = hwschema.ValidUTF8(ses.portal)
+		conns := make([]connection, len(ses.connections))
+		for j, c := range ses.connections {
+			conns[j] = connection{portal: hwschema.ValidUTF8(c.portal), state: hwschema.ValidUTF8(c.state)}
+		}
+		ses.connections = conns
+		out[i] = ses
+	}
+	return out
+}
+
+// cleanLUN returns l with the raw bytes of its device, holder and state replaced by U+FFFD.
+func cleanLUN(l lun) lun {
+	l.device = hwschema.ValidUTF8(l.device)
+	l.holder = hwschema.ValidUTF8(l.holder)
+	l.state = hwschema.ValidUTF8(l.state)
+	return l
 }

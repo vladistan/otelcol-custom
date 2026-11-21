@@ -1,0 +1,1350 @@
+[
+  {
+    "body": "Summarising 4 dataplane reconciliation loops",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "felix/summary.go",
+      "code.line.number": 100,
+      "log.record.original": "2026-11-19 22:53:59.699 [INFO][73] felix/summary.go 100: Summarising 4 dataplane reconciliation loops",
+      "thread.id": 73
+    }
+  },
+  {
+    "body": "Resync took longer than expected",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "felix/sync.go",
+      "code.line.number": 12,
+      "log.record.original": "2026-11-19 22:54:00.100 [WARNING][73] felix/sync.go 12: Resync took longer than expected",
+      "thread.id": 73
+    }
+  },
+  {
+    "body": "REFUSED A example.org. 70us",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.42",
+      "client.port": 56818,
+      "dns.question.name": "example.org.",
+      "log.record.original": "[INFO] 198.51.100.42:56818 - 13677 \"A IN example.org. udp 24 false 512\" REFUSED qr,aa,rd,ra 24 0.000070318s",
+      "vstan.dns.duration": 0.000070318,
+      "vstan.dns.question.type": "A",
+      "vstan.dns.response_code": "REFUSED"
+    }
+  },
+  {
+    "body": "SERVFAIL A nohost. 70us",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.42",
+      "client.port": 56819,
+      "dns.question.name": "nohost.",
+      "log.record.original": "[INFO] 198.51.100.42:56819 - 13678 \"A IN nohost. udp 24 false 512\" SERVFAIL qr,aa,rd,ra 24 0.000070318s",
+      "vstan.dns.duration": 0.000070318,
+      "vstan.dns.question.type": "A",
+      "vstan.dns.response_code": "SERVFAIL"
+    }
+  },
+  {
+    "body": "SERVFAIL AAAA example.org. 12.3ms",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "2001:db8::7",
+      "client.port": 5353,
+      "dns.question.name": "example.org.",
+      "log.record.original": "[2001:db8::7]:5353 - 4 \"AAAA IN example.org. tcp 41 true 65535\" SERVFAIL qr,rd,ra 98 0.0123s",
+      "vstan.dns.duration": 0.0123,
+      "vstan.dns.question.type": "AAAA",
+      "vstan.dns.response_code": "SERVFAIL"
+    }
+  },
+  {
+    "body": "nri: Done StopPodSandbox",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "pkg/nri/nri.go",
+      "code.function.name": "nri.(*plugin).StopPodSandbox.func1",
+      "log.record.original": "{\"logging.googleapis.com/operation\":\"nri.(*plugin).StopPodSandbox.func1()\",\"logging.googleapis.com/sourceLocation\":\"pkg/nri/nri.go\",\"message\":\"nri: Done StopPodSandbox\",\"severity\":\"info\",\"timestamp\":\"2026-11-19T22:42:00.250Z\"}"
+    }
+  },
+  {
+    "body": "slow request",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "a/b.go",
+      "code.function.name": "pkg.Run",
+      "code.line.number": 42,
+      "log.record.original": "{\"message\":\"slow request\",\"severity\":\"WARNING\",\"timestamp\":\"2026-11-19T22:42:01Z\",\"logging.googleapis.com/sourceLocation\":{\"file\":\"a/b.go\",\"line\":\"42\",\"function\":\"pkg.Run\"}}"
+    }
+  },
+  {
+    "body": "Loaded 3 pipelines",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.function.name": "ConfigRepository",
+      "code.line.number": 123,
+      "log.record.original": "jvm 1    | 2026-11-19 22:00:01,123 INFO  [qtp1-5] ConfigRepository:123 - Loaded 3 pipelines",
+      "thread.name": "qtp1-5"
+    }
+  },
+  {
+    "body": "Slow poll",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.function.name": "MaterialUpdate",
+      "code.line.number": 7,
+      "log.record.original": "jvm 1    | 2026-11-19 22:00:02,000 WARN  [qtp1-6] MaterialUpdate:7 - Slow poll",
+      "thread.name": "qtp1-6"
+    }
+  },
+  {
+    "body": "POST /write db=metrics 204 14.7ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.19",
+      "http.request.method": "POST",
+      "http.response.status_code": 204,
+      "log.record.original": "[httpd] 192.0.2.19 - webuser [20/Nov/2026:00:02:45 +0100] \"POST /write?db=metrics HTTP/1.1\" 204 0 \"-\" \"InfluxDBClient\" 5a1b2c3d-1111-2222-3333-44445555666a 14684",
+      "url.path": "/write",
+      "url.query": "db=metrics",
+      "user.name": "webuser",
+      "user_agent.original": "InfluxDBClient",
+      "vstan.influx.request_id": "5a1b2c3d-1111-2222-3333-44445555666a"
+    }
+  },
+  {
+    "body": "GET /ping 204 80us",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.20",
+      "http.request.method": "GET",
+      "http.response.status_code": 204,
+      "log.record.original": "[httpd] 192.0.2.20 - - [20/Nov/2026:00:02:46 +0100] \"GET /ping HTTP/1.1\" 204 0 \"-\" \"curl/8\" 9f9f9f9f-0000-1111-2222-33334444555a 80",
+      "url.path": "/ping",
+      "user_agent.original": "curl/8",
+      "vstan.influx.request_id": "9f9f9f9f-0000-1111-2222-33334444555a"
+    }
+  },
+  {
+    "body": "POST /query db=metrics 500 31B 20.5ms",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.21",
+      "http.request.method": "POST",
+      "http.response.body.size": 31,
+      "http.response.status_code": 500,
+      "log.record.original": "[httpd] 192.0.2.21 - webuser [20/Nov/2026:00:02:47 +0100] \"POST /query?db=metrics HTTP/1.1\" 500 31 \"-\" \"InfluxDBClient\" 1d2e3f40-aaaa-bbbb-cccc-ddddeeeeffff 20511",
+      "url.path": "/query",
+      "url.query": "db=metrics",
+      "user.name": "webuser",
+      "user_agent.original": "InfluxDBClient",
+      "vstan.influx.request_id": "1d2e3f40-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "Connect to server serverID=903ebd76",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "client.go",
+      "code.line.number": 214,
+      "log.record.original": "I1119 23:05:39.184859       1 client.go:214] \"Connect to server\" serverID=\"903ebd76\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "Watch failed err=\"context deadline exceeded\"",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "reflector.go",
+      "code.line.number": 561,
+      "log.record.original": "W1119 23:05:40.001000       1 reflector.go:561] \"Watch failed\" err=\"context deadline exceeded\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "Unhandled error err=\"connection refused\"",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "controller.go",
+      "code.line.number": 95,
+      "log.record.original": "E1119 23:05:41.123456       7 controller.go:95] \"Unhandled error\" err=\"connection refused\"",
+      "process.pid": 7
+    }
+  },
+  {
+    "body": "updated ClusterIP allocator for Service CIDR 198.51.100.0/18",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "cidrallocator.go",
+      "code.line.number": 277,
+      "log.record.original": "I1119 23:05:42.000000       1 cidrallocator.go:277] \"updated ClusterIP allocator for Service CIDR 198.51.100.0/18\"",
+      "process.pid": 1
+    }
+  },
+  {
+    "body": "eno2 sees switch-48.example.net port Gi4/0/18 192.0.2.39",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.39",
+      "client.mac.address": "00:11:22:33:44:55",
+      "log.record.original": "{\"observed_at\":\"2026-11-20T13:06:13Z\",\"interface\":\"eno2\",\"via\":\"LLDP\",\"age\":\"4 days, 17:24:51\",\"chassis_id\":\"00:11:22:33:44:55\",\"chassis_name\":\"switch-48.example.net\",\"chassis_descr\":\"Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 15.0(1)EX3, RELEASE SOFTWARE (fc2)\\nTechnical Support: http://www.cisco.com/techsupport\\nCopyright (c) 1986-2013 by Cisco Systems, Inc.\\nCompiled Mon 23-Sep-13 18:24 by prod_r\",\"mgmt_ip\":[\"192.0.2.39\"],\"port_id\":\"Gi4/0/18\",\"port_descr\":\"GigabitEthernet4/0/18\"}",
+      "network.interface.name": "eno2",
+      "vstan.lldp.age": "4 days, 17:24:51",
+      "vstan.lldp.chassis_descr": "Cisco IOS Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 15.0(1)EX3, RELEASE SOFTWARE (fc2)\nTechnical Support: http://www.cisco.com/techsupport\nCopyright (c) 1986-2013 by Cisco Systems, Inc.\nCompiled Mon 23-Sep-13 18:24 by prod_r",
+      "vstan.lldp.chassis_id": "00:11:22:33:44:55",
+      "vstan.lldp.chassis_name": "switch-48.example.net",
+      "vstan.lldp.mgmt_ip": [
+        "192.0.2.39"
+      ],
+      "vstan.lldp.port_descr": "GigabitEthernet4/0/18",
+      "vstan.lldp.port_id": "Gi4/0/18",
+      "vstan.lldp.via": "LLDP"
+    }
+  },
+  {
+    "body": "Executing query log_id=0abc",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "ts=2026-11-19T23:00:00.000000Z lvl=info msg=\"Executing query\" log_id=0abc"
+    }
+  },
+  {
+    "body": "All records are up to date",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"level\":\"info\",\"msg\":\"All records are up to date\",\"time\":\"2025-12-31T04:03:58Z\"}"
+    }
+  },
+  {
+    "body": "Reconciler error: boom",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "controller/reconciler.go",
+      "code.line.number": 123,
+      "exception.message": "boom",
+      "exception.stacktrace": "goroutine 1",
+      "log.record.original": "{\"level\":\"error\",\"ts\":\"2025-12-31T04:03:58Z\",\"caller\":\"controller/reconciler.go:123\",\"msg\":\"Reconciler error\",\"controller\":\"backups\",\"error\":\"boom\",\"stacktrace\":\"goroutine 1\"}",
+      "vstan.k8s.controller": "backups"
+    }
+  },
+  {
+    "body": "slow sync",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "time=\"2025-12-31T04:25:29Z\" level=warning msg=\"slow sync\" duration=3s",
+      "vstan.logrus.duration": "3s"
+    }
+  },
+  {
+    "body": "Exporting failed. Will retry.",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "internal/retry_sender.go",
+      "code.line.number": 133,
+      "log.record.original": "2026-01-02T14:18:43.362Z\twarn\tinternal/retry_sender.go:133\tExporting failed. Will retry.\t{\"attempt\":2}",
+      "vstan.logrus.attempt": 2
+    }
+  },
+  {
+    "body": "cannot parse csv data: record on line 152: wrong number of fields",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "exception.message": "record on line 152: wrong number of fields",
+      "log.record.original": "{\"time\":\"2026-11-20T04:40:02.123456Z\",\"level\":\"ERROR\",\"msg\":\"cannot parse csv data:\",\"error\":\"record on line 152: wrong number of fields\"}"
+    }
+  },
+  {
+    "body": "[agent.datapath] endpoint regeneration failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"time\":\"2026-11-19T23:00:12Z\",\"level\":\"error\",\"msg\":\"endpoint regeneration failed\",\"subsys\":\"agent.datapath\",\"ipAddr\":\"192.0.2.5\",\"nodeID\":3}",
+      "vstan.logrus.ipAddr": "192.0.2.5",
+      "vstan.logrus.nodeID": 3
+    }
+  },
+  {
+    "body": "apply request took too long",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "server/util.go",
+      "code.line.number": 170,
+      "log.record.original": "{\"level\":\"warn\",\"ts\":\"2026-01-02T05:00:25.573798Z\",\"caller\":\"server/util.go:170\",\"msg\":\"apply request took too long\",\"took\":\"153ms\",\"expected-duration\":\"100ms\"}",
+      "vstan.logrus.expected-duration": "100ms",
+      "vstan.logrus.took": "153ms"
+    }
+  },
+  {
+    "body": "started",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "main.go",
+      "code.line.number": 10,
+      "log.record.original": "{\"level\":\"info\",\"ts\":1795129202.123,\"caller\":\"main.go:10\",\"msg\":\"started\",\"service\":\"worker\",\"hostname\":\"host-1\",\"version\":\"1.2\"}",
+      "vstan.logrus.version": "1.2"
+    }
+  },
+  {
+    "body": "New connection from 127.0.0.1:36468 on port 1883.",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19T22:56:53: New connection from 127.0.0.1:36468 on port 1883."
+    }
+  },
+  {
+    "body": "New client connected from 127.0.0.1:50882 as auto-7C019B88 (p2, c1, k60).",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19T22:56:53: New client connected from 127.0.0.1:50882 as auto-7C019B88 (p2, c1, k60)."
+    }
+  },
+  {
+    "body": "Client auto-7C019B88 disconnected.",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19T22:56:54: Client auto-7C019B88 disconnected."
+    }
+  },
+  {
+    "body": "GET /ready 200 2B 0ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.23",
+      "http.request.method": "GET",
+      "http.response.body.size": 2,
+      "http.response.status_code": 200,
+      "log.record.original": "198.51.100.23 - 7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff - - [2026/11/20 04:42:11] 203.0.113.46:4180 GET - \"/ready\" HTTP/1.1 \"kube-probe/1.36\" 200 2 0.000",
+      "url.path": "/ready",
+      "user_agent.original": "kube-probe/1.36",
+      "vstan.oauth2proxy.request_id": "7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "GET /app/ 302 512B 123ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.23",
+      "http.request.method": "GET",
+      "http.response.body.size": 512,
+      "http.response.status_code": 302,
+      "log.record.original": "198.51.100.23 - 7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff - webuser [2026/11/20 04:42:12] 203.0.113.46:4180 GET - \"/app/\" HTTP/1.1 \"Mozilla/5.0 (X11)\" 302 512 0.123",
+      "url.path": "/app/",
+      "user.name": "webuser",
+      "user_agent.original": "Mozilla/5.0 (X11)",
+      "vstan.oauth2proxy.request_id": "7f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "POST /oauth2/callback 500 12B 250ms",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "198.51.100.24",
+      "http.request.method": "POST",
+      "http.response.body.size": 12,
+      "http.response.status_code": 500,
+      "log.record.original": "198.51.100.24 - 3c4d5e6f-aaaa-bbbb-cccc-ddddeeeeffff - - [2026/11/20 04:42:13] 203.0.113.46:4180 POST - \"/oauth2/callback\" HTTP/1.1 \"Mozilla/5.0 (X11)\" 500 12 0.250",
+      "url.path": "/oauth2/callback",
+      "user_agent.original": "Mozilla/5.0 (X11)",
+      "vstan.oauth2proxy.request_id": "3c4d5e6f-aaaa-bbbb-cccc-ddddeeeeffff"
+    }
+  },
+  {
+    "body": "request completed",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"level\":30,\"time\":1795129202193,\"pid\":7,\"hostname\":\"app-5d4f7\",\"msg\":\"request completed\",\"statusCode\":200}",
+      "process.pid": 7,
+      "vstan.pino.statusCode": 200
+    }
+  },
+  {
+    "body": "deleted 0 row(s)",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 22:42:20.918 UTC [815116] LOG:  deleted 0 row(s)",
+      "process.pid": 815116
+    }
+  },
+  {
+    "body": "duplicate key value violates unique constraint \"example_key\"",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 19:47:24.232 UTC [708688] ERROR:  duplicate key value violates unique constraint \"example_key\"",
+      "process.pid": 708688
+    }
+  },
+  {
+    "body": "permission denied for database \"appdb\"",
+    "severity": 21,
+    "severity_text": "FATAL",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 15:50:21.286 UTC [779331] FATAL:  permission denied for database \"appdb\"",
+      "process.pid": 779331
+    }
+  },
+  {
+    "body": "checkpoint complete",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 22:42:20.918 CET [12] LOG:  checkpoint complete",
+      "process.pid": 12
+    }
+  },
+  {
+    "body": "could not open statistics file",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-13 22:35:25.159 EST [12188] WARNING:  could not open statistics file",
+      "process.pid": 12188
+    }
+  },
+  {
+    "body": "User 'monitor' authenticated successfully",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-20 00:27:56.299641+00:00 [info] \u003c0.18182677.0\u003e User 'monitor' authenticated successfully",
+      "vstan.rabbitmq.pid": "\u003c0.18182677.0\u003e"
+    }
+  },
+  {
+    "body": "closing AMQP connection, client unexpectedly disconnected",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-20 00:28:01.100000+00:00 [warning] \u003c0.512.0\u003e closing AMQP connection, client unexpectedly disconnected",
+      "vstan.rabbitmq.pid": "\u003c0.512.0\u003e"
+    }
+  },
+  {
+    "body": "Device: /dev/ada3, 8 Offline uncorrectable sectors",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, 8 Offline uncorrectable sectors",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  },
+  {
+    "body": "Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/sda [SAT], 2 Currently unreadable (pending) sectors",
+      "vstan.smartd.device": "/dev/sda"
+    }
+  },
+  {
+    "body": "Device: /dev/ada3, FAILED SMART self-check. BACKUP DATA NOW!",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, FAILED SMART self-check. BACKUP DATA NOW!",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  },
+  {
+    "body": "Device: /dev/ada3, SMART Prefailure Attribute: 1 Raw_Read_Error_Rate changed from 100 to 99",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "Device: /dev/ada3, SMART Prefailure Attribute: 1 Raw_Read_Error_Rate changed from 100 to 99",
+      "vstan.smartd.device": "/dev/ada3"
+    }
+  },
+  {
+    "body": "published StallMinutes=2",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "published StallMinutes=2",
+      "vstan.stallcheck.stall_minutes": 2
+    }
+  },
+  {
+    "body": "published StallMinutes=3",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19T22:56:53.123456789Z stdout F published StallMinutes=3",
+      "vstan.stallcheck.stall_minutes": 3
+    }
+  },
+  {
+    "body": "GET /healthz 200",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 12610,
+      "http.request.method": "GET",
+      "http.response.status_code": 200,
+      "log.record.original": "INFO:     192.0.2.10:12610 - \"GET /healthz HTTP/1.1\" 200 OK",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/healthz",
+      "vstan.uvicorn.status_text": "OK"
+    }
+  },
+  {
+    "body": "POST /api/submit 400",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.11",
+      "client.port": 8080,
+      "http.request.method": "POST",
+      "http.response.status_code": 400,
+      "log.record.original": "WARNING:  192.0.2.11:8080 - \"POST /api/submit HTTP/1.1\" 400 Bad Request",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/api/submit",
+      "vstan.uvicorn.status_text": "Bad Request"
+    }
+  },
+  {
+    "body": "GET /api/error 500",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.12",
+      "http.request.method": "GET",
+      "http.response.status_code": 500,
+      "log.record.original": "ERROR:    192.0.2.12 - \"GET /api/error HTTP/1.1\" 500 Internal Server Error",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/api/error",
+      "vstan.uvicorn.status_text": "Internal Server Error"
+    }
+  },
+  {
+    "body": "Started server process [1]",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "INFO:     Started server process [1]"
+    }
+  },
+  {
+    "body": "Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)"
+    }
+  },
+  {
+    "body": "Client has not sent any data.",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "TCPHandler",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026.11.19 23:01:21.644520 [ 1980900 ] {} \u003cInformation\u003e TCPHandler: Client has not sent any data.",
+      "thread.id": 1980900
+    }
+  },
+  {
+    "body": "Code: 60. DB::Exception: no table",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "executeQuery",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026.11.19 23:01:22.100000 [ 17 ] {4b1c-77} \u003cError\u003e executeQuery: Code: 60. DB::Exception: no table",
+      "thread.id": 17,
+      "vstan.clickhouse.query_id": "4b1c-77"
+    }
+  },
+  {
+    "body": "Starting HTTP server",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "otlp",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "otlpreceiver/otlp.go",
+      "code.line.number": 175,
+      "log.record.original": "2026-11-06T21:12:29.299Z\tinfo\totlpreceiver@v0.164.0/otlp.go:175\tStarting HTTP server\t{\"otelcol.component.id\": \"otlp\", \"otelcol.component.kind\": \"receiver\", \"endpoint\": \"127.0.0.1:14418\"}",
+      "otel.component.name": "otlp",
+      "vstan.collector.endpoint": "127.0.0.1:14418"
+    }
+  },
+  {
+    "body": "Starting HTTP server",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "otlp",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "otlpreceiver/otlp.go",
+      "code.line.number": 175,
+      "log.record.original": "otelcol-contrib[1186]: 2026-11-06T21:12:29.299Z#011info#011otlpreceiver@v0.164.0/otlp.go:175#011Starting HTTP server#011{\"otelcol.component.id\": \"otlp\", \"otelcol.component.kind\": \"receiver\", \"endpoint\": \"127.0.0.1:14418\"}",
+      "otel.component.name": "otlp",
+      "process.pid": 1186,
+      "vstan.collector.endpoint": "127.0.0.1:14418"
+    }
+  },
+  {
+    "body": "Started watching file",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "filelog",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "fileconsumer/file.go",
+      "code.line.number": 470,
+      "log.record.original": "2026-11-06T16:12:29.299-0500\tinfo\tfileconsumer/file.go:470\tStarted watching file\t{\"otelcol.component.id\": \"filelog\", \"otelcol.component.kind\": \"receiver\", \"path\": \"/var/log/app.log\"}",
+      "otel.component.name": "filelog",
+      "vstan.collector.path": "/var/log/app.log"
+    }
+  },
+  {
+    "body": "Synced 0 production policies and 0 draft/published (by ID) from DB to in-memory registry",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "LiteLLM Proxy",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "policy_registry.py",
+      "code.line.number": 577,
+      "log.record.original": "07:13:58 - LiteLLM Proxy:INFO: policy_registry.py:577 - Synced 0 production policies and 0 draft/published (by ID) from DB to in-memory registry"
+    }
+  },
+  {
+    "body": "performing QueryData dsName=a url=/b",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "plugin.x",
+    "resource": {},
+    "attributes": {
+      "code.file.path": "write_handler.go",
+      "code.line.number": 254,
+      "log.record.original": "logger=plugin.x t=2026-11-19T22:42:20.918289Z level=info msg=\"performing QueryData\" dsName=a url=/b source=write_handler.go:254 uname=test-user empty=",
+      "user.email": "test-user"
+    }
+  },
+  {
+    "body": "slow",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "dns",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "t=2026-11-19T22:42:21Z level=warn msg=\"slow\" component=dns"
+    }
+  },
+  {
+    "body": "Connection ended remote=192.0.2.10:53714 connectionCount=23",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "NETWORK",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 53714,
+      "log.record.original": "{\"t\":{\"$date\":\"2026-11-19T22:45:00.123+00:00\"},\"s\":\"I\",\"c\":\"NETWORK\",\"id\":22944,\"ctx\":\"conn1131180\",\"msg\":\"Connection ended\",\"attr\":{\"remote\":\"192.0.2.10:53714\",\"uuid\":{\"uuid\":{\"$uuid\":\"1a2b3c4d-0000-4000-8000-00000000ab01\"}},\"connectionId\":1131180,\"connectionCount\":23}}",
+      "vstan.mongod.connection_count": 23,
+      "vstan.mongod.connection_id": 1131180,
+      "vstan.mongod.ctx": "conn1131180",
+      "vstan.mongod.id": 22944,
+      "vstan.mongod.uuid": {
+        "uuid": {
+          "$uuid": "1a2b3c4d-0000-4000-8000-00000000ab01"
+        }
+      }
+    }
+  },
+  {
+    "body": "Authentication succeeded principal=__system remote=192.0.2.10:53720",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "ACCESS",
+    "resource": {},
+    "attributes": {
+      "client.address": "192.0.2.10",
+      "client.port": 53720,
+      "log.record.original": "{\"t\":{\"$date\":\"2026-11-19T22:45:01.000+00:00\"},\"s\":\"I\",\"c\":\"ACCESS\",\"id\":20250,\"ctx\":\"conn1131181\",\"msg\":\"Authentication succeeded\",\"attr\":{\"mechanism\":\"SCRAM-SHA-256\",\"speculative\":true,\"principalName\":\"__system\",\"authenticationDatabase\":\"local\",\"remote\":\"192.0.2.10:53720\",\"extraInfo\":{}}}",
+      "user.name": "__system",
+      "vstan.mongod.authentication_database": "local",
+      "vstan.mongod.ctx": "conn1131181",
+      "vstan.mongod.id": 20250,
+      "vstan.mongod.mechanism": "SCRAM-SHA-256",
+      "vstan.mongod.speculative": true
+    }
+  },
+  {
+    "body": "fetch failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "JOB-RUNNER",
+    "resource": {},
+    "attributes": {
+      "exception.message": "fetch failed",
+      "exception.stacktrace": "TypeError: fetch failed\n    at node:internal/deps/undici",
+      "exception.type": "TypeError",
+      "log.record.original": "[JOB-RUNNER] {\"level\":50,\"time\":1795129202193,\"pid\":19,\"hostname\":\"app-5d4f7\",\"error\":{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"stack\":\"TypeError: fetch failed\\n    at node:internal/deps/undici\"}}",
+      "process.pid": 19
+    }
+  },
+  {
+    "body": "Failed to connect to Systems Manager",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "EC2RoleProvider",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 23:00:14.0871 WARN EC2RoleProvider Failed to connect to Systems Manager"
+    }
+  },
+  {
+    "body": "Agent is up to date",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "Updater",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 23:00:15.0001 INFO Updater Agent is up to date"
+    }
+  },
+  {
+    "body": "Inserted 2 rows",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "rust_consumer::strategies::writer",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"timestamp\":\"2026-11-19T22:41:04.100000Z\",\"level\":\"INFO\",\"fields\":{\"message\":\"Inserted 2 rows\",\"rows\":2},\"target\":\"rust_consumer::strategies::writer\"}",
+      "vstan.tracing.rows": 2
+    }
+  },
+  {
+    "body": "slow batch",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "rust_consumer::strategies::writer",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"timestamp\":\"2026-11-19T22:41:05Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"slow batch\"},\"target\":\"rust_consumer::strategies::writer\"}"
+    }
+  },
+  {
+    "body": "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "LINK"
+    },
+    "attributes": {
+      "network.interface.name": "GigabitEthernet0/1",
+      "vstan.cisco.facility": "LINK",
+      "vstan.cisco.mnemonic": "UPDOWN",
+      "vstan.cisco.severity": "3"
+    }
+  },
+  {
+    "body": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "SW_MATM"
+    },
+    "attributes": {
+      "network.interface.name": "Gi4/0/45",
+      "vstan.cisco.facility": "SW_MATM",
+      "vstan.cisco.mnemonic": "MACFLAP_NOTIF",
+      "vstan.cisco.severity": "4"
+    }
+  },
+  {
+    "body": "%COPY-N-TRAP: The copy operation was completed successfully",
+    "severity": 10,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "COPY"
+    },
+    "attributes": {
+      "vstan.cisco.facility": "COPY",
+      "vstan.cisco.mnemonic": "TRAP",
+      "vstan.cisco.severity": "N"
+    }
+  },
+  {
+    "body": "Client Association",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "APF"
+    },
+    "attributes": {
+      "code.file.path": "apf_80211.c",
+      "code.line.number": 13338,
+      "thread.name": "apfMsConnTask_0",
+      "vstan.cisco.facility": "APF",
+      "vstan.cisco.mnemonic": "CLIENT_ASSOCIATE",
+      "vstan.cisco.severity": "5",
+      "vstan.wifi.ap.name": "DownAP-Master",
+      "vstan.wifi.client.ap": "CiscoAP-Down",
+      "vstan.wifi.radio": "2.4GHz",
+      "vstan.wifi.wlan.id": "1"
+    }
+  },
+  {
+    "body": "Spanning Tree Topology Change Received",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "switch-c-1",
+      "service.name": "TRAPMGR"
+    },
+    "attributes": {
+      "code.file.path": "traps.c",
+      "code.line.number": 763,
+      "thread.name": "dot1s_task",
+      "vstan.cisco.sequence": "284"
+    }
+  },
+  {
+    "body": "(root) CMD (/usr/local/bin/backup.sh)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "service.name": "cron"
+    },
+    "attributes": {
+      "log.record.original": "cron: (root) CMD (/usr/local/bin/backup.sh)"
+    }
+  },
+  {
+    "body": "(www-data) CMD (php /var/www/cleanup.php)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "service.name": "cron"
+    },
+    "attributes": {
+      "log.record.original": "cron: (www-data) CMD (php /var/www/cleanup.php)"
+    }
+  },
+  {
+    "body": "Succeeded (0/1 ready)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-a",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-a",
+      "k8s.pod.name": "job-1-abcde",
+      "service.name": "job-1-abcde"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Succeeded"
+    }
+  },
+  {
+    "body": "Running (1/1 ready)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-b",
+      "k8s.pod.name": "web-1",
+      "service.name": "web-1"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Running"
+    }
+  },
+  {
+    "body": "Pending",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.node.name": "node-b",
+      "k8s.pod.name": "web-2",
+      "service.name": "web-2"
+    },
+    "attributes": {
+      "k8s.pod.status.phase": "Pending"
+    }
+  },
+  {
+    "body": "ScalingReplicaSet: Scaled up replica set web-5d4f to 2",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "service.name": "Deployment/web"
+    },
+    "attributes": {}
+  },
+  {
+    "body": "BackOff: Back-off restarting failed container",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "host.name": "node-b",
+      "k8s.namespace.name": "team-a",
+      "k8s.pod.name": "web-1",
+      "service.name": "Pod/web-1"
+    },
+    "attributes": {}
+  },
+  {
+    "body": "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 3.78.202.199:443",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "audit"
+    },
+    "attributes": {
+      "log.record.original": "audit: type=1400 audit(1795129202.123:456): apparmor=\"ALLOWED\" operation=\"file_perm\" class=\"net\" profile=\"snap.amazon-ssm-agent.amazon-ssm-agent\" pid=1234 comm=\"agent\" requested=\"send\" addr=3.78.202.199 port=443",
+      "log.source": "kernel",
+      "vstan.audit.serial": 456,
+      "vstan.audit.type": 1400
+    }
+  },
+  {
+    "body": "[apparmor] DENIED open r, profile docker-default",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "audit"
+    },
+    "attributes": {
+      "log.record.original": "audit: type=1400 audit(1795129202.123:457): apparmor=\"DENIED\" operation=\"open\" profile=\"docker-default\" requested=\"r\"",
+      "log.source": "kernel",
+      "vstan.audit.serial": 457,
+      "vstan.audit.type": 1400
+    }
+  },
+  {
+    "body": "Probe failed probeType=Readiness",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "k8s.namespace.name": "kube-system",
+      "k8s.pod.name": "kube-apiserver-node-1"
+    },
+    "attributes": {
+      "code.file.path": "prober.go",
+      "code.line.number": 120,
+      "k8s.pod.uid": "uid-1",
+      "log.record.original": "I1220 03:18:01.710490    1233 prober.go:120] \"Probe failed\" probeType=\"Readiness\" pod=\"kube-system/kube-apiserver-node-1\" podUID=\"uid-1\"",
+      "process.pid": 1233
+    }
+  },
+  {
+    "body": "POST /api/7/envelope/ 200 41B",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "nginx"
+    },
+    "attributes": {
+      "client.address": "198.51.100.23",
+      "http.request.method": "POST",
+      "http.response.body.size": 41,
+      "http.response.status_code": 200,
+      "log.record.original": "203.0.113.9 - - [20/Nov/2026:00:26:38 +0000] \"POST /api/7/envelope/ HTTP/1.1\" 200 41 \"-\" \"sentry.python/2.35.0\" \"198.51.100.23, 203.0.113.50\"",
+      "network.peer.address": "203.0.113.9",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/api/7/envelope/",
+      "user_agent.name": "Sentry SDK",
+      "user_agent.original": "sentry.python/2.35.0",
+      "user_agent.version": "python/2.35.0",
+      "vstan.nginx.device_type": "bot"
+    }
+  },
+  {
+    "body": "GET /healthz 200 2B",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "nginx"
+    },
+    "attributes": {
+      "client.address": "192.0.2.7",
+      "http.request.method": "GET",
+      "http.response.body.size": 2,
+      "http.response.status_code": 200,
+      "log.record.original": "192.0.2.7 - - [20/Nov/2026:00:26:39 +0000] \"GET /healthz HTTP/1.1\" 200 2 \"-\" \"kube-probe/1.36\" \"-\"",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/healthz",
+      "user_agent.name": "kube-probe",
+      "user_agent.original": "kube-probe/1.36",
+      "user_agent.version": "1.36",
+      "vstan.nginx.device_type": "desktop"
+    }
+  },
+  {
+    "body": "GET /missing 403 12B",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "nginx"
+    },
+    "attributes": {
+      "client.address": "192.0.2.7",
+      "http.request.header.referer": "https://example.org/a",
+      "http.request.method": "GET",
+      "http.response.body.size": 12,
+      "http.response.status_code": 403,
+      "log.record.original": "192.0.2.7 - alice [20/Nov/2026:00:26:40 +0000] \"GET /missing HTTP/1.1\" 403 12 \"https://example.org/a\" \"curl/8\" \"-\"",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/missing",
+      "user.name": "alice",
+      "user_agent.name": "curl",
+      "user_agent.original": "curl/8",
+      "user_agent.version": "8",
+      "vstan.nginx.device_type": "bot"
+    }
+  },
+  {
+    "body": "GET /upstream 502 150B",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {
+      "service.name": "nginx"
+    },
+    "attributes": {
+      "client.address": "198.51.100.9",
+      "http.request.method": "GET",
+      "http.response.body.size": 150,
+      "http.response.status_code": 502,
+      "log.record.original": "198.51.100.9 - - [20/Nov/2026:00:26:41 +0000] \"GET /upstream HTTP/1.1\" 502 150 \"-\" \"Mozilla/5.0 (X11; Linux x86_64)\" \"-\"",
+      "network.protocol.name": "http",
+      "network.protocol.version": "1.1",
+      "url.path": "/upstream",
+      "user_agent.name": "Mozilla",
+      "user_agent.original": "Mozilla/5.0 (X11; Linux x86_64)",
+      "user_agent.os.name": "Linux",
+      "user_agent.version": "5.0",
+      "vstan.nginx.device_type": "desktop"
+    }
+  },
+  {
+    "body": "Background saving terminated with success",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:37.151 * Background saving terminated with success",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  },
+  {
+    "body": "RDB: 0 MB of memory used by copy-on-write",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "5688:C 31 Dec 2025 03:04:22.141 * RDB: 0 MB of memory used by copy-on-write",
+      "process.pid": 5688,
+      "vstan.redis.role": "child"
+    }
+  },
+  {
+    "body": "replica lost",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:S 19 Nov 2026 23:22:38.000 # replica lost",
+      "process.pid": 1,
+      "vstan.redis.role": "slave"
+    }
+  },
+  {
+    "body": "debug message here",
+    "severity": 5,
+    "severity_text": "DEBUG",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:39.000 . debug message here",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  },
+  {
+    "body": "verbose message here",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:40.000 - verbose message here",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  },
+  {
+    "body": "GET /api/0/projects/ 302 12ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "sentry.access.api",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "client.address": "192.0.2.7",
+      "http.request.method": "GET",
+      "http.response.status_code": 302,
+      "log.record.original": "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' path='/api/0/projects/' caller_ip='192.0.2.7' user_agent='ELB-HealthChecker/2.0' request_duration_seconds='0.012')",
+      "url.path": "/api/0/projects/",
+      "user_agent.original": "ELB-HealthChecker/2.0",
+      "vstan.http.request.duration": "0.012",
+      "vstan.sentry.message_type": "api.access",
+      "vstan.sentry.view": "sentry.web.frontend.home.HomeView"
+    }
+  },
+  {
+    "body": "Retrying the task",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "sentry.tasks",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "log.record.original": "02:30:22 [WARNING] sentry.tasks: Retrying the task"
+    }
+  },
+  {
+    "body": "Task failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "sentry.tasks",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "log.record.original": "02:30:23 [ERROR] sentry.tasks: Task failed"
+    }
+  },
+  {
+    "body": "Accepted publickey for deploy",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "alpha",
+      "service.name": "sshd"
+    },
+    "attributes": {
+      "log.record.original": "Dec 31 10:05:00 alpha sshd[42]: Accepted publickey for deploy",
+      "log.source": "syslog",
+      "process.pid": 42,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "(root) CMD (run-parts /etc/cron.hourly)",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "host.name": "beta",
+      "service.name": "cron"
+    },
+    "attributes": {
+      "log.record.original": "Dec 31 10:05:01 beta cron[2]: (root) CMD (run-parts /etc/cron.hourly)",
+      "log.source": "syslog",
+      "process.pid": 2,
+      "vstan.syslog.parse_error": true
+    }
+  },
+  {
+    "body": "lease granted",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {
+      "service.name": "dhcp_server"
+    },
+    "attributes": {
+      "log.record.original": "Dec 31 10:05:02 dhcp_server: lease granted",
+      "log.source": "syslog",
+      "vstan.syslog.parse_error": true
+    }
+  }
+]

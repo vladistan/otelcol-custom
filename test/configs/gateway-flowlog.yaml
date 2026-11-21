@@ -1,0 +1,43 @@
+# Reference config for the central NetFlow pipeline of the gateway image: the netflow receiver on
+# UDP 2055 and the flowlog exporter that writes typed rows into the flow table.
+# Run: ./build/gateway/otelcol-gateway validate --config test/configs/gateway-flowlog.yaml
+# It only has to load: the endpoint is a placeholder and is never dialed by validate. Keep this block in
+# its own file; the placeholders below are for review and are replaced in the deployed config.
+receivers:
+  netflow:
+    scheme: netflow # the only scheme; sFlow is not decoded
+    hostname: 0.0.0.0
+    port: 2055
+    sockets: 2
+    workers: 4
+    queue_size: 1000
+exporters:
+  flowlog:
+    endpoint: clickhouse.example.invalid:9000
+    username: ${env:FLOWLOG_USERNAME}
+    password: ${env:FLOWLOG_PASSWORD} # an insert-only account; never write the value here
+    # the name only, so the warning for an empty password can say which variable
+    password_variable: FLOWLOG_PASSWORD # pragma: allowlist secret
+    database: flowlogs
+    table: flow_log
+    loader: flowlogexporter
+    # collector: the name of the gateway pod; empty takes the host name of the process
+    routers:
+      - address: 192.0.2.10
+        account_id: site-a
+        region: site-a
+        sampling_rate: 1
+        direction: ingress
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 120s
+service:
+  pipelines:
+    logs/flowlog:
+      receivers: [netflow]
+      exporters: [flowlog]

@@ -34,8 +34,10 @@ type client struct {
 	commonName string
 	// realAddress is the address and port as written, the key of the routing join.
 	realAddress string
-	// ip is realAddress without the port; it is the only form that is emitted.
-	ip             string
+	// ip is realAddress without the port; metrics carry only this form.
+	ip string
+	// port is the port of realAddress, or 0 when the row gives none; logs carry it as client.port.
+	port           int64
 	connectedSince string
 	// connectedAt is zero when the file gives no readable start time.
 	connectedAt   time.Time
@@ -171,7 +173,7 @@ func (s *snapshot) addClient(f []string, epoch string) error {
 		return shapeError("real address is not an IP address")
 	}
 	s.clients = append(s.clients, client{
-		commonName: f[0], realAddress: f[1], ip: ip, bytesReceived: received, bytesSent: sent,
+		commonName: f[0], realAddress: f[1], ip: ip, port: portOf(f[1]), bytesReceived: received, bytesSent: sent,
 		connectedSince: f[4], connectedAt: connectedAt(f[4], epoch),
 	})
 	return nil
@@ -210,6 +212,22 @@ func ipOf(address string) (string, error) {
 		candidate = rest
 	}
 	return "", fmt.Errorf("not an IP address: %q", address)
+}
+
+// portOf returns the port of an address written as ip:port or [ip6]:port, after the same protocol prefix
+// ipOf accepts. It is 0 when the address has no port.
+func portOf(address string) int64 {
+	for candidate, tries := address, 0; tries < 2; tries++ {
+		if ap, err := netip.ParseAddrPort(candidate); err == nil {
+			return int64(ap.Port())
+		}
+		prefix, rest, found := strings.Cut(candidate, ":")
+		if !found || !isProtocolToken(prefix) {
+			break
+		}
+		candidate = rest
+	}
+	return 0
 }
 
 func isProtocolToken(token string) bool {

@@ -1,3 +1,4 @@
+# cspell:ignore logfmt
 # Windows edge collector sample config for 0.3.2.
 # Every component in this file is valid on Windows.
 # Summarization is off: windowhist is defined but not in the metrics pipeline, and every
@@ -273,6 +274,14 @@ processors:
       - key: service.name
         value: otelcol-edge
         action: insert
+  # The event log pipeline gets no service.name fallback: winlog sets it from the provider, and an
+  # event with no provider keeps no service.name. A processor that inserts the fallback would give
+  # such an event the name of the collector.
+  resource/host-eventlog:
+    attributes:
+      - key: deployment.environment
+        value: production
+        action: insert
   resourceversion:
     role: edge
   # Shapes event records and drops the default list. Remove a rule to keep its
@@ -281,10 +290,18 @@ processors:
   # `drop_summary: {enabled: true}` emits an hourly count of dropped events;
   # see docs/windows-edge.md. `service_name_from_provider` gives each event
   # the service.name of its provider, without the Microsoft-Windows- prefix;
-  # keep winlog before resource/host, which only inserts a fallback.
+  # the event log pipeline runs resource/host-eventlog, which inserts no service.name fallback.
   winlog:
     original_message_max_bytes: 65536
     service_name_from_provider: true
+    # Suffixes of distinguished names that a one-line summary shortens to ",...".
+    # The full name stays in winlog.event_data. Placeholder suffix; use your domain.
+    dn_contractions:
+      - ",OU=Domain Controllers,DC=lab,DC=example,DC=org"
+    # cspell:ignore LGIS
+    # Extra or changed MSSQL audit action codes (event 33205); built-in codes need no entry.
+    mssql_actions:
+      LGIS: Login succeeded
     drop_rules:
       - name: security-audit-noise
         channels: [Security]
@@ -302,6 +319,12 @@ processors:
     time_zone: Local
   normalizedload:
     cpu_count: 0
+  # Log shaping for text file logs. The event log keeps the winlog processor, which reads the
+  # event fields, so this processor is not in the logs pipeline. Add it to the pipeline of an
+  # enabled file_log receiver (the examples above) before resource/host; collector reads the
+  # collector's own log lines.
+  logshape:
+    branches: [collector, logrus, logfmt]
   # Same low-resource rule as the Linux edge; thresholds are role variables.
   filter/process:
     error_mode: ignore
@@ -376,7 +399,7 @@ service:
     #   exporters: [otlp_http]
     logs:
       receivers: [windows_event_log/security, windows_event_log/system, windows_event_log/application, windows_event_log/bucket-0]
-      processors: [memory_limiter, winlog, resource_detection, resource/host, resourceversion]
+      processors: [memory_limiter, resource_detection, resource/host-eventlog, winlog, resourceversion]
       exporters: [otlp_http]
     logs/tightvnc:
       receivers: [filelog/tightvnc]

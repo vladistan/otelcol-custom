@@ -1,0 +1,72 @@
+[
+  {
+    "body": "Background saving terminated with success",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:37.151 * Background saving terminated with success",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  },
+  {
+    "body": "RDB: 0 MB of memory used by copy-on-write",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "5688:C 31 Dec 2025 03:04:22.141 * RDB: 0 MB of memory used by copy-on-write",
+      "process.pid": 5688,
+      "vstan.redis.role": "child"
+    }
+  },
+  {
+    "body": "replica lost",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:S 19 Nov 2026 23:22:38.000 # replica lost",
+      "process.pid": 1,
+      "vstan.redis.role": "slave"
+    }
+  },
+  {
+    "body": "debug message here",
+    "severity": 5,
+    "severity_text": "DEBUG",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:39.000 . debug message here",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  },
+  {
+    "body": "verbose message here",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "redis"
+    },
+    "attributes": {
+      "log.record.original": "1:M 19 Nov 2026 23:22:40.000 - verbose message here",
+      "process.pid": 1,
+      "vstan.redis.role": "master"
+    }
+  }
+]

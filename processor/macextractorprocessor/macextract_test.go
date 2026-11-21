@@ -1,6 +1,8 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
+// cspell:ignore eeff aabbcc aabbccddeeff deff duid iaid dhcpv
+
 package macextractorprocessor
 
 import (
@@ -129,12 +131,12 @@ func TestExtractMACs_DHCPLogs(t *testing.T) {
 	}{
 		{
 			name:     "DHCPACK message",
-			input:    "DHCPACK on 192.0.2.1 to 10:d5:61:17:80:6b (hostname) via em0",
+			input:    "DHCPACK on 192.0.2.150 to 10:d5:61:17:80:6b (hostname) via em0",
 			expected: []string{"10:d5:61:17:80:6b"},
 		},
 		{
 			name:     "DHCPREQUEST message",
-			input:    "DHCPREQUEST for 192.0.2.1 from 66:58:5b:f6:b0:30 (rdfstore-blazegraph) via em0",
+			input:    "DHCPREQUEST for 192.0.2.164 from 66:58:5b:f6:b0:30 (rdfstore-blazegraph) via em0",
 			expected: []string{"66:58:5b:f6:b0:30"},
 		},
 		{
@@ -505,17 +507,17 @@ func TestExtractMACs_AdditionalDHCPPatterns(t *testing.T) {
 	}{
 		{
 			name:     "DHCPACK standard MAC",
-			input:    "DHCPACK on 192.0.2.1 to 10:db:00:db:15:02 via em0",
+			input:    "DHCPACK on 192.0.2.132 to 10:db:00:db:15:02 via em0",
 			expected: []string{"10:db:00:db:15:02"},
 		},
 		{
 			name:     "DHCPREQUEST with server IP",
-			input:    "DHCPREQUEST for 192.0.2.1 (192.0.2.1) from c4:4f:33:91:a6:58 (ESP_91A658) via em0",
+			input:    "DHCPREQUEST for 192.0.2.141 (192.0.2.238) from c4:4f:33:91:a6:58 (ESP_91A658) via em0",
 			expected: []string{"c4:4f:33:91:a6:58"},
 		},
 		{
 			name:     "DHCPREQUEST with Mac hostname",
-			input:    "DHCPREQUEST for 192.0.2.1 from 62:12:24:a7:dd:56 (Mac) via em0",
+			input:    "DHCPREQUEST for 192.0.2.165 from 62:12:24:a7:dd:56 (Mac) via em0",
 			expected: []string{"62:12:24:a7:dd:56"},
 		},
 		{
@@ -534,7 +536,7 @@ func TestExtractMACs_AdditionalDHCPPatterns(t *testing.T) {
 }
 
 func BenchmarkExtractMACs(b *testing.B) {
-	input := "DHCPACK on 192.0.2.1 to 10:d5:61:17:80:6b (hostname) via em0"
+	input := "DHCPACK on 192.0.2.150 to 10:d5:61:17:80:6b (hostname) via em0"
 	for i := 0; i < b.N; i++ {
 		ExtractMACs(input)
 	}

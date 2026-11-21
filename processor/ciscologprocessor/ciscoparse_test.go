@@ -45,7 +45,7 @@ func TestParseCiscoMnemonic_RealProductionSamples(t *testing.T) {
 			// Doc 3: switch-b (Cisco IOS switch)
 			// testdata/AZsk5pCYuuchI90gaOpa.json
 			name:  "switch_clockupdate",
-			input: "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.1).",
+			input: "171: Dec 16 02:03:21.407: %SYS-6-CLOCKUPDATE: System clock has been updated from 21:03:21 EST Mon Dec 15 2025 to 21:03:21 EST Mon Dec 15 2025, configured from console by vlad on vty0 (192.0.2.39).",
 			expected: &CiscoLogInfo{
 				Facility:     "SYS",
 				Severity:     "6",

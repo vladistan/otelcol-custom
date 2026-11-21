@@ -1,0 +1,28 @@
+[
+  {
+    "body": "fetch failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "JOB-RUNNER",
+    "resource": {},
+    "attributes": {
+      "exception.message": "fetch failed",
+      "exception.stacktrace": "TypeError: fetch failed\n    at node:internal/deps/undici",
+      "exception.type": "TypeError",
+      "log.record.original": "[JOB-RUNNER] {\"level\":50,\"time\":1795129202193,\"pid\":19,\"hostname\":\"app-5d4f7\",\"error\":{\"name\":\"TypeError\",\"message\":\"fetch failed\",\"stack\":\"TypeError: fetch failed\\n    at node:internal/deps/undici\"}}",
+      "process.pid": 19
+    }
+  },
+  {
+    "body": "request completed",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"level\":30,\"time\":1795129202193,\"pid\":7,\"hostname\":\"app-5d4f7\",\"msg\":\"request completed\",\"statusCode\":200}",
+      "process.pid": 7,
+      "vstan.pino.statusCode": 200
+    }
+  }
+]

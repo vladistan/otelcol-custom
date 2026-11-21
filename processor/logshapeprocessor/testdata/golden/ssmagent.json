@@ -1,0 +1,22 @@
+[
+  {
+    "body": "Failed to connect to Systems Manager",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "EC2RoleProvider",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 23:00:14.0871 WARN EC2RoleProvider Failed to connect to Systems Manager"
+    }
+  },
+  {
+    "body": "Agent is up to date",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "Updater",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-19 23:00:15.0001 INFO Updater Agent is up to date"
+    }
+  }
+]

@@ -33,7 +33,7 @@ func TestLogsProcessor_ExtractFromBody(t *testing.T) {
 		nextConsumer: sink,
 	}
 
-	logs := createTestLogsWithBody("DHCPACK on 192.0.2.1 to 10:d5:61:17:80:6b (hostname) via em0")
+	logs := createTestLogsWithBody("DHCPACK on 192.0.2.165 to 10:d5:61:17:80:6b (hostname) via em0")
 
 	err := processor.ConsumeLogs(context.Background(), logs)
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestLogsProcessor_ExtractFromBody(t *testing.T) {
 	lr := resultLogs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	ip, found := lr.Attributes().Get("client.ip")
 	assert.True(t, found)
-	assert.Equal(t, "192.0.2.1", ip.Str())
+	assert.Equal(t, "192.0.2.165", ip.Str())
 }
 
 func TestLogsProcessor_ExtractFromWhitelistedAttribute(t *testing.T) {
@@ -257,9 +257,9 @@ func TestLogsProcessor_NoIPInBodyIgnoresNetworkAttrs(t *testing.T) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
 	lr.Body().SetStr("prefix length should be 64 for em0") // no IP in body
-	lr.Attributes().PutStr("net.host.ip", "192.0.2.1")
-	lr.Attributes().PutStr("net.peer.ip", "192.0.2.1")
-	lr.Attributes().PutStr("source.ip", "192.0.2.1")
+	lr.Attributes().PutStr("net.host.ip", "192.0.2.162")
+	lr.Attributes().PutStr("net.peer.ip", "192.0.2.238")
+	lr.Attributes().PutStr("source.ip", "192.0.2.238")
 	// no original_message attribute - should not find any IP
 
 	err := processor.ConsumeLogs(context.Background(), logs)
@@ -400,7 +400,7 @@ func TestLogsProcessor_NestedMapBody(t *testing.T) {
 	bodyMap := lr.Body().SetEmptyMap()
 	bodyMap.PutStr("_HOSTNAME", "labhost-ds4")
 	bodyMap.PutStr("PRIORITY", "6")
-	bodyMap.PutStr("MESSAGE", "Client 192.0.2.1 connected")
+	bodyMap.PutStr("MESSAGE", "Client 192.0.2.50 connected")
 	// Add nested map
 	nestedMap := bodyMap.PutEmptyMap("_EXTRA")
 	nestedMap.PutStr("nested_ip", "10.0.0.99")
@@ -414,7 +414,7 @@ func TestLogsProcessor_NestedMapBody(t *testing.T) {
 	ip, found := resultLR.Attributes().Get("client.ip")
 	assert.True(t, found)
 	// Order of map iteration is not guaranteed, but we should get one of the IPs
-	assert.Contains(t, []string{"192.0.2.1", "10.0.0.99"}, ip.Str())
+	assert.Contains(t, []string{"192.0.2.50", "10.0.0.99"}, ip.Str())
 }
 
 // Test: body is a map but has no IPs anywhere
@@ -648,7 +648,7 @@ func TestExtractIPs_IPv4(t *testing.T) {
 		{"single_ip", "Connection from 192.168.1.100", []string{"192.168.1.100"}},
 		{"ip_with_port", "Server at 10.0.0.1:8080", []string{"10.0.0.1"}},
 		{"multiple_ips", "From 192.168.1.1 to 10.0.0.1", []string{"192.168.1.1", "10.0.0.1"}},
-		{"dhcp_message", "DHCPACK on 192.0.2.1 to aa:bb:cc:dd:ee:ff", []string{"192.0.2.1"}},
+		{"dhcp_message", "DHCPACK on 192.0.2.165 to aa:bb:cc:dd:ee:ff", []string{"192.0.2.165"}},
 		{"no_ip", "No IP address here", nil},
 		{"empty", "", nil},
 		{"loopback_excluded", "localhost 127.0.0.1", nil},

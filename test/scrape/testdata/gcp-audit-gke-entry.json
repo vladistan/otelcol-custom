@@ -14,7 +14,7 @@
   },
   "resource": {
     "labels": {
-      "cluster_name": "kube-v0",
+      "cluster_name": "cluster-a",
       "location": "europe-west1",
       "project_id": "proj-example"
     },

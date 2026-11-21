@@ -1,0 +1,46 @@
+[
+  {
+    "body": "GET /api/0/projects/ 302 12ms",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "sentry.access.api",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "client.address": "192.0.2.7",
+      "http.request.method": "GET",
+      "http.response.status_code": 302,
+      "log.record.original": "02:30:21 [INFO] sentry.access.api: api.access (method='GET' view='sentry.web.frontend.home.HomeView' response='302' path='/api/0/projects/' caller_ip='192.0.2.7' user_agent='ELB-HealthChecker/2.0' request_duration_seconds='0.012')",
+      "url.path": "/api/0/projects/",
+      "user_agent.original": "ELB-HealthChecker/2.0",
+      "vstan.http.request.duration": "0.012",
+      "vstan.sentry.message_type": "api.access",
+      "vstan.sentry.view": "sentry.web.frontend.home.HomeView"
+    }
+  },
+  {
+    "body": "Retrying the task",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "sentry.tasks",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "log.record.original": "02:30:22 [WARNING] sentry.tasks: Retrying the task"
+    }
+  },
+  {
+    "body": "Task failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "sentry.tasks",
+    "resource": {
+      "service.name": "sentry"
+    },
+    "attributes": {
+      "log.record.original": "02:30:23 [ERROR] sentry.tasks: Task failed"
+    }
+  }
+]

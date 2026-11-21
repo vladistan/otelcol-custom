@@ -8,7 +8,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-// parityFields holds what the kube-v0 transform/k8s_objects block sets on one record.
+// parityFields holds what the cluster-a transform/k8s_objects block sets on one record.
 // It is built before the other handlers run, because they may replace the body it reads.
 type parityFields struct {
 	attrs   pcommon.Map

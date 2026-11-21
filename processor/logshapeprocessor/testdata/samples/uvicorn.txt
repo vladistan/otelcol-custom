@@ -1,0 +1,7 @@
+# provenance: partly real; real lines: 1
+# evidence: line 1 is a captured access line, address replaced; the others are written from the format
+INFO:     192.0.2.10:12610 - "GET /healthz HTTP/1.1" 200 OK
+WARNING:  192.0.2.11:8080 - "POST /api/submit HTTP/1.1" 400 Bad Request
+ERROR:    192.0.2.12 - "GET /api/error HTTP/1.1" 500 Internal Server Error
+INFO:     Started server process [1]
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

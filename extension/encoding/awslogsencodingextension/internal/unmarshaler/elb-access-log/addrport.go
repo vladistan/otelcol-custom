@@ -12,10 +12,19 @@ import (
 
 var errNoAddrPort = errors.New("not an address followed by a port")
 
-// splitAddrPort splits an address:port field of an ELB access log line (client, target, destination or backend).
+// splitAddrPort splits an address:port field of an ALB or NLB access log line (client, target or destination).
 // An IPv6 address is written without brackets (2001:db8::1:49649), so the field is split at the last colon; the
 // bracketed form [2001:db8::1]:443 splits as before. The address must be an IP address. The error does not hold
 // the field.
+// splitAddrPortCLB is splitAddrPort for CLB lines, which stay outside the IPv6 fix until a live CLB line with an
+// IPv6 address is on record: IPv4 and the bracketed form split, and an unbracketed IPv6 address is a bad field.
+func splitAddrPortCLB(field string) (addr, port string, err error) {
+	if !strings.HasPrefix(field, "[") && strings.Count(field, ":") > 1 {
+		return "", "", errNoAddrPort
+	}
+	return splitAddrPort(field)
+}
+
 func splitAddrPort(field string) (addr, port string, err error) {
 	if strings.HasPrefix(field, "[") {
 		if addr, port, err = net.SplitHostPort(field); err != nil {

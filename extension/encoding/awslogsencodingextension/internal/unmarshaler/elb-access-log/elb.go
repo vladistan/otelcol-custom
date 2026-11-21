@@ -75,7 +75,7 @@ func convertTextToCLBAccessLogRecord(fields []string) (CLBAccessLogRecord, error
 
 	// Process the fields for numerical values (convenient to parse from string)
 	var clientPort string
-	if record.ClientIP, clientPort, err = splitAddrPort(fields[2]); err != nil {
+	if record.ClientIP, clientPort, err = splitAddrPortCLB(fields[2]); err != nil {
 		return record, fmt.Errorf("could not parse client IP:Port: %w", err)
 	}
 	if record.ClientPort, err = safeConvertStrToInt(clientPort); err != nil {
@@ -85,7 +85,7 @@ func convertTextToCLBAccessLogRecord(fields []string) (CLBAccessLogRecord, error
 	// Parse BackendIPPort into BackendIP and BackendPort
 	if record.BackendIPPort != unknownField {
 		var backendPort string
-		if record.BackendIP, backendPort, err = splitAddrPort(record.BackendIPPort); err != nil {
+		if record.BackendIP, backendPort, err = splitAddrPortCLB(record.BackendIPPort); err != nil {
 			return record, fmt.Errorf("could not parse backend IP:Port: %w", err)
 		}
 		if record.BackendPort, err = safeConvertStrToInt(backendPort); err != nil {

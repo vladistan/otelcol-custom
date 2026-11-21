@@ -34,7 +34,7 @@ func TestAWrongUserNameInTheConnectErrorBacksOffAndHalts(t *testing.T) {
 	r.scrape(t)
 
 	assert.Len(t, board.dials, 3, "three logins, then none until restart")
-	assert.Equal(t, []string{"pve12", "pve12", "pve12"}, r.authFails)
+	assert.Equal(t, []string{"node12", "node12", "node12"}, r.authFails)
 }
 
 // A role refusal on the sensor session is a login failure and backs off the same way.
@@ -49,7 +49,7 @@ func TestARoleRefusalOnTheSensorSessionBacksOff(t *testing.T) {
 	r.scrape(t)
 
 	assert.Len(t, board.dials, 1)
-	assert.Equal(t, []string{"pve12"}, r.authFails)
+	assert.Equal(t, []string{"node12"}, r.authFails)
 }
 
 // A timeout or a refused connection inside the Set Session Privilege Level step is a network

@@ -25,7 +25,7 @@ func TestClassify_EachDefaultPath_IsProbe(t *testing.T) {
 
 func TestClassify_EachDefaultAgentOnNonProbePath_IsProbe(t *testing.T) {
 	s := newSampler(Default())
-	for _, agent := range []string{"kube-probe/1.29", "ELB-HealthChecker/2.0"} {
+	for _, agent := range []string{"kube-probe/1.29", "ELB-HealthChecker/2.0", "HealthProbe/1.0", "Amazon-Route53-Health-Check-Service (ref 1a2b; report http://example.invalid/)"} {
 		if !s.Classify(200, "/orders", agent) {
 			t.Errorf("agent %q on /orders = false, want true (a match on either rule classes the record as a probe)", agent)
 		}
@@ -93,14 +93,14 @@ func TestClassify_NoPathNoAgent_IsNotProbe(t *testing.T) {
 	}
 }
 
-func TestClassify_CustomLists_ReplaceDefaults(t *testing.T) {
+func TestClassify_CustomLists_ExtendTheDefaults(t *testing.T) {
 	s := newSampler(Config{Paths: []string{"/ping"}, Agents: []string{"uptime-bot/"}, KeepRatio: 1})
 
 	if !s.Classify(200, "/ping", "") || !s.Classify(302, "/x", "uptime-bot/3") {
 		t.Error("custom path or agent not matched")
 	}
-	if s.Classify(200, "/healthz", "kube-probe/1.29") {
-		t.Error("default list still active after override")
+	if !s.Classify(200, "/healthz", "") || !s.Classify(200, "/x", "kube-probe/1.29") {
+		t.Error("a default entry stopped matching after the list was set")
 	}
 }
 
