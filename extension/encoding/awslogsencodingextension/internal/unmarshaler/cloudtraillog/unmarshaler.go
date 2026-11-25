@@ -48,6 +48,21 @@ type UserIdentity struct {
 	IdentityStoreARN string          `json:"identityStoreArn"`
 	InvokedBy        string          `json:"invokedBy"`
 	SessionContext   *SessionContext `json:"sessionContext"`
+	OnBehalfOf       *OnBehalfOf     `json:"onBehalfOf"`
+}
+
+const identityCenterUserType = "IdentityCenterUser"
+
+// OnBehalfOf names the Identity Center user an IdentityCenterUser event acts for.
+type OnBehalfOf struct {
+	UserID           string `json:"userId"`
+	IdentityStoreARN string `json:"identityStoreArn"`
+}
+
+// ServiceEventDetails names the role and the target account of an Identity Center sign-in event.
+type ServiceEventDetails struct {
+	RoleName  string `json:"role_name"`
+	AccountID string `json:"account_id"`
 }
 
 // SessionContext if request was made with temporary security credentials,
@@ -90,32 +105,33 @@ type Resource struct {
 // There is no builtin CloudTrailRecord we can leverage like in S3
 // So we build our own
 type CloudTrailRecord struct {
-	APIVersion                   string         `json:"apiVersion"`
-	EventVersion                 string         `json:"eventVersion"`
-	EventTime                    string         `json:"eventTime"`
-	EventSource                  string         `json:"eventSource"`
-	EventName                    string         `json:"eventName"`
-	AwsRegion                    string         `json:"awsRegion"`
-	SourceIPAddress              string         `json:"sourceIPAddress"`
-	UserAgent                    string         `json:"userAgent"`
-	RequestID                    string         `json:"requestID"`
-	EventID                      string         `json:"eventID"`
-	EventType                    string         `json:"eventType"`
-	EventCategory                string         `json:"eventCategory"`
-	RecipientAccountID           string         `json:"recipientAccountId"`
-	UserIdentity                 *UserIdentity  `json:"userIdentity"`
-	ResponseElements             map[string]any `json:"responseElements"`
-	RequestParameters            map[string]any `json:"requestParameters"`
-	AdditionalEventData          map[string]any `json:"additionalEventData"`
-	Resources                    []*Resource    `json:"resources"`
-	ReadOnly                     *bool          `json:"readOnly"`
-	ManagementEvent              *bool          `json:"managementEvent"`
-	TLSDetails                   *TLSDetails    `json:"tlsDetails"`
-	SessionCredentialFromConsole string         `json:"sessionCredentialFromConsole"`
-	ErrorCode                    string         `json:"errorCode"`
-	ErrorMessage                 string         `json:"errorMessage"`
-	InsightDetails               map[string]any `json:"insightDetails"`
-	SharedEventID                string         `json:"sharedEventID"`
+	APIVersion                   string               `json:"apiVersion"`
+	EventVersion                 string               `json:"eventVersion"`
+	EventTime                    string               `json:"eventTime"`
+	EventSource                  string               `json:"eventSource"`
+	EventName                    string               `json:"eventName"`
+	AwsRegion                    string               `json:"awsRegion"`
+	SourceIPAddress              string               `json:"sourceIPAddress"`
+	UserAgent                    string               `json:"userAgent"`
+	RequestID                    string               `json:"requestID"`
+	EventID                      string               `json:"eventID"`
+	EventType                    string               `json:"eventType"`
+	EventCategory                string               `json:"eventCategory"`
+	RecipientAccountID           string               `json:"recipientAccountId"`
+	UserIdentity                 *UserIdentity        `json:"userIdentity"`
+	ResponseElements             map[string]any       `json:"responseElements"`
+	RequestParameters            map[string]any       `json:"requestParameters"`
+	AdditionalEventData          map[string]any       `json:"additionalEventData"`
+	Resources                    []*Resource          `json:"resources"`
+	ReadOnly                     *bool                `json:"readOnly"`
+	ManagementEvent              *bool                `json:"managementEvent"`
+	TLSDetails                   *TLSDetails          `json:"tlsDetails"`
+	SessionCredentialFromConsole string               `json:"sessionCredentialFromConsole"`
+	ErrorCode                    string               `json:"errorCode"`
+	ErrorMessage                 string               `json:"errorMessage"`
+	InsightDetails               map[string]any       `json:"insightDetails"`
+	SharedEventID                string               `json:"sharedEventID"`
+	ServiceEventDetails          *ServiceEventDetails `json:"serviceEventDetails"`
 }
 
 // logFiles represents log file information in a CloudTrail digest file
@@ -567,6 +583,16 @@ func (u *CloudTrailLogUnmarshaler) setLogAttributes(attrs pcommon.Map, record *C
 			attrs.PutStr(string(conventions.UserNameKey), record.UserIdentity.UserName)
 		}
 
+		// An Identity Center user acts on behalf of a user of the identity store; the GUID names that user.
+		if onBehalfOf := record.UserIdentity.OnBehalfOf; onBehalfOf != nil && record.UserIdentity.Type == identityCenterUserType {
+			if onBehalfOf.UserID != "" {
+				attrs.PutStr(string(conventions.UserIDKey), onBehalfOf.UserID)
+			}
+			if onBehalfOf.IdentityStoreARN != "" {
+				attrs.PutStr("aws.user_identity.on_behalf_of.identity_store_arn", onBehalfOf.IdentityStoreARN)
+			}
+		}
+
 		// check feature flag decision
 		if u.uIDFeatureEnabled {
 			withUserIdentityPrefix(attrs, record)
@@ -604,6 +630,15 @@ func (u *CloudTrailLogUnmarshaler) setLogAttributes(attrs pcommon.Map, record *C
 
 	if record.SharedEventID != "" {
 		attrs.PutStr("aws.shared_event_id", record.SharedEventID)
+	}
+
+	if details := record.ServiceEventDetails; details != nil {
+		if details.RoleName != "" {
+			attrs.PutStr("aws.service_event.role_name", details.RoleName)
+		}
+		if details.AccountID != "" {
+			attrs.PutStr("aws.service_event.account_id", details.AccountID)
+		}
 	}
 
 	if record.InsightDetails != nil {

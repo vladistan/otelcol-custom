@@ -1,4 +1,3 @@
-# cspell:ignore GOTOOLCHAIN GOMODCACHE GOCACHE binutils netgo osusergo
 # Build host for the cgo edge binary. ubuntu 22.04 holds the glibc 2.35 floor,
 # so the binary runs on every supported host. Used as a build
 # container only; the repo is mounted at run time by `just build-edge-linux`.

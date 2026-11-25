@@ -43,7 +43,6 @@ trap cleanup EXIT
 
 # The exporter serves one gauge on an OS-chosen port and writes "READY host:port".
 python3 -I - "$work/exporter" "$GAUGE" "$GAUGE_VALUE" >"$work/exporter.log" 2>&1 <<'PY' &
-# cspell:ignore wfile
 import http.server, sys
 
 path, name, value = sys.argv[1], sys.argv[2], sys.argv[3]

@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore hwmap hwmapprocessor
-
 package hwmapprocessor
 
 import (
@@ -43,6 +41,7 @@ type rule struct {
 	dropValue *float64
 	attrs     []kv
 	status    *statusPlan
+	enum      *enumPlan
 	labels    []labelTemplate
 	indexAttr string
 	indexName map[string]string
@@ -64,6 +63,14 @@ type statusPlan struct {
 	def      string
 	stateKey string
 	rawKey   string
+}
+
+// enumPlan is an EnumGauge prepared for use.
+type enumPlan struct {
+	attr     string // the attribute that holds the state text; empty reads the point value
+	on       map[string]bool
+	names    map[string]string
+	stateKey string
 }
 
 // engine applies the rules to metric data.
@@ -127,6 +134,15 @@ func compileRule(c *Rule) *rule {
 		}
 		if s.source() == sourceAttribute {
 			r.status.attr = s.Attribute
+		}
+	}
+	if g := c.EnumGauge; g != nil {
+		r.enum = &enumPlan{on: make(map[string]bool, len(g.On)), names: g.Names, stateKey: g.stateAttribute()}
+		for _, raw := range g.On {
+			r.enum.on[raw] = true
+		}
+		if g.source() == sourceAttribute {
+			r.enum.attr = g.Attribute
 		}
 	}
 	return r
@@ -264,6 +280,9 @@ func (r *run) point(src pmetric.Metric, dp pmetric.NumberDataPoint, rules []*rul
 	if hit.status != nil {
 		return r.status(hit, src, dp, val, isInt, out)
 	}
+	if hit.enum != nil {
+		return r.enumGauge(hit, src, dp, val, isInt, out)
+	}
 	dst := out.points(hit.target, hit.outUnit(src), src)
 	nd := dst.AppendEmpty()
 	copyHeader(nd, dp)
@@ -325,6 +344,46 @@ func (r *run) status(c *rule, src pmetric.Metric, dp pmetric.NumberDataPoint, va
 			nd.Attributes().PutStr(p.rawKey, clean(raw))
 		}
 	}
+	return true
+}
+
+// enumGauge emits one gauge point, 1 when the raw state is in the rule's on list and 0 otherwise, with the
+// state name in the state attribute. It returns true when the source point is consumed. A state that the
+// names do not list is kept as read, counted and logged once.
+func (r *run) enumGauge(c *rule, src pmetric.Metric, dp pmetric.NumberDataPoint, val float64, isInt bool, out *outputs) bool {
+	p := c.enum
+	var raw string
+	if p.attr != "" {
+		v, ok := dp.Attributes().Get(p.attr)
+		if !ok {
+			r.countUnmapped(src.Name(), 1)
+			return false
+		}
+		raw = v.AsString()
+	} else {
+		raw = numberText(val, isInt, dp)
+	}
+	state := raw
+	if len(p.names) > 0 {
+		if name, listed := p.names[raw]; listed {
+			state = name
+		} else {
+			r.noteState(c.name, raw)
+		}
+	}
+	unit := c.unit
+	if unit == "" {
+		unit = "1"
+	}
+	nd := out.gaugePoints(c.target, unit, src).AppendEmpty()
+	copyHeader(nd, dp)
+	if p.on[raw] {
+		nd.SetIntValue(1)
+	} else {
+		nd.SetIntValue(0)
+	}
+	r.decorate(c, nd, dp)
+	nd.Attributes().PutStr(p.stateKey, clean(state))
 	return true
 }
 
@@ -444,15 +503,24 @@ func (o *outputs) points(name, unit string, src pmetric.Metric) pmetric.NumberDa
 		key.temporality = src.Sum().AggregationTemporality()
 		key.monotonic = src.Sum().IsMonotonic()
 	}
+	return o.slice(key, src)
+}
+
+// gaugePoints is points for a metric that is a gauge whatever the type of the source.
+func (o *outputs) gaugePoints(name, unit string, src pmetric.Metric) pmetric.NumberDataPointSlice {
+	return o.slice(outKey{name: name, unit: unit, kind: pmetric.MetricTypeGauge}, src)
+}
+
+func (o *outputs) slice(key outKey, src pmetric.Metric) pmetric.NumberDataPointSlice {
 	if dps, ok := o.index[key]; ok {
 		return dps
 	}
 	m := pmetric.NewMetric()
-	m.SetName(name)
-	m.SetUnit(unit)
+	m.SetName(key.name)
+	m.SetUnit(key.unit)
 	m.SetDescription(src.Description())
 	var dps pmetric.NumberDataPointSlice
-	if src.Type() == pmetric.MetricTypeSum {
+	if key.kind == pmetric.MetricTypeSum {
 		s := m.SetEmptySum()
 		s.SetAggregationTemporality(key.temporality)
 		s.SetIsMonotonic(key.monotonic)

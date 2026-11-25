@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore kaudit faddr fport nsec vstan
-
 package logshapeprocessor
 
 import (
@@ -29,13 +27,16 @@ func newKernelAuditBranch() *kernelAuditBranch { return &kernelAuditBranch{} }
 
 func (*kernelAuditBranch) name() string { return "kaudit" }
 
+// auditLine is the line without the spaces and line ends around it.
+func auditLine(body string) string { return strings.Trim(body, " \r\n") }
+
 func (*kernelAuditBranch) claims(r *rec) bool {
-	m := auditShape.FindStringSubmatch(r.body)
+	m := auditShape.FindStringSubmatch(auditLine(r.body))
 	return m != nil && strings.Contains(m[5], "apparmor=")
 }
 
 func (*kernelAuditBranch) parse(r *rec) error {
-	m := auditShape.FindStringSubmatch(r.body)
+	m := auditShape.FindStringSubmatch(auditLine(r.body))
 	if m == nil {
 		return errors.New("not an audit line")
 	}

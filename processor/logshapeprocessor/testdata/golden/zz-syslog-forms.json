@@ -81,7 +81,7 @@
     }
   },
   {
-    "body": "123: *Dec 31 10:05:00.123: %LINK-3-UPDOWN: Interface Gi0/1, changed state to down",
+    "body": "Interface Gi0/1, changed state to down",
     "severity": 13,
     "severity_text": "WARN",
     "scope": "",
@@ -89,6 +89,7 @@
       "service.name": "LINK"
     },
     "attributes": {
+      "log.record.original": "123: *Dec 31 10:05:00.123: %LINK-3-UPDOWN: Interface Gi0/1, changed state to down",
       "network.interface.name": "Gi0/1",
       "vstan.cisco.facility": "LINK",
       "vstan.cisco.mnemonic": "UPDOWN",

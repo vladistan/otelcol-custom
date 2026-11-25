@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import (
@@ -27,7 +25,7 @@ func ciscoInput(original, peer, body string) input {
 
 func TestCisco_WLCLine_SetsTheAttributesTheHostAndTheCleanMessage(t *testing.T) {
 	h := newHarness(t, defaultConfig())
-	in := ciscoInput("DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+	in := ciscoInput("DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:01, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
 		"wifi-ap.home.example.com", "<133>DownAP-Master: message")
 
 	lr, res := h.run(in)
@@ -47,8 +45,11 @@ func TestCisco_WLCLine_SetsTheAttributesTheHostAndTheCleanMessage(t *testing.T) 
 	if attrStr(t, res.Attributes(), "host.name") != "wifi-ap.home.example.com" || attrStr(t, res.Attributes(), "service.name") != "APF" {
 		t.Errorf("resource = %v", res.Attributes().AsRaw())
 	}
-	if got := lr.Body().Str(); got != "Client Association" {
-		t.Errorf("body = %q", got)
+	if got, want := lr.Body().Str(), "Client Association 00:00:5e:00:53:01 ap CiscoAP-Down wlan 1 radio 2.4GHz"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if got := attrStr(t, a, "client.mac.address"); got != "00:00:5e:00:53:01" {
+		t.Errorf("client.mac.address = %q", got)
 	}
 	if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
 		t.Errorf("severity = %d %q", lr.SeverityNumber(), lr.SeverityText())
@@ -130,7 +131,7 @@ func TestCisco_BareMnemonic_GivesTheHostFromThePeerAndTheCleanBody(t *testing.T)
 	if attrStr(t, res.Attributes(), "host.name") != "switch-a.home.example.com" {
 		t.Errorf("resource = %v", res.Attributes().AsRaw())
 	}
-	if lr.Body().Str() != "%COPY-N-TRAP: The copy operation was completed successfully" {
+	if lr.Body().Str() != "The copy operation was completed successfully" {
 		t.Errorf("body = %q", lr.Body().Str())
 	}
 	if lr.SeverityText() != "INFO" {
@@ -138,13 +139,19 @@ func TestCisco_BareMnemonic_GivesTheHostFromThePeerAndTheCleanBody(t *testing.T)
 	}
 }
 
-func TestCisco_MnemonicOnlyInTheBody_IsFound(t *testing.T) {
+func TestCisco_MnemonicOnlyInTheBody_IsFoundAndTheRawLineIsKept(t *testing.T) {
 	h := newHarness(t, defaultConfig())
 
 	lr, _ := h.run(input{body: "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down"})
 
 	if attrStr(t, lr.Attributes(), "vstan.cisco.facility") != "LINK" {
 		t.Errorf("attributes = %v", lr.Attributes().AsRaw())
+	}
+	if lr.Body().Str() != "Interface GigabitEthernet0/1, changed state to down" {
+		t.Errorf("body = %q", lr.Body().Str())
+	}
+	if got := attrStr(t, lr.Attributes(), "log.record.original"); got != "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down" {
+		t.Errorf("log.record.original = %q", got)
 	}
 	if lr.SeverityNumber() != plog.SeverityNumberWarn || lr.SeverityText() != "WARN" {
 		t.Errorf("an interface state change must be WARN, got %d %q", lr.SeverityNumber(), lr.SeverityText())
@@ -156,7 +163,7 @@ func TestCisco_MnemonicOnlyInTheBody_IsFound(t *testing.T) {
 
 func TestCisco_MacFlap_TakesTheFirstInterfaceAndWarn(t *testing.T) {
 	h := newHarness(t, defaultConfig())
-	in := ciscoInput("661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43", "",
+	in := ciscoInput("661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43", "",
 		"Host flapping between ports")
 
 	lr, _ := h.run(in)
@@ -166,6 +173,82 @@ func TestCisco_MacFlap_TakesTheFirstInterfaceAndWarn(t *testing.T) {
 	}
 	if lr.SeverityNumber() != plog.SeverityNumberWarn {
 		t.Errorf("severity = %d", lr.SeverityNumber())
+	}
+}
+
+func TestCisco_IOSLine_LosesTheSequenceTheClockAndTheMnemonicPrefix(t *testing.T) {
+	for _, tt := range []struct{ name, line, body string }{
+		{"sequence, clock and mnemonic", "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43", "Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43"},
+		{"clock without a sequence", "*Dec 16 00:36:36.024: %SYS-5-CONFIG_I: Configured from console by vty0", "Configured from console by vty0"},
+		{"sequence without a clock", "662: %SYS-5-CONFIG_I: Configured from console by vty0", "Configured from console by vty0"},
+		{"neither", "%SYS-5-CONFIG_I: Configured from console by vty0", "Configured from console by vty0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t, defaultConfig())
+
+			lr, _ := h.run(ciscoInput(tt.line, "sw-a", "<189>"+tt.line))
+
+			if lr.Body().Str() != tt.body {
+				t.Errorf("body = %q, want %q", lr.Body().Str(), tt.body)
+			}
+			if got := attrStr(t, lr.Attributes(), "log.record.original"); got != tt.line {
+				t.Errorf("log.record.original = %q, want the line", got)
+			}
+		})
+	}
+}
+
+func TestCisco_SwitchLineWithAClock_KeepsTheFactsAsAttributesAndTheSeverity(t *testing.T) {
+	h := newHarness(t, defaultConfig())
+	const line = "Dec 16 2026 00:36:36 %AAA-I-CONNECTED: User admin connected from 192.0.2.5"
+
+	lr, _ := h.run(ciscoInput(line, "sw-a", line))
+
+	if lr.Body().Str() != "User admin connected from 192.0.2.5" {
+		t.Errorf("body = %q", lr.Body().Str())
+	}
+	a := lr.Attributes()
+	if attrStr(t, a, "vstan.cisco.facility") != "AAA" || attrStr(t, a, "vstan.cisco.mnemonic") != "CONNECTED" || attrStr(t, a, "vstan.cisco.severity") != "I" {
+		t.Errorf("attributes = %v", a.AsRaw())
+	}
+	if lr.SeverityNumber() != plog.SeverityNumberInfo {
+		t.Errorf("severity = %d, want INFO as before the strip", lr.SeverityNumber())
+	}
+}
+
+func TestCisco_IOSLine_KeepsTheSeverityItHadBeforeTheStrip(t *testing.T) {
+	h := newHarness(t, defaultConfig())
+	const line = "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43"
+
+	lr, _ := h.run(ciscoInput(line, "", line))
+
+	if lr.SeverityNumber() != plog.SeverityNumberWarn || lr.SeverityText() != "WARN" {
+		t.Errorf("severity = %d %q, want WARN", lr.SeverityNumber(), lr.SeverityText())
+	}
+}
+
+func TestCisco_LineWithOnlyAPrefix_KeepsItsBody(t *testing.T) {
+	h := newHarness(t, defaultConfig())
+	const line = "661: *Dec 16 00:36:36.024: %SYS-5-CONFIG_I:"
+
+	lr, _ := h.run(ciscoInput(line, "", line))
+
+	if lr.Body().Str() != line {
+		t.Errorf("body = %q, want the line, because nothing is left after the prefix", lr.Body().Str())
+	}
+}
+
+func TestCisco_AlreadyParsedRecord_LosesAPrefixItsBodyStillHas(t *testing.T) {
+	h := newHarness(t, defaultConfig())
+	in := input{
+		body:  "<189>661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host flapping",
+		attrs: map[string]any{"cisco_facility": "SW_MATM", "cisco_mnemonic": "MACFLAP_NOTIF"},
+	}
+
+	lr, _ := h.run(in)
+
+	if lr.Body().Str() != "Host flapping" {
+		t.Errorf("body = %q", lr.Body().Str())
 	}
 }
 
@@ -251,6 +334,19 @@ func TestCisco_RewriteOff_KeepsTheBodyApartFromThePriorityPrefix(t *testing.T) {
 
 	if lr.Body().Str() != "DownAP-Master: message" {
 		t.Errorf("body = %q", lr.Body().Str())
+	}
+}
+
+func TestCisco_RewriteOff_KeepsTheIOSPrefix(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Cisco.RewriteMessages = false
+	h := newHarness(t, cfg)
+	const line = "661: *Dec 16 00:36:36.024: %SYS-5-CONFIG_I: Configured from console by vty0"
+
+	lr, _ := h.run(ciscoInput(line, "", "<189>"+line))
+
+	if lr.Body().Str() != line {
+		t.Errorf("body = %q, want the line apart from the priority prefix", lr.Body().Str())
 	}
 }
 

@@ -22,7 +22,39 @@ const (
 	sysctlKey   = "\x00sysctl"
 	// maxWalk bounds the entries one walk of the kstat tree visits.
 	maxWalk = 1 << 16
+	// maxOIDLen is CTL_MAXNAME, the longest OID the kernel returns.
+	maxOIDLen = 24
 )
+
+// Next-OID meta sysctls under CTL_SYSCTL (0). CTL_SYSCTL_NEXT skips nodes flagged CTLFLAG_SKIP, and the
+// kernel flags every raw kstat that way, among them kstat.zfs.<pool>.misc.state and the txgs node, so a
+// walk with it lists no pool. CTL_SYSCTL_NEXTNOSKIP lists them.
+var (
+	ctlNext       = []int32{0, 2}
+	ctlNextNoSkip = []int32{0, 7}
+)
+
+// nextMeta returns the no-skip next-OID call when the kernel has it, and the skipping one otherwise.
+func nextMeta(lookup func(name string) ([]int32, error)) []int32 {
+	if oid, err := lookup("sysctl.nextnoskip"); err == nil && slices.Equal(oid, ctlNextNoSkip) {
+		return ctlNextNoSkip
+	}
+	return ctlNext
+}
+
+// rawFn is the system call that reads or writes a sysctl by OID; it returns the bytes written to old.
+type rawFn func(mib []int32, old, newp []byte) (int, error)
+
+// nextOIDVia asks the kernel for the OID that follows oid, with the given next-OID meta call.
+func nextOIDVia(raw rawFn, meta, oid []int32) ([]int32, error) {
+	mib := append(append([]int32{}, meta...), oid...)
+	buf := make([]byte, maxOIDLen*4)
+	n, err := raw(mib, buf, nil)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOID(buf[:n]), nil
+}
 
 // objsetFields are the numeric objset fields the dataset metrics use.
 var objsetFields = []string{"nread", "nwritten", "reads", "writes", "nunlinks"}

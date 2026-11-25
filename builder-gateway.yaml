@@ -20,7 +20,6 @@ replaces:
   - github.com/vladistan/otelcol-custom/shape/multiline => ../../shape/multiline
   - github.com/vladistan/otelcol-custom/shape/severity => ../../shape/severity
   - github.com/vladistan/otelcol-custom/shape/strip => ../../shape/strip
-  # cspell:ignore k8slift
   - github.com/vladistan/otelcol-custom/shape/body => ../../shape/body
   - github.com/vladistan/otelcol-custom/shape/httpaccess => ../../shape/httpaccess
   - github.com/vladistan/otelcol-custom/shape/k8slift => ../../shape/k8slift

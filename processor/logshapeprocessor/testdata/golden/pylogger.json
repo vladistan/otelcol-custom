@@ -1,0 +1,12 @@
+[
+  {
+    "body": "[opentelemetry.sdk.metrics._internal.export] Exception while exporting metrics",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "opentelemetry.sdk.metrics._internal.export",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "ERROR:opentelemetry.sdk.metrics._internal.export:Exception while exporting metrics"
+    }
+  }
+]

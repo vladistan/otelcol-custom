@@ -36,7 +36,7 @@ func TestProcessor_FilterlogEntry(t *testing.T) {
 	lr := sl.LogRecords().AppendEmpty()
 
 	// Set filterlog entry in original_message attribute
-	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 	lr.Attributes().PutStr("original_message", filterlogEntry)
 	lr.Body().SetStr(filterlogEntry)
 
@@ -65,7 +65,7 @@ func TestProcessor_FilterlogEntry(t *testing.T) {
 
 	val, ok = attrs.Get("source.ip")
 	require.True(t, ok)
-	assert.Equal(t, "91.148.190.150", val.AsString())
+	assert.Equal(t, "198.51.100.30", val.AsString())
 
 	val, ok = attrs.Get("source.port")
 	require.True(t, ok)
@@ -73,7 +73,7 @@ func TestProcessor_FilterlogEntry(t *testing.T) {
 
 	val, ok = attrs.Get("destination.ip")
 	require.True(t, ok)
-	assert.Equal(t, "24.2.177.2", val.AsString())
+	assert.Equal(t, "203.0.113.20", val.AsString())
 
 	val, ok = attrs.Get("destination.port")
 	require.True(t, ok)
@@ -114,8 +114,8 @@ func TestProcessor_FilterlogEntry(t *testing.T) {
 	assert.Contains(t, body, "em1")
 	assert.Contains(t, body, "inbound")
 	assert.Contains(t, body, "tcp")
-	assert.Contains(t, body, "91.148.190.150:50406")
-	assert.Contains(t, body, "24.2.177.2:47574")
+	assert.Contains(t, body, "198.51.100.30:50406")
+	assert.Contains(t, body, "203.0.113.20:47574")
 	assert.Contains(t, body, "SYN")
 	assert.Contains(t, body, "rule 11")
 }
@@ -173,7 +173,7 @@ func TestProcessor_RewriteDisabled(t *testing.T) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
 
-	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 	lr.Body().SetStr(filterlogEntry)
 
 	// Process
@@ -313,7 +313,7 @@ func TestProcessor_ServiceNameSet(t *testing.T) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
 
-	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 	lr.Body().SetStr(filterlogEntry)
 
 	// Process
@@ -358,7 +358,7 @@ func TestProcessor_MixedBatch_SameResourceLog(t *testing.T) {
 
 	// Second log: filterlog entry
 	lr2 := sl.LogRecords().AppendEmpty()
-	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 	lr2.Body().SetStr(filterlogEntry)
 
 	// Third log: another regular message
@@ -429,7 +429,7 @@ func TestProcessor_SeparateResourceLogs(t *testing.T) {
 	rl2.Resource().Attributes().PutStr("service.name", "configd.py")
 	sl2 := rl2.ScopeLogs().AppendEmpty()
 	lr2 := sl2.LogRecords().AppendEmpty()
-	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	filterlogEntry := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 	lr2.Body().SetStr(filterlogEntry)
 
 	// Third ResourceLog: another regular message

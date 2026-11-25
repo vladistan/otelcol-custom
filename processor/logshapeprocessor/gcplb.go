@@ -14,6 +14,9 @@ import (
 	"github.com/vladistan/otelcol-custom/shape/severity"
 )
 
+// gcplbDurationNames are the attributes that hold the request duration in seconds, in the order they are read.
+var gcplbDurationNames = []string{"http.request.server.duration", "http.server.duration", "server.duration"}
+
 // gcpLBBranch shapes Google Cloud load balancer request records. It keys only on
 // log.source: the scrape config sets that for every load balancer path.
 type gcpLBBranch struct {
@@ -27,7 +30,7 @@ func newGCPLBBranch(extra []string, aliases map[string]string) *gcpLBBranch {
 
 func (*gcpLBBranch) name() string { return "gcplb" }
 
-func (*gcpLBBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "gcp.lb" }
+func (*gcpLBBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "lb" }
 
 func (b *gcpLBBranch) parse(r *rec) error {
 	a, res := r.lr.Attributes(), r.res.Attributes()
@@ -38,8 +41,14 @@ func (b *gcpLBBranch) parse(r *rec) error {
 		Path:   lbString("url.path", a),
 		Status: status,
 	}
-	if secs, ok := lbNumber(a, "http.request.server.duration"); ok && secs >= 0 {
-		line.DurationMicros, line.HasDuration = int64(math.Round(secs*1e6)), true
+	for _, name := range gcplbDurationNames {
+		if _, set := a.Get(name); !set {
+			continue
+		}
+		if secs, ok := lbNumber(a, name); ok && secs >= 0 {
+			line.DurationMicros, line.HasDuration = int64(math.Round(secs*1e6)), true
+		}
+		break // the first name that is set is the one used, even when it is not a number
 	}
 	lbSetBody(r, body.HTTP(line))
 	lbSetSeverity(r.lr, status, hasStatus)
@@ -55,11 +64,8 @@ func (b *gcpLBBranch) parse(r *rec) error {
 		project = lbString("cloud.account.id", res, a)
 	}
 	if project != "" {
-		host := principal.AccountAlias(project, b.aliases)
-		res.PutStr("host.name", host)
-		if host != project {
-			res.PutStr("cloud.account.name", host)
-		}
+		res.PutStr("host.name", principal.AccountAlias(project, b.aliases))
+		setAccountName(res, project, b.aliases)
 	}
 	if svc := principal.BackendService(lbString("gcp.label.backend_service_name", res, a)); svc != "" {
 		res.PutStr("service.name", svc)

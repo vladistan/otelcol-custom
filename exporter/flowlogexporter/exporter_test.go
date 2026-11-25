@@ -1,14 +1,13 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore srcaddr dstaddr clickhouse
-
 package flowlogexporter
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -162,6 +161,97 @@ func TestRetry_AFailureThatPasses_IsInsertedOnTheLaterAttempt(t *testing.T) {
 	require.NoError(t, r.e.pushLogs(context.Background(), logsOf(flowAttrs(nil))))
 
 	assert.Equal(t, map[string]int64{"": 1}, r.counter("otelcol_flowlog_rows_inserted"))
+}
+
+// twoConns dials stale first and fresh after that, and counts the dials.
+func twoConns(stale, fresh *fakeConn) (func(context.Context) (conn, error), *atomic.Int32) {
+	var dials atomic.Int32
+	return func(context.Context) (conn, error) {
+		if dials.Add(1) == 1 {
+			return stale, nil
+		}
+		return fresh, nil
+	}, &dials
+}
+
+func startedDial(t *testing.T, dial func(context.Context) (conn, error), first *fakeConn) *testRig {
+	t.Helper()
+	r := newRigDial(t, testConfig(), first, dial)
+	require.NoError(t, r.e.start(context.Background(), componenttest.NewNopHost()))
+	t.Cleanup(func() { _ = r.e.shutdown(context.Background()) })
+	require.Eventually(t, func() bool { return r.e.conn() != nil }, 2*time.Second, time.Millisecond)
+	return r
+}
+
+func TestRetry_AConnectionErrorIsFollowedByAnInsertOnAFreshConnection(t *testing.T) {
+	cases := map[string]*fakeConn{
+		"prepare deadline": {prepareErr: context.DeadlineExceeded},
+		"prepare eof":      {prepareErr: io.EOF},
+		"send eof":         {sendErr: io.EOF},
+	}
+	for name, stale := range cases {
+		t.Run(name, func(t *testing.T) {
+			fresh := &fakeConn{}
+			dial, dials := twoConns(stale, fresh)
+			r := startedDial(t, dial, stale)
+
+			require.NoError(t, r.e.pushLogs(context.Background(), logsOf(flowAttrs(nil))))
+
+			assert.EqualValues(t, 2, dials.Load())
+			assert.Equal(t, 1, fresh.sendCount())
+			assert.Equal(t, map[string]int64{"": 1}, r.counter("otelcol_flowlog_rows_inserted"))
+			assert.Empty(t, r.counter("otelcol_flowlog_rows_dropped"))
+		})
+	}
+}
+
+func TestRetry_AFreshConnectionThatCannotBeDialled_IsRetriedUntilTheTimeLimit(t *testing.T) {
+	stale := &fakeConn{prepareErr: io.EOF}
+	var dials atomic.Int32
+	dial := func(context.Context) (conn, error) {
+		if dials.Add(1) == 1 {
+			return stale, nil
+		}
+		return nil, errBoom
+	}
+	r := startedDial(t, dial, stale)
+
+	err := r.e.pushLogs(context.Background(), logsOf(flowAttrs(nil)))
+
+	require.Error(t, err)
+	assert.True(t, consumererror.IsPermanent(err))
+	assert.Greater(t, dials.Load(), int32(2), "each attempt dials again")
+	assert.Equal(t, map[string]int64{dropInsertFailed: 1}, r.counter("otelcol_flowlog_rows_dropped"))
+}
+
+func TestRetry_Code202IsRetriedOnTheSameConnectionAndInsertedLater(t *testing.T) {
+	fake := &fakeConn{prepareErr: &clickhouse.Exception{Code: 202, Message: "too many simultaneous queries"}}
+	dial, dials := twoConns(fake, &fakeConn{})
+	r := startedDial(t, dial, fake)
+	go func() {
+		time.Sleep(5 * time.Millisecond)
+		fake.mu.Lock()
+		fake.prepareErr = nil
+		fake.mu.Unlock()
+	}()
+
+	require.NoError(t, r.e.pushLogs(context.Background(), logsOf(flowAttrs(nil))))
+
+	assert.EqualValues(t, 1, dials.Load(), "the server answered, so the connection is kept")
+	assert.Equal(t, map[string]int64{"": 1}, r.counter("otelcol_flowlog_rows_inserted"))
+	assert.Empty(t, r.counter("otelcol_flowlog_rows_dropped"))
+}
+
+func TestRetry_Code202ThatNeverPasses_DropsOnlyAtTheTimeLimit(t *testing.T) {
+	fake := &fakeConn{prepareErr: &clickhouse.Exception{Code: 202}}
+	r := started(t, testConfig(), fake)
+
+	err := r.e.pushLogs(context.Background(), logsOf(flowAttrs(nil), flowAttrs(nil)))
+
+	require.Error(t, err)
+	assert.True(t, consumererror.IsPermanent(err))
+	assert.Greater(t, fake.prepareCalls, 1, "it was retried")
+	assert.Equal(t, map[string]int64{dropInsertFailed: 2}, r.counter("otelcol_flowlog_rows_dropped"))
 }
 
 func TestSchemaError_DropsAtOnceAndWarnsOncePerEpisode(t *testing.T) {

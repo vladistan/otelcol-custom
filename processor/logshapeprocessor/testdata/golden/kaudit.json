@@ -1,6 +1,6 @@
 [
   {
-    "body": "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 3.78.202.199:443",
+    "body": "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 203.0.113.10:443",
     "severity": 9,
     "severity_text": "INFO",
     "scope": "",
@@ -8,7 +8,7 @@
       "service.name": "audit"
     },
     "attributes": {
-      "log.record.original": "audit: type=1400 audit(1795129202.123:456): apparmor=\"ALLOWED\" operation=\"file_perm\" class=\"net\" profile=\"snap.amazon-ssm-agent.amazon-ssm-agent\" pid=1234 comm=\"agent\" requested=\"send\" addr=3.78.202.199 port=443",
+      "log.record.original": "audit: type=1400 audit(1795129202.123:456): apparmor=\"ALLOWED\" operation=\"file_perm\" class=\"net\" profile=\"snap.amazon-ssm-agent.amazon-ssm-agent\" pid=1234 comm=\"agent\" requested=\"send\" addr=203.0.113.10 port=443",
       "log.source": "kernel",
       "vstan.audit.serial": 456,
       "vstan.audit.type": 1400

@@ -18,7 +18,7 @@ func TestIsFilterLog(t *testing.T) {
 	}{
 		{
 			name:     "valid filterlog - TCP",
-			input:    "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss",
+			input:    "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss",
 			expected: true,
 		},
 		{
@@ -53,7 +53,7 @@ func TestIsFilterLog(t *testing.T) {
 
 func TestParseFilterLog_IPv4_TCP(t *testing.T) {
 	// Real filterlog entry from pfSense
-	input := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss"
+	input := "11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss"
 
 	info := ParseFilterLog(input)
 	require.NotNil(t, info)
@@ -68,8 +68,8 @@ func TestParseFilterLog_IPv4_TCP(t *testing.T) {
 	assert.Equal(t, "244", info.TTL)
 	assert.Equal(t, "tcp", info.Protocol)
 	assert.Equal(t, "44", info.Length)
-	assert.Equal(t, "91.148.190.150", info.SourceIP)
-	assert.Equal(t, "24.2.177.2", info.DestinationIP)
+	assert.Equal(t, "198.51.100.30", info.SourceIP)
+	assert.Equal(t, "203.0.113.20", info.DestinationIP)
 	assert.Equal(t, "50406", info.SourcePort)
 	assert.Equal(t, "47574", info.DestinationPort)
 	assert.Equal(t, "S", info.TCPFlags)
@@ -79,8 +79,8 @@ func TestParseFilterLog_IPv4_TCP(t *testing.T) {
 	assert.Contains(t, info.CleanMessage, "em1")
 	assert.Contains(t, info.CleanMessage, "inbound")
 	assert.Contains(t, info.CleanMessage, "tcp")
-	assert.Contains(t, info.CleanMessage, "91.148.190.150:50406")
-	assert.Contains(t, info.CleanMessage, "24.2.177.2:47574")
+	assert.Contains(t, info.CleanMessage, "198.51.100.30:50406")
+	assert.Contains(t, info.CleanMessage, "203.0.113.20:47574")
 	assert.Contains(t, info.CleanMessage, "SYN")
 	assert.Contains(t, info.CleanMessage, "rule 11")
 }

@@ -1,4 +1,3 @@
-# cspell:ignore kaudit logfmt mosquitto
 # Local Gateway Collector Test Configuration
 # Use for local development and debugging with VS Code
 #
@@ -169,6 +168,8 @@ processors:
       - stderrhint
       - lldpd
       - k8s
+      - charon
+      - autoscaler
     # transform/syslog keeps the raw syslog line in original_message.
     cisco:
       source_attribute: original_message

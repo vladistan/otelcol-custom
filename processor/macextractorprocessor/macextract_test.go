@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore eeff aabbcc aabbccddeeff deff duid iaid dhcpv
-
 package macextractorprocessor
 
 import (
@@ -131,13 +129,13 @@ func TestExtractMACs_DHCPLogs(t *testing.T) {
 	}{
 		{
 			name:     "DHCPACK message",
-			input:    "DHCPACK on 192.0.2.150 to 10:d5:61:17:80:6b (hostname) via em0",
-			expected: []string{"10:d5:61:17:80:6b"},
+			input:    "DHCPACK on 192.0.2.150 to 00:00:5e:00:53:01 (hostname) via em0",
+			expected: []string{"00:00:5e:00:53:01"},
 		},
 		{
 			name:     "DHCPREQUEST message",
-			input:    "DHCPREQUEST for 192.0.2.164 from 66:58:5b:f6:b0:30 (rdfstore-blazegraph) via em0",
-			expected: []string{"66:58:5b:f6:b0:30"},
+			input:    "DHCPREQUEST for 192.0.2.164 from 00:00:5e:00:53:06 (host-01) via em0",
+			expected: []string{"00:00:5e:00:53:06"},
 		},
 		{
 			name:     "DHCPDISCOVER message",
@@ -340,18 +338,18 @@ func TestExtractMACs_IPv6EUI64(t *testing.T) {
 	}{
 		{
 			name:     "fe80 link-local with EUI-64",
-			input:    "fe80::225:90ff:fe8b:dba0",
-			expected: []string{"00:25:90:8b:db:a0"},
+			input:    "fe80::200:5eff:fe00:5309",
+			expected: []string{"00:00:5e:00:53:09"},
 		},
 		{
 			name:     "DHCPv6 Solicit message",
-			input:    "Solicit message from fe80::225:90ff:fe8b:dba0 port 546",
-			expected: []string{"00:25:90:8b:db:a0"},
+			input:    "Solicit message from fe80::200:5eff:fe00:5309 port 546",
+			expected: []string{"00:00:5e:00:53:09"},
 		},
 		{
 			name:     "fe80 with different MAC",
-			input:    "fe80::2ca2:deff:fe5e:7543",
-			expected: []string{"2e:a2:de:5e:75:43"},
+			input:    "fe80::200:5eff:fe00:5304",
+			expected: []string{"00:00:5e:00:53:04"},
 		},
 		{
 			name:     "uppercase EUI-64",
@@ -360,8 +358,8 @@ func TestExtractMACs_IPv6EUI64(t *testing.T) {
 		},
 		{
 			name:     "multiple EUI-64 addresses",
-			input:    "from fe80::225:90ff:fe8b:dba0 to fe80::2ca2:deff:fe5e:7543",
-			expected: []string{"00:25:90:8b:db:a0", "2e:a2:de:5e:75:43"},
+			input:    "from fe80::200:5eff:fe00:5309 to fe80::200:5eff:fe00:5304",
+			expected: []string{"00:00:5e:00:53:09", "00:00:5e:00:53:04"},
 		},
 		{
 			name:     "non-EUI-64 IPv6 should not match",
@@ -370,13 +368,13 @@ func TestExtractMACs_IPv6EUI64(t *testing.T) {
 		},
 		{
 			name:     "global IPv6 with EUI-64 should not match",
-			input:    "2001:db8::225:90ff:fe8b:dba0", // not fe80::
+			input:    "2001:db8::200:5eff:fe00:5309", // not fe80::
 			expected: nil,
 		},
 		{
 			name:     "EUI-64 with shortened hex group (leading zero dropped)",
-			input:    "Sending Reply to fe80::c093:7ff:fe9f:69f4 port 546",
-			expected: []string{"c2:93:07:9f:69:f4"}, // 7ff is really 07ff, MAC reconstructed with U/L bit flip
+			input:    "Sending Reply to fe80::400:7ff:fe00:5307 port 546",
+			expected: []string{"06:00:07:00:53:07"}, // 7ff is really 07ff, MAC reconstructed with U/L bit flip
 		},
 	}
 
@@ -396,8 +394,8 @@ func TestExtractMACs_DUIDFormat(t *testing.T) {
 	}{
 		{
 			name:     "DUID-LL type 3",
-			input:    "duid 00:03:00:01:26:d9:e0:17:39:3d",
-			expected: []string{"26:d9:e0:17:39:3d"},
+			input:    "duid 00:03:00:01:00:00:5e:00:53:03",
+			expected: []string{"00:00:5e:00:53:03"},
 		},
 		{
 			name:     "DUID-LL uppercase",
@@ -411,13 +409,13 @@ func TestExtractMACs_DUIDFormat(t *testing.T) {
 		},
 		{
 			name:     "DHCPv6 Reply with DUID-LL",
-			input:    "Reply NA: address 2603:3005:2b58:6700:0:b3ed:b897:98db to client with duid 00:03:00:01:26:d9:e0:17:39:3d iaid = 0",
-			expected: []string{"26:d9:e0:17:39:3d"},
+			input:    "Reply NA: address 2603:3005:2b58:6700:0:b3ed:b897:98db to client with duid 00:03:00:01:00:00:5e:00:53:03 iaid = 0",
+			expected: []string{"00:00:5e:00:53:03"},
 		},
 		{
 			name:     "DUID-LL in sentence",
-			input:    "Client DUID is 00:03:00:01:c4:4f:33:91:a6:58 on interface em0",
-			expected: []string{"c4:4f:33:91:a6:58"},
+			input:    "Client DUID is 00:03:00:01:00:00:5e:00:53:08 on interface em0",
+			expected: []string{"00:00:5e:00:53:08"},
 		},
 		{
 			name:     "Invalid DUID prefix should not match as DUID",
@@ -477,11 +475,11 @@ func TestExtractMACs_FromTestdataFiles(t *testing.T) {
 	// Map of testdata filename to expected extracted MACs
 	// nil means no MAC should be extracted
 	testCases := map[string][]string{
-		"cisco_mac_flapping.txt":     {"26:d9:e0:17:39:3d"},
-		"dhcp_request_standard.txt":  {"10:db:00:db:15:02"},
-		"dhcp_ack_with_hostname.txt": {"c4:4f:33:91:a6:58"},
-		"dhcpv6_solicit_eui64.txt":   {"00:25:90:8b:db:a0"}, // MAC extracted from EUI-64 in fe80::225:90ff:fe8b:dba0
-		"dhcpv6_reply_with_duid.txt": {"26:d9:e0:17:39:3d"}, // MAC extracted from DUID-LL
+		"cisco_mac_flapping.txt":     {"00:00:5e:00:53:03"},
+		"dhcp_request_standard.txt":  {"00:00:5e:00:53:02"},
+		"dhcp_ack_with_hostname.txt": {"00:00:5e:00:53:08"},
+		"dhcpv6_solicit_eui64.txt":   {"00:00:5e:00:53:09"}, // MAC extracted from EUI-64 in fe80::200:5eff:fe00:5309
+		"dhcpv6_reply_with_duid.txt": {"00:00:5e:00:53:03"}, // MAC extracted from DUID-LL
 	}
 
 	for filename, expected := range testCases {
@@ -507,23 +505,23 @@ func TestExtractMACs_AdditionalDHCPPatterns(t *testing.T) {
 	}{
 		{
 			name:     "DHCPACK standard MAC",
-			input:    "DHCPACK on 192.0.2.132 to 10:db:00:db:15:02 via em0",
-			expected: []string{"10:db:00:db:15:02"},
+			input:    "DHCPACK on 192.0.2.132 to 00:00:5e:00:53:02 via em0",
+			expected: []string{"00:00:5e:00:53:02"},
 		},
 		{
 			name:     "DHCPREQUEST with server IP",
-			input:    "DHCPREQUEST for 192.0.2.141 (192.0.2.238) from c4:4f:33:91:a6:58 (ESP_91A658) via em0",
-			expected: []string{"c4:4f:33:91:a6:58"},
+			input:    "DHCPREQUEST for 192.0.2.141 (192.0.2.238) from 00:00:5e:00:53:08 (ESP_005308) via em0",
+			expected: []string{"00:00:5e:00:53:08"},
 		},
 		{
 			name:     "DHCPREQUEST with Mac hostname",
-			input:    "DHCPREQUEST for 192.0.2.165 from 62:12:24:a7:dd:56 (Mac) via em0",
-			expected: []string{"62:12:24:a7:dd:56"},
+			input:    "DHCPREQUEST for 192.0.2.165 from 00:00:5e:00:53:05 (Mac) via em0",
+			expected: []string{"00:00:5e:00:53:05"},
 		},
 		{
 			name:     "DHCPv6 Renew with IPv6 link-local EUI-64",
-			input:    "Renew message from fe80::2ca2:deff:fe5e:7543 port 546, transaction ID 0xD67BC800",
-			expected: []string{"2e:a2:de:5e:75:43"}, // MAC extracted from EUI-64
+			input:    "Renew message from fe80::200:5eff:fe00:5304 port 546, transaction ID 0xD67BC800",
+			expected: []string{"00:00:5e:00:53:04"}, // MAC extracted from EUI-64
 		},
 	}
 
@@ -536,7 +534,7 @@ func TestExtractMACs_AdditionalDHCPPatterns(t *testing.T) {
 }
 
 func BenchmarkExtractMACs(b *testing.B) {
-	input := "DHCPACK on 192.0.2.150 to 10:d5:61:17:80:6b (hostname) via em0"
+	input := "DHCPACK on 192.0.2.150 to 00:00:5e:00:53:01 (hostname) via em0"
 	for i := 0; i < b.N; i++ {
 		ExtractMACs(input)
 	}

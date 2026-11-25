@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore dpanic
-
 package logrus
 
 import (
@@ -25,6 +23,7 @@ type LogrusLogInfo struct {
 	ErrorType  string            // Error type, when the error is an object that names one
 	Module     string            // module or subsys: the component inside the program
 	Logger     string            // logger name
+	Service    string            // service key of a zap JSON line
 	Stacktrace string            // Stack trace (for errors)
 	Extra      map[string]string // Additional fields from the JSON, as text
 	Fields     map[string]any    // The same fields with their types: string, bool, int64 or float64
@@ -102,6 +101,9 @@ func ParseLogrusJSON(body string) *LogrusLogInfo {
 	}
 	if v, ok := getStringField(raw, "stacktrace"); ok {
 		info.Stacktrace = v
+	}
+	if v, ok := getStringField(raw, "service"); ok {
+		info.Service = v
 	}
 
 	// If no message found, try to construct one from known fields (zap style)

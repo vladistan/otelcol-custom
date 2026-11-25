@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore logshape gcplb healthprobe identityfill sourcetag winlog
-
 package scrape
 
 import (
@@ -110,6 +108,109 @@ func TestReferenceConfigs_EveryLogshapeBranchIsKnown(t *testing.T) {
 	}
 }
 
+// charonlogAndCharon names the pipelines of a config that list a charonlog processor and a logshape
+// processor with the charon branch on, which shape the same lines twice. A logshape block with no
+// branches list runs every branch.
+func charonlogAndCharon(cfg refConfig) []string {
+	isProc := func(name, kind string) bool { return name == kind || strings.HasPrefix(name, kind+"/") }
+	var out []string
+	for pipe, p := range cfg.Service.Pipelines {
+		hasCharonlog, hasCharon := false, false
+		for _, proc := range p.Processors {
+			if isProc(proc, "charonlog") {
+				hasCharonlog = true
+			}
+			if isProc(proc, "logshape") {
+				branches, _ := cfg.Processors[proc]["branches"].([]any)
+				if len(branches) == 0 || indexOf(anyStrings(branches), "charon") >= 0 {
+					hasCharon = true
+				}
+			}
+		}
+		if hasCharonlog && hasCharon {
+			out = append(out, pipe)
+		}
+	}
+	return out
+}
+
+func anyStrings(list []any) []string {
+	out := make([]string, 0, len(list))
+	for _, v := range list {
+		s, _ := v.(string)
+		out = append(out, s)
+	}
+	return out
+}
+
+func TestReferenceConfigs_NoPipelineListsCharonlogAndLogshapeWithCharon(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(configsDir, "*.yaml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no reference configs: %v", err)
+	}
+	drafts, _ := filepath.Glob(filepath.Join(configsDir+"-drafts", "*", "*.yaml"))
+	for _, f := range append(files, drafts...) {
+		var cfg refConfig
+		if err := yaml.Unmarshal(readFile(t, f), &cfg); err != nil {
+			continue // a draft that is not a collector config
+		}
+		for _, pipe := range charonlogAndCharon(cfg) {
+			t.Errorf("%s: pipeline %s lists charonlog and logshape with the charon branch; list one", f, pipe)
+		}
+	}
+}
+
+func TestReferenceConfigs_TheCharonlogCheckFindsBothInOnePipeline(t *testing.T) {
+	const both = `
+processors:
+  charonlog: {}
+  logshape:
+    branches: [cisco, charon]
+service:
+  pipelines:
+    logs: {processors: [charonlog, logshape]}
+`
+	const without = `
+processors:
+  charonlog: {}
+  logshape:
+    branches: [cisco]
+service:
+  pipelines:
+    logs: {processors: [charonlog, logshape]}
+`
+	const allBranches = `
+processors:
+  charonlog: {}
+  logshape/main: {}
+service:
+  pipelines:
+    logs: {processors: [charonlog, logshape/main]}
+`
+	const split = `
+processors:
+  charonlog: {}
+  logshape:
+    branches: [charon]
+service:
+  pipelines:
+    logs/a: {processors: [charonlog]}
+    logs/b: {processors: [logshape]}
+`
+	for name, tt := range map[string]struct {
+		cfg  string
+		want int
+	}{"both with charon on": {both, 1}, "logshape without charon": {without, 0}, "logshape with every branch": {allBranches, 1}, "in separate pipelines": {split, 0}} {
+		var cfg refConfig
+		if err := yaml.Unmarshal([]byte(tt.cfg), &cfg); err != nil {
+			t.Fatal(err)
+		}
+		if got := charonlogAndCharon(cfg); len(got) != tt.want {
+			t.Errorf("%s: %v, want %d pipelines", name, got, tt.want)
+		}
+	}
+}
+
 func TestScrapeConfig_SecondGCPLoadBalancerPathSetsTheLogSourceAndTheCloudAttributes(t *testing.T) {
 	cfg := loadConfig(t, "scrape.yaml")
 	pipe, ok := cfg.Service.Pipelines["logs/gcp-lb"]
@@ -129,8 +230,8 @@ func TestScrapeConfig_SecondGCPLoadBalancerPathSetsTheLogSourceAndTheCloudAttrib
 		}
 		return out
 	}
-	if indexOf(pipe.Processors, "attributes/gcplb") < 0 || attrs("attributes/gcplb")["log.source"] != "gcp.lb" {
-		t.Errorf("the path does not set log.source=gcp.lb: %v", pipe.Processors)
+	if indexOf(pipe.Processors, "attributes/gcplb") < 0 || attrs("attributes/gcplb")["log.source"] != "lb" {
+		t.Errorf("the path does not set log.source=lb: %v", pipe.Processors)
 	}
 	if indexOf(pipe.Processors, "transform/gcplb") < 0 {
 		t.Fatalf("the path does not set the cloud resource attributes: %v", pipe.Processors)
@@ -174,7 +275,7 @@ func TestLogshape_HasNoRuleThatSetsLogSourceToGCPLoadBalancer(t *testing.T) {
 			continue
 		}
 		if write.Match(readFile(t, f)) {
-			t.Errorf("%s sets log.source to gcp.lb; the scrape config does", f)
+			t.Errorf("%s sets log.source to lb; the scrape config does", f)
 		}
 	}
 }
@@ -250,5 +351,121 @@ func TestWindowsEdge_TheEventLogPipelineAddsNoServiceNameFallback(t *testing.T) 
 	}
 	if _, ok := os.Stat(filepath.Join(configsDir, "windows-edge.yaml")); ok != nil {
 		t.Fatal("windows-edge.yaml missing")
+	}
+}
+
+// serialGlue is the block of the processor that glues the wrapped fragments of a serial console line.
+func serialGlue(t *testing.T) map[string]any {
+	t.Helper()
+	block, ok := loadConfig(t, "scrape.yaml").Processors["logrecombine/serial"]
+	if !ok {
+		t.Fatal("scrape.yaml defines no logrecombine/serial processor")
+	}
+	return block
+}
+
+func patternList(t *testing.T, block map[string]any, key string) []*regexp.Regexp {
+	t.Helper()
+	raw, ok := block[key].([]any)
+	if !ok || len(raw) == 0 {
+		t.Fatalf("logrecombine/serial has no %s", key)
+	}
+	var out []*regexp.Regexp
+	for _, v := range raw {
+		re, err := regexp.Compile(v.(string))
+		if err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		out = append(out, re)
+	}
+	return out
+}
+
+func matchesAny(res []*regexp.Regexp, s string) bool {
+	for _, re := range res {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestScrapeConfig_SerialGlueRunsBeforeLogshapeInTheGCPPipeline(t *testing.T) {
+	procs := loadConfig(t, "scrape.yaml").Service.Pipelines["logs/gcp"].Processors
+	glue, shape := indexOf(procs, "logrecombine/serial"), indexOf(procs, "logshape/gcp")
+	if glue < 0 || shape < 0 || glue > shape {
+		t.Errorf("logrecombine/serial must run before logshape/gcp: %v", procs)
+	}
+	if limiter := indexOf(procs, "memory_limiter"); limiter > glue {
+		t.Errorf("memory_limiter must stay first: %v", procs)
+	}
+}
+
+func TestScrapeConfig_SerialGlueRulesMatchTheLinesTheyAreMeantFor(t *testing.T) {
+	block := serialGlue(t)
+	if block["require_attribute"] != "gcp.label.is_text_escaped" {
+		t.Errorf("require_attribute = %v", block["require_attribute"])
+	}
+	if block["fragment_suffix"] != `\r\n` {
+		t.Errorf("fragment_suffix = %q, want the four characters backslash r backslash n", block["fragment_suffix"])
+	}
+	if block["min_previous_length"] != 515 {
+		t.Errorf("min_previous_length = %v", block["min_previous_length"])
+	}
+	first := regexp.MustCompile(block["is_first_entry_pattern"].(string))
+	empty := patternList(t, block, "empty_patterns")
+	never := patternList(t, block, "never_glue_patterns")
+
+	for line, want := range map[string]bool{
+		`2026-01-01T00:00:00+0000 node-1 gcfsd-v2[3009]: time=\"x\"` + `\r\n`: true,
+		`2026-01-01T00:00:00+0000 node-1 kubelet[1]: I0101 x` + `\r\n`:        true,
+		`sha256:00,sha256:11` + `\r\n`:                                        false,
+		`[  OK  ] Started thing` + `\r\n`:                                     false,
+	} {
+		if got := first.MatchString(line); got != want {
+			t.Errorf("first entry %q = %v, want %v", line, got, want)
+		}
+	}
+	if !matchesAny(empty, `\r\n`) || matchesAny(empty, `\r\nx`) || matchesAny(empty, ` \r\n`) {
+		t.Error("empty_patterns must match the bare line end and nothing longer")
+	}
+	for _, line := range []string{
+		`[    1.234567] kernel line` + `\r\n`,
+		`[\x1b[0;32m  OK  \x1b[0m] Started thing` + `\r\n`,
+		`Stopping thing...` + `\r\n`,
+		`ssh-ed25519 AAAA root@node-1` + `\r\n`,
+		`-----BEGIN SSH HOST KEY KEYS-----` + `\r\n`,
+		`<14>Jan 01 00:00:00 cloud-init: x` + `\r\n`,
+		`0010: 00 01 02 03` + `\r\n`,
+	} {
+		if !matchesAny(never, line) {
+			t.Errorf("never_glue_patterns must match %q", line)
+		}
+	}
+	for _, line := range []string{
+		`sha256:00,sha256:11` + `\r\n`,
+		`rd/io.containerd.snapshotter.v1.gcfs/snapshotter/snapshots/129/fs` + `\r\n`,
+		`\",\"Percentage\":0}` + `\r\n`,
+	} {
+		if matchesAny(never, line) {
+			t.Errorf("never_glue_patterns must not match the fragment %q", line)
+		}
+	}
+}
+
+func TestScrapeBuilder_ListsLogrecombineWithItsLocalModules(t *testing.T) {
+	text := string(readFile(t, "../../builder-scrape.yaml"))
+	for _, want := range []string{
+		"processor/logrecombineprocessor => ../../processor/logrecombineprocessor",
+		"- gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("builder-scrape.yaml lacks %q", want)
+		}
+	}
+	for _, mod := range []string{"shape/multiline", "shape/severity", "shape/strip"} {
+		if !strings.Contains(text, "otelcol-custom/"+mod+" => ../../"+mod) {
+			t.Errorf("builder-scrape.yaml lacks the replace of %s, which logrecombine needs", mod)
+		}
 	}
 }

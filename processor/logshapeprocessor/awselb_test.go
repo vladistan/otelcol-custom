@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore awselb
-
 import (
 	"testing"
 
@@ -13,7 +11,7 @@ import (
 
 func awselbAttrs(over map[string]any) map[string]any {
 	a := map[string]any{
-		"log.source":                     "aws.elb",
+		"log.source":                     "elb",
 		"http.request.method":            "GET",
 		"url.domain":                     "os.app.example.invalid",
 		"url.full":                       "https://os.app.example.invalid:443/api/v1/bus/status?x=1",
@@ -77,8 +75,69 @@ func TestConsume_AWSELB_FullRecord_Shaped(t *testing.T) {
 	}
 	awselbSeverity(t, lr, plog.SeverityNumberInfo, "INFO")
 	attrInt(t, lr.Attributes(), "aws.elb.status.code", 200)
-	if got := attrStr(t, lr.Attributes(), "log.source"); got != "aws.elb" {
+	if got := attrStr(t, lr.Attributes(), "log.source"); got != "elb" {
 		t.Fatalf("log.source = %q", got)
+	}
+}
+
+func requireAWSELBAttrAbsent(t *testing.T, lr plog.LogRecord, key string) {
+	t.Helper()
+	if v, ok := lr.Attributes().Get(key); ok {
+		t.Fatalf("%s = %v, want it absent", key, v.AsRaw())
+	}
+}
+
+func TestConsume_AWSELB_WritesIntegerStatusCode_KeepsSource(t *testing.T) {
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: awselbAttrs(nil), resource: awselbResource()})
+	attrInt(t, lr.Attributes(), "http.response.status_code", 200)
+	attrInt(t, lr.Attributes(), "aws.elb.status.code", 200)
+}
+
+func TestConsume_AWSELB_WritesPathFromFullURL_KeepsSource(t *testing.T) {
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: awselbAttrs(nil), resource: awselbResource()})
+	if got := attrStr(t, lr.Attributes(), "url.path"); got != "/api/v1/bus/status" {
+		t.Fatalf("url.path = %q", got)
+	}
+	if got := attrStr(t, lr.Attributes(), "url.full"); got != "https://os.app.example.invalid:443/api/v1/bus/status?x=1" {
+		t.Fatalf("url.full = %q", got)
+	}
+}
+
+func TestConsume_AWSELB_NumericStringStatus_WritesInteger(t *testing.T) {
+	attrs := awselbAttrs(map[string]any{"aws.elb.status.code": "302"})
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: attrs, resource: awselbResource()})
+	attrInt(t, lr.Attributes(), "http.response.status_code", 302)
+	if got := attrStr(t, lr.Attributes(), "aws.elb.status.code"); got != "302" {
+		t.Fatalf("aws.elb.status.code = %q, want the source value kept", got)
+	}
+}
+
+func TestConsume_AWSELB_DashStatus_WritesNoStatusCode(t *testing.T) {
+	attrs := awselbAttrs(map[string]any{"aws.elb.status.code": "-"})
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: attrs, resource: awselbResource()})
+	requireAWSELBAttrAbsent(t, lr, "http.response.status_code")
+	if got := attrStr(t, lr.Attributes(), "aws.elb.status.code"); got != "-" {
+		t.Fatalf("aws.elb.status.code = %q, want the source value kept", got)
+	}
+}
+
+func TestConsume_AWSELB_NoStatusAttribute_WritesNoStatusCode(t *testing.T) {
+	attrs := awselbAttrs(map[string]any{"aws.elb.status.code": nil})
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: attrs, resource: awselbResource()})
+	requireAWSELBAttrAbsent(t, lr, "http.response.status_code")
+}
+
+func TestConsume_AWSELB_NoURL_WritesNoPath(t *testing.T) {
+	attrs := awselbAttrs(map[string]any{"url.full": nil})
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: attrs, resource: awselbResource()})
+	requireAWSELBAttrAbsent(t, lr, "url.path")
+}
+
+func TestConsume_AWSELB_ExistingPath_Kept(t *testing.T) {
+	attrs := awselbAttrs(map[string]any{"url.path": "/api/v1/p"})
+	lr, _ := awselbRun(t, awselbConfig(), input{attrs: attrs, resource: awselbResource()})
+	if got := attrStr(t, lr.Attributes(), "url.path"); got != "/api/v1/p" {
+		t.Fatalf("url.path = %q, want the existing value", got)
 	}
 }
 
@@ -143,7 +202,7 @@ func TestConsume_AWSELB_NoTargetTime_NoDuration(t *testing.T) {
 }
 
 func TestConsume_AWSELB_ExistingBodyNothingToBuild_Kept(t *testing.T) {
-	attrs := map[string]any{"log.source": "aws.elb"}
+	attrs := map[string]any{"log.source": "elb"}
 	lr, _ := awselbRun(t, awselbConfig(), input{body: "raw elb line", attrs: attrs})
 	if got := lr.Body().Str(); got != "raw elb line" {
 		t.Fatalf("body = %q", got)

@@ -191,7 +191,7 @@ func buildCleanMessage(info *FilterLogInfo) string {
 	}
 
 	// Build message
-	// BLOCK em1 inbound tcp 91.148.190.150:50406 → 24.2.177.2:47574 [SYN] (rule 11)
+	// BLOCK em1 inbound tcp 198.51.100.30:50406 → 203.0.113.20:47574 [SYN] (rule 11)
 	return fmt.Sprintf("%s %s %s %s %s → %s%s%s (rule %s)",
 		action, info.Interface, direction, info.Protocol,
 		src, dst, flagsStr, icmpStr, info.RuleID)

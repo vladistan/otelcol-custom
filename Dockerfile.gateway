@@ -1,4 +1,3 @@
-# cspell:ignore GOTOOLCHAIN tzdata
 # Dockerfile for otelcol-gateway
 # Real multi-stage build: the collector is generated and compiled inside the
 # builder stage from a clean checkout, no host pre-build required.

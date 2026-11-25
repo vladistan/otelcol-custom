@@ -1,0 +1,12 @@
+# provenance: partly real; real lines: 1-8, 10
+# evidence: lines 1 to 8 and 10 are captured standard output lines of a batch job, which carry no level word; line 9 is the same line with its job id replaced
+  Duration: 11.74s
+  Inserted: 0
+  Deleted: 0
+  Total ELK records: 27,619
+  Total source records: 27,619
+  Slices processed: 135
+  Days with gaps: 0
+  Days processed: 7
+  Run ID: reconcile-example-1700000000
+✓ Reconciliation completed

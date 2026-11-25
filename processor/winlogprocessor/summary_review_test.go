@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan nas01 ScriptBlockText AUNC aaaabbbb héllo wörld Rcode FFFD
-
 package winlogprocessor
 
 import (

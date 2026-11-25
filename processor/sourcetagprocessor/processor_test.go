@@ -101,7 +101,7 @@ var (
 func TestAWS_CloudTrailScopeSetsSourceAndCategory(t *testing.T) {
 	_, lr := tag(t, "aws", input{scope: cloudTrail})
 
-	wantStr(t, lr.Attributes(), "log.source", "aws.cloudtrail")
+	wantStr(t, lr.Attributes(), "log.source", "cloudtrail")
 	wantStr(t, lr.Attributes(), "event.category", "audit")
 }
 
@@ -140,14 +140,14 @@ func TestAWS_CloudTrailWithoutErrorCodeStaysUnset(t *testing.T) {
 func TestAWS_S3AccessScopeSetsSourceAndAccessCategory(t *testing.T) {
 	_, lr := tag(t, "aws", input{scope: map[string]string{"encoding.format": "aws.s3access"}})
 
-	wantStr(t, lr.Attributes(), "log.source", "aws.s3access")
+	wantStr(t, lr.Attributes(), "log.source", "s3access")
 	wantStr(t, lr.Attributes(), "event.category", "access")
 }
 
 func TestAWS_ELBScopeSetsSourceAndAccessCategory(t *testing.T) {
 	_, lr := tag(t, "aws", input{scope: map[string]string{"encoding.format": "aws.elbaccess"}})
 
-	wantStr(t, lr.Attributes(), "log.source", "aws.elb")
+	wantStr(t, lr.Attributes(), "log.source", "elb")
 	wantStr(t, lr.Attributes(), "event.category", "access")
 }
 
@@ -159,7 +159,7 @@ func TestAWS_EKSAuditStreamIsAuditCategory(t *testing.T) {
 
 	_, lr := tag(t, "aws", input{res: res})
 
-	wantStr(t, lr.Attributes(), "log.source", "aws.eks")
+	wantStr(t, lr.Attributes(), "log.source", "eks")
 	wantStr(t, lr.Attributes(), "event.category", "audit")
 }
 
@@ -171,7 +171,7 @@ func TestAWS_EKSOtherStreamIsApplicationCategory(t *testing.T) {
 
 	_, lr := tag(t, "aws", input{res: res})
 
-	wantStr(t, lr.Attributes(), "log.source", "aws.eks")
+	wantStr(t, lr.Attributes(), "log.source", "eks")
 	wantStr(t, lr.Attributes(), "event.category", "application")
 }
 
@@ -294,7 +294,7 @@ func TestGCP_ResourceWithoutLabelsGetsOnlyProvider(t *testing.T) {
 func TestGCP_AuditResourceIDSetsSourceAndAuditCategory(t *testing.T) {
 	_, lr := tag(t, "gcp", input{res: map[string]string{"cloud.resource_id": "cloudaudit.googleapis.com%2Factivity"}})
 
-	wantStr(t, lr.Attributes(), "log.source", "gcp.audit")
+	wantStr(t, lr.Attributes(), "log.source", "audit")
 	wantStr(t, lr.Attributes(), "event.category", "audit")
 }
 
@@ -304,7 +304,7 @@ func TestGCP_AuditOverwritesAPresetSource(t *testing.T) {
 		attrs: map[string]string{"log.source": "other"},
 	})
 
-	wantStr(t, lr.Attributes(), "log.source", "gcp.audit")
+	wantStr(t, lr.Attributes(), "log.source", "audit")
 }
 
 func TestGCP_CloudRunSetsSourceAndApplicationCategory(t *testing.T) {
@@ -329,7 +329,7 @@ func TestGCP_EachLoadBalancerTypeSetsLBSourceAndAccessCategory(t *testing.T) {
 		t.Run(typ, func(t *testing.T) {
 			_, lr := tag(t, "gcp", input{res: map[string]string{"gcp.resource_type": typ}})
 
-			wantStr(t, lr.Attributes(), "log.source", "gcp.lb")
+			wantStr(t, lr.Attributes(), "log.source", "lb")
 			wantStr(t, lr.Attributes(), "event.category", "access")
 		})
 	}

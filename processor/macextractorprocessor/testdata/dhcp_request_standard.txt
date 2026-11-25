@@ -1,1 +1,1 @@
-DHCPREQUEST for 192.0.2.132 from 10:db:00:db:15:02 via em0
+DHCPREQUEST for 192.0.2.132 from 00:00:5e:00:53:02 via em0

@@ -1,0 +1,5 @@
+# provenance: invented
+# evidence: written from the format description; node counts and health values are placeholders, and rows with equal count and target are left out because the branch samples them
+{"status":{"autoscaledNodesCount":3,"autoscaledNodesTarget":5,"clusterWide":{"health":{"status":"Healthy","nodeCounts":{"registered":{"total":3,"ready":3}}},"scaleUp":{"status":"InProgress"}}}}
+{"status":{"autoscaledNodesCount":12,"autoscaledNodesTarget":8,"clusterWide":{"health":{"status":"Healthy"},"scaleDown":{"status":"CandidatesPresent"}}}}
+{"status":{"autoscaledNodesCount":0,"autoscaledNodesTarget":1}}

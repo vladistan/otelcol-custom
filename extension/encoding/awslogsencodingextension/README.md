@@ -30,6 +30,16 @@ This extension unmarshalls logs encoded in formats produced by AWS services.
 > The CLB test lines also come from the documented layout. Other changes: `go.mod` loses its four `replace` lines into the contrib repository, and four
 > upstream cases of `TestUnmarshallELBAccessLogs` (ALB, NLB and CLB lines with too few fields, and an empty
 > line) expect no error. New files: `addrport.go`, `addrport_test.go`, `ipv6_test.go`.
+>
+> **Local patch for CloudTrail Identity Center events.** The `cloudtrail` decoder also reads `userIdentity.onBehalfOf`
+> and `serviceEventDetails`, which upstream drops. For a row whose `userIdentity.type` is `IdentityCenterUser` it writes
+> `user.id` (from `onBehalfOf.userId`) and `aws.user_identity.on_behalf_of.identity_store_arn`. For a row with
+> `serviceEventDetails` it writes `aws.service_event.role_name` and `aws.service_event.account_id` (the target account).
+> A row without these objects decodes as before, and a null `requestParameters` or `responseElements` gives no request or
+> response attributes. `source.address` (a public address) and `user_agent.original` were already written and stay; both
+> are stored in ClickHouse. The type and the config keys do not change. Diff against upstream:
+> `internal/unmarshaler/cloudtraillog/unmarshaler.go` gains two types, two struct fields and two blocks in
+> `setLogAttributes`; the new file is `internal/unmarshaler/cloudtraillog/identity_center_test.go`.
 
 This extension unmarshals logs encoded in formats produced by AWS services, including:
  - [Amazon CloudWatch Logs Subscription Filters](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/SubscriptionFilters.html).

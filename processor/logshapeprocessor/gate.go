@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore IWEF TDIWEC vstan awselb mosquitto kaudit
-
 package logshapeprocessor
 
 import (
@@ -30,10 +28,11 @@ type bytePos struct {
 // gate is the union of the ways a branch claims: a body shape, a log.source value, or an attribute key
 // on the record or the resource. A branch without a gate is always offered the record.
 type gate struct {
-	open   bool
-	bodies []bodyGate
-	srcs   []string
-	keys   []string
+	open        bool
+	bodies      []bodyGate
+	srcs        []string
+	keys        []string
+	identifiers []string // syslog identifiers of a journald map body
 }
 
 func (g bodyGate) admits(body string) bool {
@@ -91,6 +90,9 @@ func (g *gate) admits(r *rec, s *seen) bool {
 			return true
 		}
 	}
+	if len(g.identifiers) > 0 && slices.Contains(g.identifiers, journalIdent(r.lr)) {
+		return true
+	}
 	for _, k := range g.keys {
 		if _, ok := r.lr.Attributes().Get(k); ok {
 			return true
@@ -136,7 +138,7 @@ func newTable(branches []branch, hints map[string]Hint, cfg *Config) *table {
 }
 
 func (g *gate) mayStart(c int) bool {
-	if g.open || len(g.srcs) > 0 || len(g.keys) > 0 {
+	if g.open || len(g.srcs) > 0 || len(g.keys) > 0 || len(g.identifiers) > 0 {
 		return true
 	}
 	for i := range g.bodies {
@@ -179,6 +181,8 @@ func gateFor(name string, cfg *Config) gate {
 		return body(bodyGate{first: "IWEF", minLen: 20})
 	case "uvicorn":
 		return body(bodyGate{first: "TDIWEC", minLen: 5, needs: []string{":"}})
+	case "pylogger":
+		return body(bodyGate{first: "DIWECF", minLen: 7, needs: []string{":"}})
 	case "collector":
 		return gate{bodies: []bodyGate{{needs: []string{`"otelcol.component`}}}, keys: []string{"original_message"}}
 	case "mongod":
@@ -207,6 +211,8 @@ func gateFor(name string, cfg *Config) gate {
 	case "cisco":
 		g := gate{bodies: []bodyGate{{needs: []string{"%"}}, {first: "["}}, keys: []string{"vstan.cisco.facility", "cisco_facility"}}
 		return withKey(g, cfg.Cisco.SourceAttribute)
+	case "vpnscript":
+		return body(bodyGate{first: "[" + spaceLead, minLen: 21, needs: []string{"]"}})
 	case "syslog":
 		g := gate{bodies: []bodyGate{{first: digits + letters + spaceLead, minLen: 13}}, keys: []string{"priority"}}
 		return withKey(g, cfg.Syslog.SourceAttribute)
@@ -217,17 +223,17 @@ func gateFor(name string, cfg *Config) gate {
 	case "coredns":
 		return body(bodyGate{minLen: 20, needs: []string{" - ", `"`}})
 	case "gcplb":
-		return gate{srcs: []string{"gcp.lb"}}
+		return gate{srcs: []string{"lb"}}
 	case "awselb":
-		return gate{srcs: []string{"aws.elb"}}
+		return gate{srcs: []string{"elb"}}
 	case "s3access":
-		return gate{srcs: []string{"aws.s3access"}}
+		return gate{srcs: []string{"s3access"}}
 	case "gcpaudit":
-		return gate{srcs: []string{"gcp.audit"}}
+		return gate{srcs: []string{"audit"}}
 	case "eksaudit":
-		return gate{srcs: []string{"aws.eks"}}
+		return gate{srcs: []string{"eks"}}
 	case "cloudtrail":
-		return gate{srcs: []string{"aws.cloudtrail"}}
+		return gate{srcs: []string{"cloudtrail"}}
 	case "rabbitmq":
 		return body(bodyGate{needs: []string{" ["}})
 	case "mosquitto":
@@ -235,16 +241,22 @@ func gateFor(name string, cfg *Config) gate {
 	case "stallcheck":
 		return body(bodyGate{needs: []string{"published "}})
 	case "kaudit":
-		return body(bodyGate{first: "a", needs: []string{"audit: type=", "apparmor="}})
+		return body(bodyGate{first: "a \r\n", needs: []string{"audit: type=", "apparmor="}})
 	case "smartd":
 		return body(bodyGate{first: "D", needs: []string{"Device: "}})
 	case "gocd":
 		return body(bodyGate{first: "j", needs: []string{"jvm "}})
 	case "cron":
-		return body(bodyGate{first: "c", needs: []string{"cron: "}})
+		return gate{bodies: []bodyGate{{first: "c", needs: []string{"cron: "}}}, identifiers: []string{"CRON"}}
+	case "sshd":
+		return gate{identifiers: []string{"sshd"}}
+	case "systemd":
+		return gate{identifiers: []string{"systemd"}}
 	case "openvpn":
 		return gate{keys: []string{"common_name", "user.name"}}
-	case "pbs", "pve":
+	case "pbs":
+		return gate{keys: []string{"log.file.name", "log.file.path"}, identifiers: pbsDaemons}
+	case "pve":
 		return gate{keys: []string{"log.file.name", "log.file.path"}}
 	case "serialconsole":
 		return gate{keys: []string{"cloud.resource_id"}}
@@ -271,6 +283,12 @@ func gateFor(name string, cfg *Config) gate {
 			},
 			keys: append([]string{"k8s.event.reason"}, k8sLiftKeys...),
 		}
+	case "charon":
+		return body(bodyGate{minLen: 6, needs: []string{"[", "]"}})
+	case "autoscaler":
+		return body(bodyGate{first: "{", needs: []string{`"` + autoscalerCountKey + `"`, `"` + autoscalerTargetKey + `"`}})
+	case "springboot":
+		return body(bodyGate{first: digits, minLen: 30, at: []bytePos{{4, '-'}, {7, '-'}}, needs: []string{springbootMarker}})
 	}
 	return gate{open: true}
 }

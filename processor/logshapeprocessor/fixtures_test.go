@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore AKIA ASIA awselb
-
 package logshapeprocessor
 
 import (
@@ -167,7 +165,7 @@ var sourceKeyedBranches = []string{"gcplb", "awselb", "s3access", "gcpaudit", "e
 func TestFixtures_EveryTextBranchHasASampleFile(t *testing.T) {
 	samples := loadSamples(t)
 	for _, name := range branchNames {
-		if name == "flow" || slices.Contains(sourceKeyedBranches, name) || attributeKeyed[name] {
+		if name == "flow" || slices.Contains(sourceKeyedBranches, name) || attributeKeyed[name] || journalKeyed[name] {
 			continue // claimed by attributes, not text: their samples are the JSON-lines files in testdata/samples-keyed
 		}
 		if len(samples[name]) == 0 {

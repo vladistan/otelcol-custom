@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/vladistan/otelcol-custom/shape/body"
@@ -21,7 +22,7 @@ var grpcCodeNames = [...]string{
 	"UNAUTHENTICATED",
 }
 
-// gcpAuditBranch shapes Google Cloud audit log entries (log.source gcp.audit).
+// gcpAuditBranch shapes Google Cloud audit log entries (log.source audit).
 type gcpAuditBranch struct {
 	aliases map[string]string
 }
@@ -32,41 +33,38 @@ func newGCPAuditBranch(aliases map[string]string) *gcpAuditBranch {
 
 func (*gcpAuditBranch) name() string { return "gcpaudit" }
 
-func (*gcpAuditBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "gcp.audit" }
+func (*gcpAuditBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "audit" }
 
 func (b *gcpAuditBranch) parse(r *rec) error {
 	a := r.lr.Attributes()
-	// The encoder may still emit the old name for the status code.
+	// Some encoders emit rpc.response.status_code instead of rpc.status_code.
 	code, hasCode := auditInt(a, "rpc.status_code")
 	if !hasCode {
 		code, hasCode = auditInt(a, "rpc.response.status_code")
 	}
 	failed := hasCode && code != 0
 
-	text := r.body
-	if text == "" {
-		text = body.Audit(auditStr(a, "gcp.audit.method.name"), auditStr(a, "gcp.audit.resource.name"), "")
-	}
 	status := ""
 	if failed {
 		status = grpcStatusName(code)
 	}
-	// A second pass finds the status already in the body.
-	if status != "" && (text == status || strings.HasSuffix(text, " "+status)) {
-		status = ""
-	}
-	auditSetBody(r.lr, body.Audit(text, "", status))
+	auditSetBody(r.lr, gcpAuditBody(r.body, a, status))
 
-	auditService(r.res, principal.Shorten(auditStr(a, "user.email"), nil))
+	who := auditStr(a, "user.email")
+	if who == "" {
+		who = auditStr(a, "user.id")
+	}
+	auditService(r.res, principal.Shorten(who, nil))
 
 	project := auditFirstStr(r, "gcp.label.project_id", "cloud.account.id")
-	k8s := auditStr(a, "gcp.audit.service.name") == "k8s.io" || auditFirstStr(r, "gcp.resource_type") == "k8s_cluster"
-	if k8s {
+	k8s := strings.HasPrefix(auditStr(a, "gcp.audit.method.name"), "io.k8s.") ||
+		auditStr(a, "gcp.audit.service.name") == "k8s.io" || auditFirstStr(r, "gcp.resource_type") == "k8s_cluster"
+	if cluster := auditFirstStr(r, "gcp.label.cluster_name"); k8s && cluster != "" {
+		r.res.Attributes().PutStr("host.name", cluster)
+	} else {
 		auditHost(r.res, project, b.aliases, false)
 	}
-	if alias := b.aliases[project]; project != "" && alias != "" {
-		r.res.Attributes().PutStr("cloud.account.name", alias)
-	}
+	setAccountName(r.res.Attributes(), project, b.aliases)
 
 	switch {
 	case failed:
@@ -75,6 +73,40 @@ func (b *gcpAuditBranch) parse(r *rec) error {
 		auditSetLevel(r.lr, auditWord("info"))
 	}
 	return nil
+}
+
+// gcpAuditBody returns "method resource status". An empty line is built from
+// the method and resource attributes. A status already ending the line is not repeated.
+func gcpAuditBody(line string, a pcommon.Map, status string) string {
+	if status != "" && (line == status || strings.HasSuffix(line, " "+status)) {
+		line = strings.TrimSpace(strings.TrimSuffix(line, status))
+	}
+	method, resource, _ := strings.Cut(line, " ")
+	if line == "" {
+		method, resource = auditStr(a, "gcp.audit.method.name"), auditStr(a, "gcp.audit.resource.name")
+	}
+	return body.Audit(methodPair(method), shortResource(resource), status)
+}
+
+// methodPair keeps the last two dot-separated elements of a method name.
+func methodPair(method string) string {
+	parts := strings.Split(method, ".")
+	if len(parts) > 2 {
+		parts = parts[len(parts)-2:]
+	}
+	return strings.Join(parts, ".")
+}
+
+// shortResource turns a path with a "namespaces" or "zones" segment into
+// "scope/name"; any other resource is returned as it is.
+func shortResource(path string) string {
+	parts := strings.Split(path, "/")
+	for i, p := range parts {
+		if (p == "namespaces" || p == "zones") && len(parts) > i+3 {
+			return parts[i+1] + "/" + parts[i+3]
+		}
+	}
+	return path
 }
 
 func grpcStatusName(code int64) string {

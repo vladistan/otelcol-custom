@@ -4,6 +4,7 @@
 package logshapeprocessor
 
 import (
+	"strings"
 	"testing"
 
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -18,7 +19,7 @@ func cloudTrailConfig() *Config {
 }
 
 func cloudTrailInput(attrs map[string]any) input {
-	a := map[string]any{"log.source": "aws.cloudtrail", "event.category": "audit"}
+	a := map[string]any{"log.source": "cloudtrail", "event.category": "audit"}
 	for k, v := range attrs {
 		a[k] = v
 	}
@@ -51,17 +52,17 @@ func TestConsume_CloudTrail_AssumedRoleRecord_ShapesEveryField(t *testing.T) {
 		t.Fatalf("severity = %d %q, want unset", lr.SeverityNumber(), lr.SeverityText())
 	}
 	r := res.Attributes()
-	if attrStr(t, r, "service.name") != "test-session" || attrStr(t, r, "host.name") != "test-ops" ||
+	if attrStr(t, r, "service.name") != "TestRole/test-session" || attrStr(t, r, "host.name") != "test-ops" ||
 		attrStr(t, r, "cloud.account.name") != "test-ops" || attrStr(t, r, "cloud.account.id") != cloudTrailTestAccount {
 		t.Fatalf("resource = %v", r.AsRaw())
 	}
 	a := lr.Attributes()
-	if attrStr(t, a, "log.source") != "aws.cloudtrail" || attrStr(t, a, "rpc.method") != "ssm.amazonaws.com/GetParameter" {
+	if attrStr(t, a, "log.source") != "cloudtrail" || attrStr(t, a, "rpc.method") != "ssm.amazonaws.com/GetParameter" {
 		t.Fatalf("attributes = %v", a.AsRaw())
 	}
 }
 
-func TestConsume_CloudTrail_AssumeRoleEvent_TargetIsRoleName(t *testing.T) {
+func TestConsume_CloudTrail_AssumeRoleEvent_BodyHasRoleAndSession(t *testing.T) {
 	h := newHarness(t, cloudTrailConfig())
 	attrs := map[string]any{
 		"rpc.method":             "sts.amazonaws.com/AssumeRole",
@@ -70,7 +71,7 @@ func TestConsume_CloudTrail_AssumeRoleEvent_TargetIsRoleName(t *testing.T) {
 
 	lr, _ := h.run(cloudTrailInput(attrs))
 
-	if lr.Body().Str() != "sts:AssumeRole AWSServiceRoleForIPAM" {
+	if lr.Body().Str() != "sts:AssumeRole AWSServiceRoleForIPAM x" {
 		t.Fatalf("body = %q", lr.Body().Str())
 	}
 }
@@ -99,16 +100,25 @@ func TestConsume_CloudTrail_BareEventNameWithRPCService_BuildsAction(t *testing.
 	}
 }
 
-func TestConsume_CloudTrail_ErrorCodes_StayWarn(t *testing.T) {
-	for _, code := range []string{"AccessDenied", "NoSuchKey", "ThrottlingException"} {
+func TestConsume_CloudTrail_ErrorCodes_AccessDeniedIsErrorOthersWarn(t *testing.T) {
+	cases := []struct {
+		code string
+		num  plog.SeverityNumber
+		text string
+	}{
+		{"AccessDenied", plog.SeverityNumberError, "ERROR"},
+		{"NoSuchKey", plog.SeverityNumberWarn, "WARN"},
+		{"ThrottlingException", plog.SeverityNumberWarn, "WARN"},
+	}
+	for _, c := range cases {
 		h := newHarness(t, cloudTrailConfig())
 		attrs := cloudTrailRoleAttrs()
-		attrs["aws.error.code"] = code
+		attrs["aws.error.code"] = c.code
 
 		lr, _ := h.run(cloudTrailInput(attrs))
 
-		if lr.SeverityNumber() != plog.SeverityNumberWarn || lr.SeverityText() != "WARN" {
-			t.Errorf("%s: severity = %d %q", code, lr.SeverityNumber(), lr.SeverityText())
+		if lr.SeverityNumber() != c.num || lr.SeverityText() != c.text {
+			t.Errorf("%s: severity = %d %q", c.code, lr.SeverityNumber(), lr.SeverityText())
 		}
 	}
 }
@@ -125,18 +135,24 @@ func TestConsume_CloudTrail_EmptyErrorCode_StaysUnset(t *testing.T) {
 	}
 }
 
-func TestConsume_CloudTrail_PrincipalShortening_Cases(t *testing.T) {
+func TestConsume_CloudTrail_CallerByIdentityType_Cases(t *testing.T) {
 	cases := []struct {
 		name  string
 		attrs map[string]any
 		want  string
 	}{
-		{"assumed role gives the session name", map[string]any{"aws.principal.arn": "arn:aws:sts::111122223333:assumed-role/TestRole/ssh-key-agent"}, "ssh-key-agent"},
-		{"prefixed arn name is read", map[string]any{"aws.user_identity.principal.arn": "arn:aws:iam::111122223333:user/alice"}, "alice"},
-		{"iam user name without arn", map[string]any{"user.name": "bob"}, "bob"},
-		{"aws service invoker", map[string]any{"aws.user_identity.invoked_by": "ipam.amazonaws.com"}, "AWS Internal"},
-		{"legacy invoker name", map[string]any{"aws.user_identity.invoked_by": "cloudformation.amazonaws.com"}, "AWS Internal"},
-		{"over-long session name is cut", map[string]any{"aws.principal.arn": "arn:aws:sts::111122223333:assumed-role/R/a-very-long-session-name-that-keeps-going"}, "a-very-long-session-name-that-ke"},
+		{"assumed role gives role and session", map[string]any{"aws.principal.type": "AssumedRole", "aws.principal.arn": "arn:aws:sts::111122223333:assumed-role/TestRole/ssh-key-agent"}, "TestRole/ssh-key-agent"},
+		{"assumed role prefers the issuer name", map[string]any{"aws.principal.type": "AssumedRole", "aws.principal.arn": "arn:aws:sts::111122223333:assumed-role/Short/s1", "aws.user_identity.session_context.issuer.user_name": "IssuerRole"}, "IssuerRole/s1"},
+		{"iam user name", map[string]any{"aws.principal.type": "IAMUser", "user.name": "bob"}, "bob"},
+		{"saml user name", map[string]any{"aws.principal.type": "SAMLUser", "user.name": "carol"}, "carol"},
+		{"web identity user name", map[string]any{"aws.principal.type": "WebIdentityUser", "user.name": "dave"}, "dave"},
+		{"account gives the alias", map[string]any{"aws.principal.type": "AWSAccount", "aws.user_identity.account_id": cloudTrailTestAccount}, "test-ops"},
+		{"account without alias gives the id", map[string]any{"aws.principal.type": "AWSAccount", "aws.user_identity.account_id": "999988887777"}, "999988887777"},
+		{"aws service gives the service", map[string]any{"aws.principal.type": "AWSService", "aws.user_identity.invoked_by": "ssm.amazonaws.com"}, "ssm"},
+		{"aws service keeps AWS Internal text", map[string]any{"aws.principal.type": "AWSService", "aws.user_identity.invoked_by": "AWS Internal"}, "AWS Internal"},
+		{"no type gives cloudtrail", map[string]any{"aws.principal.arn": "arn:aws:iam::111122223333:user/alice"}, "cloudtrail"},
+		{"unknown type gives cloudtrail", map[string]any{"aws.principal.type": "Root", "user.name": "root"}, "cloudtrail"},
+		{"over-long role and session are cut", map[string]any{"aws.principal.type": "AssumedRole", "aws.principal.arn": "arn:aws:sts::111122223333:assumed-role/R/a-very-long-session-name-that-keeps-going"}, "R/a-very-long-session-name-that-"},
 	}
 	for _, c := range cases {
 		h := newHarness(t, cloudTrailConfig())
@@ -239,7 +255,7 @@ func TestConsume_CloudTrail_Batch_CountInEqualsOut(t *testing.T) {
 		lr := lrs.AppendEmpty()
 		lr.Body().SetStr("raw")
 		attrs := cloudTrailRoleAttrs()
-		attrs["log.source"] = "aws.cloudtrail"
+		attrs["log.source"] = "cloudtrail"
 		if i%3 == 0 {
 			attrs["aws.error.code"] = "AccessDenied"
 		}
@@ -267,7 +283,7 @@ func TestConsume_CloudTrail_MixedBatch_EachRecordKeepsItsOwnIdentity(t *testing.
 	h := newHarness(t, cfg)
 	rec := func(body, arn, account string) auditRec {
 		a := cloudTrailRoleAttrs()
-		a["log.source"] = "aws.cloudtrail"
+		a["log.source"] = "cloudtrail"
 		a["aws.principal.arn"] = arn
 		a["cloud.account.id"] = account
 		return auditRec{body: body, attrs: a}
@@ -280,7 +296,7 @@ func TestConsume_CloudTrail_MixedBatch_EachRecordKeepsItsOwnIdentity(t *testing.
 	})
 
 	wants := []struct{ service, host string }{
-		{"alice-session", "alias-a"}, {"bob-session", "alias-b"}, {"carol-session", "alias-a"},
+		{"R/alice-session", "alias-a"}, {"R/bob-session", "alias-b"}, {"R/carol-session", "alias-a"},
 	}
 	if len(out) != len(wants) {
 		t.Fatalf("records out = %d", len(out))
@@ -295,12 +311,136 @@ func TestConsume_CloudTrail_MixedBatch_EachRecordKeepsItsOwnIdentity(t *testing.
 
 func TestConsume_CloudTrail_SecondPass_ChangesNothing(t *testing.T) {
 	failing := cloudTrailRoleAttrs()
-	failing["log.source"] = "aws.cloudtrail"
+	failing["log.source"] = "cloudtrail"
 	failing["aws.error.code"] = "AccessDenied"
 	plain := cloudTrailRoleAttrs()
-	plain["log.source"] = "aws.cloudtrail"
-	bare := map[string]any{"log.source": "aws.cloudtrail", "rpc.method": "GetObject"}
+	plain["log.source"] = "cloudtrail"
+	bare := map[string]any{"log.source": "cloudtrail", "rpc.method": "GetObject"}
 	recs := []auditRec{{body: "raw", attrs: failing}, {body: "raw", attrs: plain}, {body: "raw", attrs: bare}}
 
 	assertTwoPassesEqual(t, cloudTrailConfig(), map[string]any{"cloud.account.id": cloudTrailTestAccount}, recs)
+}
+
+func assumeRoleAttrs(params, response map[string]any) map[string]any {
+	a := map[string]any{
+		"rpc.method":             "sts.amazonaws.com/AssumeRole",
+		"aws.request.parameters": params,
+	}
+	if response != nil {
+		a["aws.response.elements"] = response
+	}
+	return a
+}
+
+func TestConsume_CloudTrail_AssumeRole_SessionFromResponseWhenRequestHasNone(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	params := map[string]any{"roleArn": "arn:aws:iam::111122223333:role/NodeRole"}
+	resp := map[string]any{"assumedRoleUser": map[string]any{"arn": "arn:aws:sts::111122223333:assumed-role/NodeRole/i-0123456789abcdef0"}}
+
+	lr, _ := h.run(cloudTrailInput(assumeRoleAttrs(params, resp)))
+
+	if lr.Body().Str() != "sts:AssumeRole NodeRole i-0123456789abcdef0" {
+		t.Fatalf("body = %q", lr.Body().Str())
+	}
+}
+
+func TestConsume_CloudTrail_AssumeRole_NoSession_BodyEndsAtRole(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	params := map[string]any{"roleArn": "arn:aws:iam::111122223333:role/NodeRole"}
+
+	lr, _ := h.run(cloudTrailInput(assumeRoleAttrs(params, nil)))
+
+	if lr.Body().Str() != "sts:AssumeRole NodeRole" {
+		t.Fatalf("body = %q", lr.Body().Str())
+	}
+}
+
+func s3Attrs(params map[string]any) map[string]any {
+	return map[string]any{"rpc.method": "s3.amazonaws.com/GetObject", "aws.request.parameters": params}
+}
+
+func TestConsume_CloudTrail_S3GetObject_BodyHasBucketAndKey(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+
+	lr, _ := h.run(cloudTrailInput(s3Attrs(map[string]any{"bucketName": "test-bucket", "key": "logs/2026/a.txt"})))
+
+	if lr.Body().Str() != "s3:GetObject test-bucket/logs/2026/a.txt" {
+		t.Fatalf("body = %q", lr.Body().Str())
+	}
+}
+
+func TestConsume_CloudTrail_S3GetObject_LongKeyIsCutInTheMiddle(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	key := "prefix/" + strings.Repeat("0123456789", 12) + "/tail-end.bin"
+
+	lr, _ := h.run(cloudTrailInput(s3Attrs(map[string]any{"bucketName": "test-bucket", "key": key})))
+
+	got := strings.TrimPrefix(lr.Body().Str(), "s3:GetObject test-bucket/")
+	if !strings.Contains(got, "..") || !strings.HasPrefix(got, "prefix/0123") || !strings.HasSuffix(got, "tail-end.bin") || len(got) > 41 {
+		t.Fatalf("key part = %q", got)
+	}
+}
+
+func TestConsume_CloudTrail_S3GetObject_NoKey_BodyHasBucketOnly(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+
+	lr, _ := h.run(cloudTrailInput(s3Attrs(map[string]any{"bucketName": "test-bucket"})))
+
+	if lr.Body().Str() != "s3:GetObject test-bucket" {
+		t.Fatalf("body = %q", lr.Body().Str())
+	}
+}
+
+func credentialsResponse() map[string]any {
+	return map[string]any{
+		"credentials": map[string]any{
+			"accessKeyId":  "ASIATESTKEY",
+			"sessionToken": "test-token",
+			"expiration":   "Jan 1, 2026, 1:00:00 AM",
+		},
+		"assumedRoleUser": map[string]any{"arn": "arn:aws:sts::111122223333:assumed-role/R/s"},
+	}
+}
+
+func TestConsume_CloudTrail_AssumeRole_CredentialsAreRedacted(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	params := map[string]any{"roleArn": "arn:aws:iam::111122223333:role/R"}
+
+	lr, _ := h.run(cloudTrailInput(assumeRoleAttrs(params, credentialsResponse())))
+
+	v, _ := lr.Attributes().Get("aws.response.elements")
+	creds := v.Map().AsRaw()["credentials"].(map[string]any)
+	if creds["accessKeyId"] != "[REDACTED]" || creds["sessionToken"] != "[REDACTED]" {
+		t.Fatalf("credentials = %v", creds)
+	}
+	if creds["expiration"] != "Jan 1, 2026, 1:00:00 AM" {
+		t.Fatalf("expiration changed: %v", creds)
+	}
+}
+
+func TestConsume_CloudTrail_AssumeRole_NoCredentialsBlock_RowUnchanged(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	params := map[string]any{"roleArn": "arn:aws:iam::111122223333:role/R"}
+	resp := map[string]any{"other": "kept"}
+	attrs := assumeRoleAttrs(params, resp)
+	attrs["aws.error.code"] = "AccessDenied"
+
+	lr, _ := h.run(cloudTrailInput(attrs))
+
+	v, _ := lr.Attributes().Get("aws.response.elements")
+	if got := v.Map().AsRaw(); len(got) != 1 || got["other"] != "kept" {
+		t.Fatalf("elements = %v", got)
+	}
+}
+
+func TestConsume_CloudTrail_OtherEvent_CredentialsNotTouched(t *testing.T) {
+	h := newHarness(t, cloudTrailConfig())
+	attrs := map[string]any{"rpc.method": "sts.amazonaws.com/GetSessionToken", "aws.response.elements": credentialsResponse()}
+
+	lr, _ := h.run(cloudTrailInput(attrs))
+
+	v, _ := lr.Attributes().Get("aws.response.elements")
+	if v.Map().AsRaw()["credentials"].(map[string]any)["accessKeyId"] != "ASIATESTKEY" {
+		t.Fatalf("elements = %v", v.Map().AsRaw())
+	}
 }

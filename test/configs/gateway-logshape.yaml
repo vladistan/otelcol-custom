@@ -1,4 +1,3 @@
-# cspell:ignore awselb gcpaudit kaudit logfmt mosquitto
 # Reference config for log shaping in the gateway image: the logshape processor after the log
 # receivers, then health probe sampling, with the account alias map for the cloud sources.
 # Run: ./build/gateway/otelcol-gateway validate --config test/configs/gateway-logshape.yaml
@@ -58,6 +57,8 @@ processors:
       - stderrhint
       - lldpd
       - k8s
+      - charon
+      - autoscaler
     # Account and project alias map for the records the cloud branches shape. A key is an
     # account id or a project id; the value is the name that goes to cloud.account.name. The scrape
     # image shapes the cloud records in the default setup (test/configs/scrape.yaml holds the same

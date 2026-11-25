@@ -201,12 +201,12 @@ func IsValidMAC(mac string) bool {
 // and the 7th bit of the first byte is flipped (Universal/Local bit).
 //
 // Parameters are the captured groups from the regex:
-// - group1: first 1-4 hex chars (e.g., "225" from "0225")
-// - group2: 1-2 hex chars before "ff" (e.g., "90" or "7" for "07ff" shortened to "7ff")
-// - group3: 2 hex chars after "fe" (e.g., "8b")
-// - group4: last 1-4 hex chars (e.g., "dba0")
+// - group1: first 1-4 hex chars (e.g., "200" from "0200")
+// - group2: 1-2 hex chars before "ff" (e.g., "5e" or "7" for "07ff" shortened to "7ff")
+// - group3: 2 hex chars after "fe" (e.g., "00")
+// - group4: last 1-4 hex chars (e.g., "5309")
 func extractMACFromEUI64(group1, group2, group3, group4 string) string {
-	// Pad group1 to 4 chars (e.g., "225" -> "0225")
+	// Pad group1 to 4 chars (e.g., "200" -> "0200")
 	for len(group1) < 4 {
 		group1 = "0" + group1
 	}

@@ -16,7 +16,7 @@
 //
 // Example:
 //
-//	11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,91.148.190.150,24.2.177.2,50406,47574,0,S,2500738723,,1025,,mss
+//	11,,,02f4bab031b57d1e30553ce08e0ec131,em1,match,block,in,4,0x0,,244,13943,0,none,6,tcp,44,198.51.100.30,203.0.113.20,50406,47574,0,S,2500738723,,1025,,mss
 //
 // # Output Attributes
 //
@@ -41,7 +41,7 @@
 //
 // The body is rewritten to a human-readable format:
 //
-//	BLOCK em1 inbound tcp 91.148.190.150:50406 → 24.2.177.2:47574 [SYN] (rule 11)
+//	BLOCK em1 inbound tcp 198.51.100.30:50406 → 203.0.113.20:47574 [SYN] (rule 11)
 //
 // # Configuration
 //

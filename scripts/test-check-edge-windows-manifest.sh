@@ -469,6 +469,22 @@ for other in builder-config.yaml builder-gateway.yaml builder-edge.yaml builder-
 	fi
 done
 
+# The ipp receiver is in the scrape manifest only.
+if grep -q "otelcol-custom/receiver/ippreceiver v0.0.0" "$ROOT/builder-scrape.yaml"; then
+	echo "PASS: builder-scrape.yaml lists ippreceiver"
+else
+	echo "FAIL: builder-scrape.yaml does not list ippreceiver"
+	failures=$((failures + 1))
+fi
+for other in builder-config.yaml builder-gateway.yaml builder-edge.yaml builder-edge-static.yaml builder-edge-windows.yaml; do
+	if grep -q "ippreceiver" "$ROOT/$other"; then
+		echo "FAIL: $other lists ippreceiver; only the scrape manifest may"
+		failures=$((failures + 1))
+	else
+		echo "PASS: $other has no ippreceiver entry"
+	fi
+done
+
 check_linux_edge_only megaraid
 
 # The inventory receiver is in the Linux, static Linux and Windows edge manifests and in no other.

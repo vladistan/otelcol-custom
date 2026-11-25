@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore awselb
-
 import (
 	"strings"
 	"testing"
@@ -121,12 +119,12 @@ func TestOverride_List_ExtendsTheDefault(t *testing.T) {
 	cfg.Klog.StaticPodPrefixes = []string{"kube-vip-"}
 	h := newHarness(t, cfg)
 
-	_, res := h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "kube-vip-k8s-9"}})
-	if attrStr(t, res.Attributes(), "host.name") != "k8s-9" {
+	_, res := h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "kube-vip-node-9"}})
+	if attrStr(t, res.Attributes(), "host.name") != "node-9" {
 		t.Fatalf("configured prefix not used: %v", res.Attributes().AsRaw())
 	}
-	_, res = h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "etcd-k8s-3"}})
-	if attrStr(t, res.Attributes(), "host.name") != "k8s-3" {
+	_, res = h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "etcd-node-3"}})
+	if attrStr(t, res.Attributes(), "host.name") != "node-3" {
 		t.Fatalf("default prefix lost: %v", res.Attributes().AsRaw())
 	}
 }

@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore srcaddr dstaddr netip asn dscp ipfix
-
 package flowlogexporter
 
 import (

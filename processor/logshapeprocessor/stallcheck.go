@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import (
@@ -41,7 +39,7 @@ func (*stallCheckBranch) parse(r *rec) error {
 		}
 	}
 	a := r.lr.Attributes()
-	a.PutStr("log.record.original", r.body)
+	keepOriginal(a, r.body)
 	putScalar(a, "vstan.stallcheck."+underscoreCase(m[2]), m[3])
 	if !ts.IsZero() {
 		r.lr.SetTimestamp(pcommon.NewTimestampFromTime(ts.UTC()))

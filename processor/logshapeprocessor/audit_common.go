@@ -90,6 +90,19 @@ func auditHost(res pcommon.Resource, id string, aliases map[string]string, withA
 	}
 }
 
+// setAccountName sets cloud.account.name to the alias of a GCP project id, or to the id itself when
+// it has no alias. An empty id writes nothing.
+func setAccountName(attrs pcommon.Map, id string, aliases map[string]string) {
+	if id == "" {
+		return
+	}
+	if alias := aliases[id]; alias != "" {
+		attrs.PutStr("cloud.account.name", alias)
+		return
+	}
+	attrs.PutStr("cloud.account.name", id)
+}
+
 func auditService(res pcommon.Resource, short string) {
 	if short != "" {
 		res.Attributes().PutStr("service.name", short)

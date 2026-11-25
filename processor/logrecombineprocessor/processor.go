@@ -47,6 +47,8 @@ type logsProcessor struct {
 	sourceIdField  []string // parsed field path (e.g., ["body", "_PID"])
 	containerField []string // parsed field path, nil when container grouping is off
 
+	glue *glue // nil unless require_attribute is set
+
 	mu      sync.Mutex
 	buffers map[string]*bufferedEntry // keyed by bufferKey
 	ticker  *time.Ticker
@@ -72,23 +74,46 @@ func newLogsProcessor(set processor.Settings, cfg *Config, next consumer.Logs) (
 	if cfg.ContainerIdentifier != "" {
 		p.containerField = parseFieldPath(cfg.ContainerIdentifier)
 	}
+	g, err := newGlue(cfg, set.TelemetrySettings)
+	if err != nil {
+		return nil, err
+	}
+	p.glue = g
 	return p, nil
 }
 
 // bufferKey returns the key of the buffer a record belongs to, or "" when the record
 // has no source identifier. A record that names a container is keyed by the container,
 // so it cannot join a buffer of another container or of a non-container source.
-func (p *logsProcessor) bufferKey(record plog.LogRecord) string {
-	sourceId := p.getFieldValue(record, p.sourceIdField)
+func (p *logsProcessor) bufferKey(record plog.LogRecord, resource pcommon.Resource) string {
+	sourceId := p.keyValue(record, resource, p.sourceIdField)
 	if sourceId == "" {
 		return ""
 	}
 	if p.containerField != nil {
-		if id := p.getFieldValue(record, p.containerField); id != "" {
+		if id := p.keyValue(record, resource, p.containerField); id != "" {
 			return "container:" + id
 		}
 	}
 	return sourceId
+}
+
+// keyValue reads a key field. Besides the paths of getFieldValue it reads "resource.<name>", a
+// resource attribute, and "attributes.<name>" with dots in the name: the whole name first, then, as
+// before, the part up to the first dot.
+func (p *logsProcessor) keyValue(record plog.LogRecord, resource pcommon.Resource, path []string) string {
+	switch {
+	case len(path) > 1 && path[0] == "resource":
+		if v, ok := resource.Attributes().Get(strings.Join(path[1:], ".")); ok {
+			return v.AsString()
+		}
+		return ""
+	case len(path) > 2 && path[0] == "attributes":
+		if v, ok := record.Attributes().Get(strings.Join(path[1:], ".")); ok {
+			return v.AsString()
+		}
+	}
+	return p.getFieldValue(record, path)
 }
 
 // parseFieldPath splits a dotted field path into components
@@ -118,16 +143,17 @@ func (p *logsProcessor) Shutdown(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if len(p.buffers) > 0 {
-		logs := plog.NewLogs()
-		for _, entry := range p.buffers {
-			p.addEntryToLogs(logs, entry)
-		}
-		p.buffers = make(map[string]*bufferedEntry)
-		if logs.LogRecordCount() > 0 {
-			// Best effort flush on shutdown
-			_ = p.nextConsumer.ConsumeLogs(ctx, logs)
-		}
+	logs := plog.NewLogs()
+	for _, entry := range p.buffers {
+		p.addEntryToLogs(logs, entry)
+	}
+	p.buffers = make(map[string]*bufferedEntry)
+	if p.glue != nil {
+		p.flushAllGlue(logs)
+	}
+	if logs.LogRecordCount() > 0 {
+		// Best effort flush on shutdown
+		_ = p.nextConsumer.ConsumeLogs(ctx, logs)
 	}
 	return nil
 }
@@ -165,11 +191,6 @@ func (p *logsProcessor) flushStaleBuffers() {
 		}
 	}
 
-	if len(toFlush) == 0 {
-		p.mu.Unlock()
-		return
-	}
-
 	// Remove flushed entries
 	for _, key := range keysToDelete {
 		delete(p.buffers, key)
@@ -179,6 +200,9 @@ func (p *logsProcessor) flushStaleBuffers() {
 	logs := plog.NewLogs()
 	for _, entry := range toFlush {
 		p.addEntryToLogs(logs, entry)
+	}
+	if p.glue != nil {
+		p.flushStaleGlue(logs, now)
 	}
 
 	// Release lock before sending downstream (avoid deadlock)
@@ -224,6 +248,10 @@ func (p *logsProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 // - If message starts with timestamp pattern -> flush previous bucket, start new one
 // - Otherwise -> accumulate into existing bucket
 func (p *logsProcessor) processRecord(ctx context.Context, outputLogs plog.Logs, record plog.LogRecord, resource pcommon.Resource, scope pcommon.InstrumentationScope) {
+	if p.glue != nil {
+		p.processGlue(ctx, outputLogs, record, resource, scope)
+		return
+	}
 	now := time.Now()
 
 	if p.clean(record) {
@@ -239,7 +267,7 @@ func (p *logsProcessor) processRecord(ctx context.Context, outputLogs plog.Logs,
 	}
 
 	// Get the buffer key: the container when the record names one, else the source (PID)
-	sourceId := p.bufferKey(record)
+	sourceId := p.bufferKey(record, resource)
 	if sourceId == "" {
 		// No source identifier - pass through immediately
 		p.addRecordToLogs(outputLogs, record, resource, scope)

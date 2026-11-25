@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan pmkr
-
 package logshapeprocessor
 
 import (
@@ -23,14 +21,18 @@ var apClock = regexp.MustCompile(`^\[\*?\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}(?:\.
 // defaultAPDowngrade are the routine access point kernel messages the default list drops to INFO.
 var defaultAPDowngrade = []string{"pmkr0 lookup", "client roamed"}
 
+// apfFacility is the facility of the wireless controller events whose Body carries the client facts.
+const apfFacility = "APF"
+
 type ciscoBranch struct {
 	cfg       CiscoConfig
 	db        *cisco.PortLookup
 	downgrade []string
+	ssids     map[string]string
 }
 
-func newCiscoBranch(cfg CiscoConfig) (*ciscoBranch, error) {
-	b := &ciscoBranch{cfg: cfg, downgrade: defaultAPDowngrade}
+func newCiscoBranch(cfg CiscoConfig, wlanSSIDs map[string]string) (*ciscoBranch, error) {
+	b := &ciscoBranch{cfg: cfg, downgrade: defaultAPDowngrade, ssids: wlanSSIDs}
 	if len(cfg.AccessPointDowngrade) > 0 {
 		b.downgrade = make([]string, len(cfg.AccessPointDowngrade))
 		for i, s := range cfg.AccessPointDowngrade {
@@ -147,7 +149,7 @@ func (b *ciscoBranch) parse(r *rec) error {
 		b.setHostname(res, a)
 		b.interfaceName(a, src, hostname)
 		b.adjustSeverity(r.lr, a)
-		b.cleanBody(r.lr)
+		b.message(r, src)
 		return nil
 	}
 	if src == "" {
@@ -162,7 +164,7 @@ func (b *ciscoBranch) parse(r *rec) error {
 			res.PutStr(serviceKey, info.Facility)
 		}
 		if wlc := cisco.ParseWLCLog(src); wlc != nil {
-			b.wlc(r.lr, a, res, wlc)
+			b.wlc(r.lr, a, res, wlc, info.Facility)
 			return nil
 		}
 		b.setHostname(res, a)
@@ -171,7 +173,7 @@ func (b *ciscoBranch) parse(r *rec) error {
 		}
 		b.interfaceName(a, src, hostname)
 		b.adjustSeverity(r.lr, a)
-		b.cleanBody(r.lr)
+		b.message(r, src)
 		return nil
 	}
 	if info := ciscoHP(r, src); info != nil {
@@ -199,7 +201,7 @@ func (b *ciscoBranch) hp(lr plog.LogRecord, a, res pcommon.Map, info *cisco.HPLo
 	}
 }
 
-func (b *ciscoBranch) wlc(lr plog.LogRecord, a, res pcommon.Map, info *cisco.WLCLogInfo) {
+func (b *ciscoBranch) wlc(lr plog.LogRecord, a, res pcommon.Map, info *cisco.WLCLogInfo, facility string) {
 	b.setHostname(res, a)
 	putNonEmpty(a, "vstan.wifi.ap.name", info.APName)
 	putNonEmpty(a, "thread.name", info.ThreadName)
@@ -209,11 +211,31 @@ func (b *ciscoBranch) wlc(lr plog.LogRecord, a, res pcommon.Map, info *cisco.WLC
 	putNonEmpty(a, "vstan.wifi.radio", info.Radio)
 	putNonEmpty(a, "vstan.wifi.wlan.id", info.WLANId)
 	b.adjustSeverity(lr, a)
-	if b.cfg.RewriteMessages && info.CleanMessage != "" {
-		lr.Body().SetStr(info.CleanMessage)
+	message := info.CleanMessage
+	if facility == apfFacility {
+		message = b.apfFacts(a, info.Content)
+	}
+	if b.cfg.RewriteMessages && message != "" {
+		lr.Body().SetStr(message)
 	} else {
 		b.cleanBody(lr)
 	}
+}
+
+// apfFacts writes the client, AP, WLAN, SSID and radio facts of an APF event as attributes and returns
+// the Body: the event text followed by the facts present. The SSID of the message wins over wlan_ssids.
+func (b *ciscoBranch) apfFacts(a pcommon.Map, content string) string {
+	w := cisco.ParseWireless(content)
+	ssid := w.SSID
+	if ssid == "" && w.WLANID != "" {
+		ssid = b.ssids[w.WLANID]
+	}
+	putNonEmpty(a, "client.mac.address", w.ClientMAC)
+	putNonEmpty(a, "vstan.wifi.client.ap", w.APName)
+	putNonEmpty(a, "vstan.wifi.radio", w.Radio)
+	putNonEmpty(a, "vstan.wifi.wlan.id", w.WLANID)
+	putNonEmpty(a, "vstan.wifi.ssid", ssid)
+	return w.Body(ssid)
 }
 
 func (b *ciscoBranch) setHostname(res, a pcommon.Map) {
@@ -226,6 +248,23 @@ func (b *ciscoBranch) setHostname(res, a pcommon.Map) {
 	if peer, ok := a.Get(peerKey); ok {
 		res.PutStr(hostKey, peer.Str())
 	}
+}
+
+// message sets the body to what follows the sequence number, device clock and mnemonic of an IOS or
+// switch line, and keeps the raw line in log.record.original. Without rewriting, or without such a
+// prefix, only the syslog priority goes.
+func (b *ciscoBranch) message(r *rec, src string) {
+	if b.cfg.RewriteMessages {
+		if msg, ok := cisco.StripPrefix(src); ok {
+			a := r.lr.Attributes()
+			if _, has := a.Get(originalKey); !has {
+				a.PutStr(originalKey, src)
+			}
+			r.lr.Body().SetStr(msg)
+			return
+		}
+	}
+	b.cleanBody(r.lr)
 }
 
 func (b *ciscoBranch) cleanBody(lr plog.LogRecord) {

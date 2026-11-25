@@ -8,6 +8,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.164.1
 	github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
 	github.com/vladistan/otelcol-custom/processor/identityfillprocessor v0.0.0
+	github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
+	github.com/vladistan/otelcol-custom/processor/logshapeprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/sourcetagprocessor v0.0.0
 	go.opentelemetry.io/collector/component/componenttest v0.164.0
 	go.opentelemetry.io/collector/confmap v1.70.0
@@ -73,6 +75,14 @@ require (
 	github.com/twpayne/go-geom v1.6.1 // indirect
 	github.com/ua-parser/uap-go v0.0.0-20251207011819-db9adb27a0b8 // indirect
 	github.com/vladistan/otelcol-custom/processor/internal/probesample v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/body v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/httpaccess v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/k8slift v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/multiline v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/principal v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/rename v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/severity v0.0.0 // indirect
+	github.com/vladistan/otelcol-custom/shape/strip v0.0.0 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/collector/client v1.70.0 // indirect
@@ -116,4 +126,24 @@ replace github.com/vladistan/otelcol-custom/processor/identityfillprocessor => .
 
 replace github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
 
+replace github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
+
+replace github.com/vladistan/otelcol-custom/processor/logshapeprocessor => ../../processor/logshapeprocessor
+
 replace github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor
+
+replace github.com/vladistan/otelcol-custom/shape/body => ../../shape/body
+
+replace github.com/vladistan/otelcol-custom/shape/httpaccess => ../../shape/httpaccess
+
+replace github.com/vladistan/otelcol-custom/shape/k8slift => ../../shape/k8slift
+
+replace github.com/vladistan/otelcol-custom/shape/multiline => ../../shape/multiline
+
+replace github.com/vladistan/otelcol-custom/shape/principal => ../../shape/principal
+
+replace github.com/vladistan/otelcol-custom/shape/rename => ../../shape/rename
+
+replace github.com/vladistan/otelcol-custom/shape/severity => ../../shape/severity
+
+replace github.com/vladistan/otelcol-custom/shape/strip => ../../shape/strip

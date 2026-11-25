@@ -37,7 +37,7 @@ spec:
     spec:
       containers:
         - name: otelcol-scrape
-          image: ghcr.io/vladistan/otelcol-scrape:v0.3.18
+          image: ghcr.io/vladistan/otelcol-scrape:v0.3.19
           args: ["--config", "/etc/otel/config.yaml"]
           securityContext:
             runAsNonRoot: true

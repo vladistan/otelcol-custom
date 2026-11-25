@@ -3,8 +3,6 @@
 
 package inventoryreceiver
 
-// cspell:ignore EVNX Liant
-
 import (
 	"strings"
 	"testing"

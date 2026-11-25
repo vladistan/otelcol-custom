@@ -3,8 +3,6 @@
 
 package inventoryreceiver
 
-// cspell:ignore GXNX QGXA
-
 import (
 	"context"
 	"fmt"

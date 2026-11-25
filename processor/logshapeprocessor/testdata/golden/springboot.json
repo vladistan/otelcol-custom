@@ -1,0 +1,51 @@
+[
+  {
+    "body": "[Example] Started in 2.1 seconds",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "Example",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:13.666Z  INFO 1 --- [worker] Example                    : Started in 2.1 seconds",
+      "process.pid": 1,
+      "thread.name": "worker"
+    }
+  },
+  {
+    "body": "[c.e.demo.Service] Cache is cold",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "c.e.demo.Service",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22 14:38:13.666  WARN 4242 --- [main] c.e.demo.Service : Cache is cold",
+      "process.pid": 4242,
+      "thread.name": "main"
+    }
+  },
+  {
+    "body": "[c.e.demo.Controller] Request failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "c.e.demo.Controller",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:13.666+01:00 ERROR 7 --- [demo-app] [nio-8080-exec-1] c.e.demo.Controller : Request failed",
+      "process.pid": 7,
+      "thread.name": "nio-8080-exec-1",
+      "vstan.springboot.application": "demo-app"
+    }
+  },
+  {
+    "body": "[c.e.demo.Poller] tick",
+    "severity": 5,
+    "severity_text": "DEBUG",
+    "scope": "c.e.demo.Poller",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:14.001Z DEBUG 1 --- [   scheduling-1] c.e.demo.Poller                          : tick",
+      "process.pid": 1,
+      "thread.name": "scheduling-1"
+    }
+  }
+]

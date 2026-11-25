@@ -37,6 +37,7 @@ type WLCLogInfo struct {
 	Radio        string // 2.4GHz, 5GHz
 	WLANId       string // 1 (WLAN ID)
 	CleanMessage string // Cleaned message without extracted fields
+	Content      string // Message after the mnemonic and the code location, fields included
 }
 
 // Cisco mnemonic pattern: %FACILITY-SEVERITY-MNEMONIC:
@@ -71,6 +72,24 @@ var wlcClientMACRegex = regexp.MustCompile(`Client MAC:\s*([a-fA-F0-9:]+)`)
 
 // Syslog priority pattern at start of body: <digits>
 var priorityRegex = regexp.MustCompile(`^<\d+>\s*`)
+
+// ciscoPrefixRegex is what IOS and switch lines put before the message, each part optional: a syslog
+// priority, a sequence number, a device clock (with an optional marker, year, zone and colon) and the mnemonic.
+var ciscoPrefixRegex = regexp.MustCompile(
+	`^\s*(?:<\d+>\s*)?(?:\d+:\s+)?(?:[*.]?[A-Z][a-z]{2}\s+\d{1,2}(?:\s+\d{4})?\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s+[A-Za-z]{2,5})?:?\s+)?` +
+		`%[A-Z][A-Z0-9_]*-[0-7A-Z]-[A-Z0-9_]+:\s*(.*)$`)
+
+// StripPrefix returns the message of an IOS or switch line without its sequence number, device clock and
+// %FACILITY-SEV-MNEMONIC: prefix. It reports false when the line does not start with that prefix or has no
+// message after it.
+func StripPrefix(text string) (string, bool) {
+	m := ciscoPrefixRegex.FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	msg := strings.TrimSpace(m[1])
+	return msg, msg != ""
+}
 
 // ParseCiscoMnemonic finds a Cisco %FACILITY-SEV-MNEMONIC: pattern anywhere in the text.
 // Returns nil if no valid Cisco mnemonic is found.
@@ -197,6 +216,7 @@ func ParseWLCLog(text string) *WLCLogInfo {
 		info.CodeLineno = codeMatch[2]
 		content = codeMatch[3]
 	}
+	info.Content = content
 
 	// Extract WiFi-specific fields from content
 	if match := wlcAPNameRegex.FindStringSubmatch(content); match != nil {

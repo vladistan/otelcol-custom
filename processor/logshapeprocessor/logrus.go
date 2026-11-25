@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import (
@@ -98,6 +96,9 @@ func (b *logrusBranch) parse(r *rec) error {
 	putFields(a, info.Fields)
 	if info.Logger != "" {
 		r.scope.SetName(info.Logger)
+	}
+	if info.Service != "" {
+		r.res.Attributes().PutStr("service.name", info.Service)
 	}
 
 	if b.cfg.AdjustSeverity {

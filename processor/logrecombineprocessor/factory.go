@@ -38,6 +38,7 @@ func createDefaultConfig() component.Config {
 		MaxSources:          1000,
 		StripANSI:           true,
 		DropBlank:           true,
+		MaxTextSize:         64 * 1024,
 	}
 }
 

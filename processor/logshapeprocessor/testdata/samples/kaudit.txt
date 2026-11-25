@@ -1,4 +1,4 @@
 # provenance: invented
 # evidence: written from the format description, not a capture
-audit: type=1400 audit(1795129202.123:456): apparmor="ALLOWED" operation="file_perm" class="net" profile="snap.amazon-ssm-agent.amazon-ssm-agent" pid=1234 comm="agent" requested="send" addr=3.78.202.199 port=443
+audit: type=1400 audit(1795129202.123:456): apparmor="ALLOWED" operation="file_perm" class="net" profile="snap.amazon-ssm-agent.amazon-ssm-agent" pid=1234 comm="agent" requested="send" addr=203.0.113.10 port=443
 audit: type=1400 audit(1795129202.123:457): apparmor="DENIED" operation="open" profile="docker-default" requested="r"

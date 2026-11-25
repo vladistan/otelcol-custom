@@ -3,8 +3,6 @@
 
 package inventoryreceiver
 
-// cspell:ignore BSER CSER
-
 import (
 	"encoding/binary"
 	"math/rand"

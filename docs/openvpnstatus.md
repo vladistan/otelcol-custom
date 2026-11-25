@@ -1,4 +1,3 @@
-<!-- cspell:ignore vstan -->
 
 # OpenVPN status receiver
 

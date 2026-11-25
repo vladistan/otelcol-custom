@@ -9,7 +9,7 @@ import (
 )
 
 func TestParseNginx_CombinedWithForwardedFor(t *testing.T) {
-	const line = `35.191.119.180 - - [20/Nov/2026:00:26:38 +0000] "POST /api/7/envelope/ HTTP/1.1" 200 41 "-" "sentry.python/2.35.0" "63.180.51.163, 34.117.68.0"`
+	const line = `198.51.100.40 - - [20/Nov/2026:00:26:38 +0000] "POST /api/7/envelope/ HTTP/1.1" 200 41 "-" "sentry.python/2.35.0" "198.51.100.50, 203.0.113.40"`
 	e, ok := ParseNginx(line)
 	if !ok {
 		t.Fatal("not parsed")
@@ -17,7 +17,7 @@ func TestParseNginx_CombinedWithForwardedFor(t *testing.T) {
 	if e.Method != "POST" || e.Path != "/api/7/envelope/" || e.Status != 200 || e.SizeBytes != 41 || e.UserAgent != "sentry.python/2.35.0" {
 		t.Fatalf("got %+v", e)
 	}
-	if e.ClientAddress != "63.180.51.163" || e.PeerAddress != "35.191.119.180" {
+	if e.ClientAddress != "198.51.100.50" || e.PeerAddress != "198.51.100.40" {
 		t.Fatalf("client %q peer %q", e.ClientAddress, e.PeerAddress)
 	}
 	want := time.Date(2026, 11, 20, 0, 26, 38, 0, time.UTC)
@@ -103,15 +103,15 @@ func TestParseUvicorn_Line(t *testing.T) {
 
 func TestFirstForwarded_TakesTheFirstEntry(t *testing.T) {
 	for in, want := range map[string]string{
-		"63.180.51.163, 34.117.68.0": "63.180.51.163",
-		"63.180.51.163":              "63.180.51.163",
-		"-":                          "",
-		"":                           "",
-		" 1.2.3.4 ,5.6.7.8":          "1.2.3.4",
-		"unknown, 1.2.3.4":           "",
-		"192.0.2.84:46331":           "192.0.2.84",
-		"[2001:db8::1]:443, 1.2.3.4": "2001:db8::1",
-		"2001:db8::1":                "2001:db8::1",
+		"198.51.100.50, 203.0.113.40": "198.51.100.50",
+		"198.51.100.50":               "198.51.100.50",
+		"-":                           "",
+		"":                            "",
+		" 1.2.3.4 ,5.6.7.8":           "1.2.3.4",
+		"unknown, 1.2.3.4":            "",
+		"192.0.2.84:46331":            "192.0.2.84",
+		"[2001:db8::1]:443, 1.2.3.4":  "2001:db8::1",
+		"2001:db8::1":                 "2001:db8::1",
 	} {
 		if got := FirstForwarded(in); got != want {
 			t.Errorf("FirstForwarded(%q) = %q, want %q", in, got, want)

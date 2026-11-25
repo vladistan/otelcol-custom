@@ -3,8 +3,6 @@
 
 package inventoryreceiver
 
-// cspell:ignore BSER QEXE WSER
-
 import (
 	"context"
 	"encoding/binary"

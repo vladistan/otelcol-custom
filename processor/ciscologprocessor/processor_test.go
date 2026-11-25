@@ -456,7 +456,7 @@ func TestLogsProcessor_InterfaceExtraction(t *testing.T) {
 	rl := logs.ResourceLogs().AppendEmpty()
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
-	lr.Attributes().PutStr("original_message", "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43")
+	lr.Attributes().PutStr("original_message", "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43")
 	lr.Body().SetStr("Host flapping between ports")
 
 	err := processor.ConsumeLogs(context.Background(), logs)
@@ -506,9 +506,9 @@ func TestLogsProcessor_WLCLog(t *testing.T) {
 	rl := logs.ResourceLogs().AppendEmpty()
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
-	lr.Attributes().PutStr("original_message", "DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.")
+	lr.Attributes().PutStr("original_message", "DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.")
 	lr.Attributes().PutStr("net.peer.name", "wifi-ap.home.example.com")
-	lr.Body().SetStr("DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.")
+	lr.Body().SetStr("DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.")
 
 	err := processor.ConsumeLogs(context.Background(), logs)
 	require.NoError(t, err)

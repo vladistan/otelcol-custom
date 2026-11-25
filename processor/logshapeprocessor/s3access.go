@@ -21,7 +21,7 @@ func newS3AccessBranch(aliases map[string]string) *s3AccessBranch {
 
 func (*s3AccessBranch) name() string { return "s3access" }
 
-func (*s3AccessBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "aws.s3access" }
+func (*s3AccessBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "s3access" }
 
 func (b *s3AccessBranch) parse(r *rec) error {
 	a, res := r.lr.Attributes(), r.res.Attributes()

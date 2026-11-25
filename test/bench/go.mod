@@ -8,6 +8,7 @@ require (
 	github.com/vladistan/otelcol-custom/processor/ciscologprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/journaldprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/klogprocessor v0.0.0
+	github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/logruslogprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/logshapeprocessor v0.0.0
 	github.com/vladistan/otelcol-custom/processor/postgreslogprocessor v0.0.0
@@ -139,6 +140,8 @@ replace github.com/vladistan/otelcol-custom/processor/tightvncprocessor => ../..
 replace github.com/vladistan/otelcol-custom/processor/ciscologprocessor => ../../processor/ciscologprocessor
 
 replace github.com/vladistan/otelcol-custom/processor/klogprocessor => ../../processor/klogprocessor
+
+replace github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
 
 replace github.com/vladistan/otelcol-custom/processor/logruslogprocessor => ../../processor/logruslogprocessor
 

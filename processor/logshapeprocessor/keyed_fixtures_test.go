@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore awselb eksaudit gcplb gcpaudit serialconsole stderrhint s3access
-
 package logshapeprocessor
 
 import (
@@ -12,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -338,10 +337,13 @@ func TestKeyedFixtures_IntegerAttributesAreIntegersAndNoDeprecatedNameIsWritten(
 // documentationIDs are the account numbers AWS uses in its documentation. They are not accounts of ours.
 var documentationIDs = strings.NewReplacer("111122223333", "ACCOUNT", "123456789012", "ACCOUNT")
 
+// shaDigests are image layer digests, which are public hashes and not secrets.
+var shaDigests = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
+
 func TestKeyedFixtures_ScrubCheckFindsNoHostAccountOrSecret(t *testing.T) {
 	for file, records := range loadKeyedSamples(t) {
 		for i, s := range records {
-			text := documentationIDs.Replace(s.line)
+			text := shaDigests.ReplaceAllString(documentationIDs.Replace(s.line), "sha256:DIGEST")
 			for what, re := range scrub {
 				if re.MatchString(text) {
 					t.Errorf("%s.jsonl record %d holds a %s: %s", file, i+1, what, s.line)

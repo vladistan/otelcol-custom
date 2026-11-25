@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore slift
-
 // Package k8slift moves Kubernetes names from a record into its resource and reads pod status and object event lines.
 package k8slift
 
@@ -109,6 +107,7 @@ type eventJSON struct {
 	} `json:"involvedObject"`
 	Reason  string `json:"reason"`
 	Message string `json:"message"`
+	Note    string `json:"note"`
 	Type    string `json:"type"`
 	Source  struct {
 		Host string `json:"host"`
@@ -128,9 +127,13 @@ func ParseObjectEvent(doc string) (ObjectEvent, bool) {
 	if e.Reason == "" && e.InvolvedObject.Kind == "" {
 		return ObjectEvent{}, false
 	}
+	message := e.Note // the note of the newer event form wins over the message of the old one
+	if message == "" {
+		message = e.Message
+	}
 	return ObjectEvent{
 		Kind: e.InvolvedObject.Kind, Name: e.InvolvedObject.Name, Namespace: e.InvolvedObject.Namespace,
-		Reason: e.Reason, Message: e.Message, Type: e.Type, Host: e.Source.Host,
+		Reason: e.Reason, Message: message, Type: e.Type, Host: e.Source.Host,
 	}, true
 }
 

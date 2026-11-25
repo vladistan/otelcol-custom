@@ -11,7 +11,7 @@ import (
 
 func s3accessAttrs(over map[string]any) map[string]any {
 	a := map[string]any{
-		"log.source":                "aws.s3access",
+		"log.source":                "s3access",
 		"rpc.method":                "BATCH.DELETE.OBJECT",
 		"aws.s3.key":                ".chunks/ab/abcdef",
 		"http.response.status_code": int64(204),
@@ -168,7 +168,7 @@ func TestConsume_S3Access_NoPrincipalNoBucket_NoHostOrService(t *testing.T) {
 }
 
 func TestConsume_S3Access_ExistingBodyNothingToBuild_Kept(t *testing.T) {
-	lr, _ := s3accessRun(t, s3accessConfig(), input{body: "raw s3 line", attrs: map[string]any{"log.source": "aws.s3access"}})
+	lr, _ := s3accessRun(t, s3accessConfig(), input{body: "raw s3 line", attrs: map[string]any{"log.source": "s3access"}})
 	if got := lr.Body().Str(); got != "raw s3 line" {
 		t.Fatalf("body = %q", got)
 	}

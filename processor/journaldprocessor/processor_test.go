@@ -402,6 +402,25 @@ func assertAttr(t *testing.T, res pcommon.Map, key, want string) {
 	}
 }
 
+// A record that a shaping step already rewrote keeps its journal fields in the map, so the
+// resource and process attributes still come from it and the body becomes the shaped text.
+func TestShapedMap_ResourceAndProcessFieldsStillComeFromTheMap(t *testing.T) {
+	body := journalBody(t)
+	delete(body, "PRIORITY")
+	body["MESSAGE"] = "Accepted publickey for deploy"
+	ld, _ := oneRecord(t, body)
+
+	res, rec := onlyRecord(t, run(t, defaultConfig(), ld))
+
+	assertAttr(t, res, "host.name", "host-a.example.com")
+	assertAttr(t, res, "host.id", "00000000000000000000000000000a01")
+	assertAttr(t, res, "process.pid", "1201")
+	assertAttr(t, res, "process.command", "sshd")
+	if rec.Body().Str() != "Accepted publickey for deploy" {
+		t.Errorf("body = %v", rec.Body().AsRaw())
+	}
+}
+
 func TestNoOverwrite_ServiceNameFromTheEdgeIsKept(t *testing.T) {
 	body := journalBody(t)
 	body["_SYSTEMD_UNIT"] = "docker.service"

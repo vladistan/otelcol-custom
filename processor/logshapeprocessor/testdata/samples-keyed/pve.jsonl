@@ -1,7 +1,6 @@
 # provenance: invented
 # One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
 # basis: the result lines (warnings, job errors, broken pipe) and the progress line of the third record are quoted in the collected samples; the first line of each body and every other line is written from the format. A body counts as real only when every line is quoted, so none does.
-# cspell:ignore UPID vzdump qmstart Exim vstan
 {"provenance": "invented", "body": "INFO: starting new backup job: vzdump 100 --mode snapshot\nINFO:  17% (14.9 GiB of 87.8 GiB) in 54s, read: 126.3 MiB/s, write: 125.7 MiB/s\nTASK WARNINGS: 1", "attributes": {"log.file.path": "/var/log/pve/tasks/A/UPID:node1:00001A2B:0C0D0E0F:65F1A2B3:65F1A2C0:vzdump::root@pam:"}, "resource": {}}
 {"provenance": "invented", "body": "INFO: starting new backup job: vzdump 100 --mode snapshot\nINFO:  17% (14.9 GiB of 87.8 GiB) in 54s, read: 126.3 MiB/s, write: 125.7 MiB/s\nTASK ERROR: job errors", "attributes": {"log.file.path": "/var/log/pve/tasks/A/UPID:node1:00001A2B:0C0D0E0F:65F1A2B3:65F1A2C0:vzdump::root@pam:"}, "resource": {}}
 {"provenance": "invented", "body": "INFO: starting new backup job: vzdump 100 --mode snapshot\nINFO:  17% (14.9 GiB of 87.8 GiB) in 54s, read: 126.3 MiB/s, write: 125.7 MiB/s\nTASK ERROR: broken pipe", "attributes": {"log.file.path": "/var/log/pve/tasks/A/UPID:node1:00001A2B:0C0D0E0F:65F1A2B3:65F1A2C0:vzdump::root@pam:"}, "resource": {}}

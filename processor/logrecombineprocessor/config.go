@@ -5,6 +5,8 @@ package logrecombineprocessor
 
 import (
 	"errors"
+	"fmt"
+	"regexp"
 	"time"
 
 	"go.opentelemetry.io/collector/component"
@@ -72,6 +74,35 @@ type Config struct {
 	// ANSI codes, written as text or as escapes (a bare "\r\n" record).
 	// Default: true
 	DropBlank bool `mapstructure:"drop_blank"`
+
+	// RequireAttribute turns on gluing of wrapped console fragments (see glue.go). It names a
+	// record attribute, set to true as a bool or as the text "true", that marks the records to
+	// glue. A record without it passes through untouched and neither ends nor joins a sequence.
+	// SourceIdentifier then names the node: "resource.<name>" reads a resource attribute and
+	// "attributes.<name>" a record attribute whose name may hold dots.
+	// Default: "" (off)
+	RequireAttribute string `mapstructure:"require_attribute"`
+
+	// NeverGluePatterns are regexes on the text. A record that matches one is a standalone line:
+	// it ends the open sequence of its node and is passed on alone. Glue mode only.
+	NeverGluePatterns []string `mapstructure:"never_glue_patterns"`
+
+	// EmptyPatterns are regexes on the text. A record that matches one (or has no text) ends the
+	// open sequence of its node and is dropped, after the glue. Glue mode only.
+	EmptyPatterns []string `mapstructure:"empty_patterns"`
+
+	// MinPreviousLength is the length a fragment must reach for the next record to continue it.
+	// A wrapped line breaks at a width, so a short fragment is the last one of its line.
+	// Glue mode only. Default: 0 (any untagged record continues an open sequence)
+	MinPreviousLength int `mapstructure:"min_previous_length"`
+
+	// FragmentSuffix is the end the console puts on every fragment. The glue removes it from
+	// every fragment but the last. Glue mode only. Default: "" (nothing removed)
+	FragmentSuffix string `mapstructure:"fragment_suffix"`
+
+	// MaxTextSize is the size in bytes at which a glued sequence is passed on. Glue mode only.
+	// Default: 65536
+	MaxTextSize int `mapstructure:"max_text_size"`
 }
 
 var _ component.Config = (*Config)(nil)
@@ -98,6 +129,29 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxSources <= 0 {
 		return errors.New("max_sources must be positive")
+	}
+	return cfg.validateGlue()
+}
+
+func (cfg *Config) validateGlue() error {
+	if cfg.RequireAttribute == "" {
+		if len(cfg.NeverGluePatterns) > 0 || len(cfg.EmptyPatterns) > 0 || cfg.MinPreviousLength != 0 || cfg.FragmentSuffix != "" {
+			return errors.New("never_glue_patterns, empty_patterns, min_previous_length and fragment_suffix need require_attribute")
+		}
+		return nil
+	}
+	if cfg.MinPreviousLength < 0 {
+		return errors.New("min_previous_length must not be negative")
+	}
+	if cfg.MaxTextSize <= 0 {
+		return errors.New("max_text_size must be positive")
+	}
+	for name, list := range map[string][]string{"never_glue_patterns": cfg.NeverGluePatterns, "empty_patterns": cfg.EmptyPatterns} {
+		for i, expr := range list {
+			if _, err := regexp.Compile(expr); err != nil {
+				return fmt.Errorf("%s[%d]: %w", name, i, err)
+			}
+		}
 	}
 	return nil
 }

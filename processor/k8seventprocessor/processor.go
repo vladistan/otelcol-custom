@@ -333,7 +333,7 @@ func (p *k8sEventProcessor) processPodObject(lr plog.LogRecord, object pcommon.M
 	}
 
 	// Build human-readable message for Pod
-	// Example: "Pod opentelemetry/otel-main-0: Running (1/1 ready, 0 restarts) on k8s-4"
+	// Example: "Pod opentelemetry/otel-main-0: Running (1/1 ready, 0 restarts) on node-4"
 	if p.config.RewriteMessages && podName != "" {
 		var message string
 		if podNamespace != "" {

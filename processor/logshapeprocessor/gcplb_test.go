@@ -12,7 +12,7 @@ import (
 
 func gcplbAttrs(over map[string]any) map[string]any {
 	a := map[string]any{
-		"log.source":                        "gcp.lb",
+		"log.source":                        "lb",
 		"http.request.method":               "get",
 		"url.domain":                        "grafana.admin.example.invalid",
 		"url.path":                          "/api/live/ws",
@@ -149,7 +149,7 @@ func TestConsume_GCPLB_ProjectFromAccountIDWhenNoLabel_HostSet(t *testing.T) {
 }
 
 func TestConsume_GCPLB_OnlyBackendAndMethod_NonEmptyBody(t *testing.T) {
-	attrs := map[string]any{"log.source": "gcp.lb", "http.request.method": "POST"}
+	attrs := map[string]any{"log.source": "lb", "http.request.method": "POST"}
 	lr, _ := gcplbRun(t, defaultConfig(), input{attrs: attrs})
 	if lr.Body().Str() != "POST" {
 		t.Fatalf("body = %q", lr.Body().Str())
@@ -174,7 +174,7 @@ func TestConsume_GCPLB_NoLogSource_Unmatched(t *testing.T) {
 }
 
 func TestConsume_GCPLB_OtherSource_Unmatched(t *testing.T) {
-	lr, res := gcplbRun(t, defaultConfig(), input{attrs: gcplbAttrs(map[string]any{"log.source": "gcp.audit"}), resource: gcplbResource()})
+	lr, res := gcplbRun(t, defaultConfig(), input{attrs: gcplbAttrs(map[string]any{"log.source": "gcp.cloudrun"}), resource: gcplbResource()})
 	if lr.Body().Str() != "" {
 		t.Fatalf("body = %q", lr.Body().Str())
 	}
@@ -262,14 +262,13 @@ func TestConsume_GCPLB_AliasedProject_HostIsAliasAndAccountNameSet(t *testing.T)
 	}
 }
 
-func TestConsume_GCPLB_UnmappedProject_HostIsRawIDNoAccountName(t *testing.T) {
+func TestConsume_GCPLB_UnmappedProject_HostAndAccountNameAreTheRawID(t *testing.T) {
 	cfg := gcplbOnly(nil)
 	cfg.AccountAliases = map[string]string{"another-project": "test-ops"}
 	_, res := gcplbRun(t, cfg, input{attrs: gcplbAttrs(nil), resource: gcplbResource()})
-	if res["host.name"] != "example-project" {
+	if res["host.name"] != "example-project" || res["cloud.account.name"] != "example-project" {
 		t.Fatalf("resource = %v", res)
 	}
-	absent(t, mapOf(t, res), "cloud.account.name")
 }
 
 func TestConsume_GCPLB_NoProjectAttribute_NoHostNoAccountName(t *testing.T) {

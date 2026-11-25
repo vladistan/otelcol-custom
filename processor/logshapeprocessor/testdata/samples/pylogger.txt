@@ -1,0 +1,3 @@
+# provenance: real
+# evidence: a line of a Python service that exports OpenTelemetry metrics, read from the lab log store on 2026-11-22; the service and host names are left out. The record had an empty severity and an empty scope name. Traceback lines are not in the sample because only a header line is claimed
+ERROR:opentelemetry.sdk.metrics._internal.export:Exception while exporting metrics

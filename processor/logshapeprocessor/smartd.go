@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import (
@@ -43,7 +41,7 @@ func (*smartdBranch) parse(r *rec) error {
 		level = wordLevel("warn")
 	}
 	a := r.lr.Attributes()
-	a.PutStr("log.record.original", r.body)
+	keepOriginal(a, r.body)
 	a.PutStr("vstan.smartd.device", m[1])
 	applyLevel(r.lr, level)
 	return nil

@@ -15,6 +15,7 @@ const (
 	scopeName         = "github.com/vladistan/otelcol-custom/processor/logshapeprocessor"
 	unmatchedMetric   = "otelcol_logshape_unmatched"
 	parseFailedMetric = "otelcol_logshape_parse_failed"
+	sampledOutMetric  = "otelcol_logshape_sampled_out"
 	sourceAttr        = "source"
 	formatAttr        = "format"
 )
@@ -22,6 +23,7 @@ const (
 type telemetry struct {
 	unmatched   metric.Int64Counter
 	parseFailed metric.Int64Counter
+	sampledOut  metric.Int64Counter
 }
 
 func newTelemetry(ts component.TelemetrySettings) (*telemetry, error) {
@@ -38,15 +40,24 @@ func newTelemetry(ts component.TelemetrySettings) (*telemetry, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &telemetry{unmatched: unmatched, parseFailed: parseFailed}, nil
+	sampledOut, err := meter.Int64Counter(sampledOutMetric,
+		metric.WithDescription("Log records a parser sampled out and dropped, per format."),
+		metric.WithUnit("{record}"))
+	if err != nil {
+		return nil, err
+	}
+	return &telemetry{unmatched: unmatched, parseFailed: parseFailed, sampledOut: sampledOut}, nil
 }
 
 // flush adds the counts of one batch with one Add per label value.
-func (t *telemetry) flush(ctx context.Context, unmatched, parseFailed map[string]int64) {
+func (t *telemetry) flush(ctx context.Context, unmatched, parseFailed, sampledOut map[string]int64) {
 	for source, n := range unmatched {
 		t.unmatched.Add(ctx, n, metric.WithAttributes(attribute.String(sourceAttr, source)))
 	}
 	for format, n := range parseFailed {
 		t.parseFailed.Add(ctx, n, metric.WithAttributes(attribute.String(formatAttr, format)))
+	}
+	for format, n := range sampledOut {
+		t.sampledOut.Add(ctx, n, metric.WithAttributes(attribute.String(formatAttr, format)))
 	}
 }

@@ -150,7 +150,7 @@ func (s *otlpSink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if v, ok := rec.log.Attributes().Get(eventIDKey); ok {
 			ids = append(ids, v.Str())
 		}
-		if v, ok := rec.log.Attributes().Get("log.source"); !ok || v.Str() != "aws.cloudtrail" {
+		if v, ok := rec.log.Attributes().Get("log.source"); !ok || v.Str() != "cloudtrail" {
 			s.badSource++
 		}
 	}
@@ -354,7 +354,7 @@ func TestRestartDurability(t *testing.T) {
 	waitFor(t, "all records after the sink returned", 120*time.Second,
 		func() bool { return s.sink.count(s.sink.delivered) == total })
 	if n := s.sink.badSourceCount(); n != 0 {
-		t.Fatalf("%d records lacked log.source=aws.cloudtrail", n)
+		t.Fatalf("%d records lacked log.source=cloudtrail", n)
 	}
 
 	var scan strings.Builder

@@ -12,13 +12,13 @@ log_statements:
         where attributes["cloud.account.id"] == nil and attributes["gcp.project"] != nil
   - context: log
     statements:
-      - set(attributes["log.source"], "gcp.audit") where IsMatch(resource.attributes["cloud.resource_id"], "^cloudaudit")
+      - set(attributes["log.source"], "audit") where IsMatch(resource.attributes["cloud.resource_id"], "^cloudaudit")
       - |-
         set(attributes["log.source"], "gcp.cloudrun")
         where attributes["log.source"] == nil and resource.attributes["gcp.resource_type"] == "cloud_run_revision"
       - |-
-        set(attributes["log.source"], "gcp.lb")
+        set(attributes["log.source"], "lb")
         where attributes["log.source"] == nil and IsMatch(resource.attributes["gcp.resource_type"], "^(http_load_balancer|l7_lb_rule|https_lb_rule)$")
-      - set(attributes["event.category"], "audit") where attributes["log.source"] == "gcp.audit"
-      - set(attributes["event.category"], "access") where attributes["log.source"] == "gcp.lb"
+      - set(attributes["event.category"], "audit") where attributes["log.source"] == "audit"
+      - set(attributes["event.category"], "access") where attributes["log.source"] == "lb"
       - set(attributes["event.category"], "application") where attributes["log.source"] == "gcp.cloudrun"

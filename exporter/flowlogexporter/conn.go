@@ -69,6 +69,14 @@ type errAppend struct{ err error }
 func (e errAppend) Error() string { return "append: " + e.err.Error() }
 func (e errAppend) Unwrap() error { return e.err }
 
+// isConnError reports whether the error did not come from the server or from Append: a dead,
+// reset or timed-out connection. A ClickHouse exception, code 202 included, keeps the connection.
+func isConnError(err error) bool {
+	var app errAppend
+	var ex *clickhouse.Exception
+	return !errors.As(err, &app) && !errors.As(err, &ex)
+}
+
 // isSchemaError reports whether the error says the rows can never fit the table.
 func isSchemaError(err error) bool {
 	var app errAppend

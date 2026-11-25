@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore dpanic eror NOERROR NXDOMAIN
-
 package severity
 
 import "testing"

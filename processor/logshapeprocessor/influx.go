@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore vstan
-
 import (
 	"errors"
 	"strings"

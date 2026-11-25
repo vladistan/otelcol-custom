@@ -1,4 +1,3 @@
-# cspell:ignore awselb gcpaudit
 # Reference config for otelcol-scrape.
 # Placeholders only: every credential and endpoint comes from ${env:...}.
 # Deploy only the sources whose Secret exists, with their pipelines;
@@ -200,6 +199,34 @@ processors:
   # empty, so the identity the gcpaudit branch has set stays. AWS and Azure records carry none
   # of the attributes it reads.
   identityfill: {}
+  # Glues the wrapped fragments of a GCE serial console line into one record, before logshape
+  # shapes the line. The console wraps a long line at a width and every fragment ends like a whole
+  # line, so the rules read the text: a record continues the open sequence of its node when it is
+  # not a first entry, not a standalone line (kernel, colour-coded console, ssh, syslog, hex dump)
+  # and the fragment before it reached 515 characters. The end of a fragment, the four characters
+  # backslash, r, backslash and n, is removed from every fragment but the last. A line that holds
+  # only that end is dropped after the glue. A record without the escaped-text label passes
+  # untouched. Patterns are Go regexes on the escaped text.
+  logrecombine/serial:
+    combine_field: body
+    source_identifier: resource.gcp.label.instance_id
+    container_identifier: ""
+    require_attribute: gcp.label.is_text_escaped
+    is_first_entry_pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+\+0000 [^ ]+ [^ ]+\[[0-9]+\]:'
+    empty_patterns:
+      - '^\\r\\n$'
+    never_glue_patterns:
+      - '^\[ *[0-9]+\.[0-9]+\]'
+      - '\\x1b'
+      - '^ *(Stopping|Starting|Unmounting|Mounting|Started|Stopped|Reached|Finished) '
+      - '^(ssh-(rsa|ed25519)|ecdsa-sha2-|-----(BEGIN|END) )'
+      - '^<[0-9]+>[A-Z][a-z]{2} '
+      - '^[0-9A-F]{4}: '
+    min_previous_length: 515
+    fragment_suffix: '\r\n'
+    max_text_size: 65536
+    gap_timeout: 2s
+    max_timeout: 10s
   # Shapes the cloud records into one-line bodies with official attribute names. It runs after
   # sourcetag, which sets the log.source the branches claim by. A list of account ids to names
   # (documentation values here; the deployed config carries the real map) names the account of
@@ -219,7 +246,7 @@ processors:
   attributes/gcplb:
     actions:
       - key: log.source
-        value: gcp.lb
+        value: lb
         action: upsert
   # The cloud.* resource attributes of the second load balancer path, which its entries lack.
   # The image has no resource processor, so transform sets them, only where they are missing.
@@ -273,9 +300,9 @@ service:
       exporters: [otlp_http]
     logs/gcp:
       receivers: [googlecloudpubsub/cloudrun, googlecloudpubsub/audit]
-      processors: [memory_limiter, sourcetag/gcp, logshape/gcp, identityfill, resource_detection, batch]
+      processors: [memory_limiter, logrecombine/serial, sourcetag/gcp, logshape/gcp, identityfill, resource_detection, batch]
       exporters: [otlp_http]
-    # Second GCP load balancer path: log.source=gcp.lb and the cloud.* resource attributes are set
+    # Second GCP load balancer path: log.source=lb and the cloud.* resource attributes are set
     # here; the processor has no rule for them.
     logs/gcp-lb:
       receivers: [googlecloudpubsub/lb]

@@ -1,5 +1,41 @@
 [
   {
+    "body": "autoscaler nodes 3/5",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":3,\"autoscaledNodesTarget\":5,\"clusterWide\":{\"health\":{\"status\":\"Healthy\",\"nodeCounts\":{\"registered\":{\"total\":3,\"ready\":3}}},\"scaleUp\":{\"status\":\"InProgress\"}}}}",
+      "vstan.autoscaler.nodes": 3,
+      "vstan.autoscaler.target": 5
+    }
+  },
+  {
+    "body": "autoscaler nodes 12/8",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":12,\"autoscaledNodesTarget\":8,\"clusterWide\":{\"health\":{\"status\":\"Healthy\"},\"scaleDown\":{\"status\":\"CandidatesPresent\"}}}}",
+      "vstan.autoscaler.nodes": 12,
+      "vstan.autoscaler.target": 8
+    }
+  },
+  {
+    "body": "autoscaler nodes 0/1",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":0,\"autoscaledNodesTarget\":1}}",
+      "vstan.autoscaler.nodes": 0,
+      "vstan.autoscaler.target": 1
+    }
+  },
+  {
     "body": "Summarising 4 dataplane reconciliation loops",
     "severity": 9,
     "severity_text": "INFO",
@@ -349,19 +385,6 @@
     }
   },
   {
-    "body": "started",
-    "severity": 9,
-    "severity_text": "INFO",
-    "scope": "",
-    "resource": {},
-    "attributes": {
-      "code.file.path": "main.go",
-      "code.line.number": 10,
-      "log.record.original": "{\"level\":\"info\",\"ts\":1795129202.123,\"caller\":\"main.go:10\",\"msg\":\"started\",\"service\":\"worker\",\"hostname\":\"host-1\",\"version\":\"1.2\"}",
-      "vstan.logrus.version": "1.2"
-    }
-  },
-  {
     "body": "New connection from 127.0.0.1:36468 on port 1883.",
     "severity": 0,
     "severity_text": "",
@@ -672,6 +695,146 @@
     }
   },
   {
+    "body": "Services updated: 0",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   Services updated: 0"
+    }
+  },
+  {
+    "body": "Configuration update complete:",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53] Configuration update complete:"
+    }
+  },
+  {
+    "body": "No changes for unbound, skipping update",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   No changes for unbound, skipping update"
+    }
+  },
+  {
+    "body": "No change in /etc/unbound/unbound.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   No change in /etc/unbound/unbound.conf"
+    }
+  },
+  {
+    "body": "No changes for strongswan, skipping update",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:52]   No changes for strongswan, skipping update"
+    }
+  },
+  {
+    "body": "No change in /etc/ipsec.secrets",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:52]   No change in /etc/ipsec.secrets"
+    }
+  },
+  {
+    "body": "Fetching gw1-ipsec-secrets -\u003e /etc/ipsec.secrets",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   Fetching gw1-ipsec-secrets -\u003e /etc/ipsec.secrets"
+    }
+  },
+  {
+    "body": "No change in /etc/ipsec.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   No change in /etc/ipsec.conf"
+    }
+  },
+  {
+    "body": "Fetching gw1-ipsec-conf -\u003e /etc/ipsec.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   Fetching gw1-ipsec-conf -\u003e /etc/ipsec.conf"
+    }
+  },
+  {
+    "body": "Processing service: strongswan",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51] Processing service: strongswan"
+    }
+  },
+  {
+    "body": "tunnel up",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22 14:38:13] tunnel up"
+    }
+  },
+  {
+    "body": "peer handshake slow, warning",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22T14:38:14Z] peer handshake slow, warning"
+    }
+  },
+  {
+    "body": "connection error on tun0",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22T14:38:15+01:00] connection error on tun0"
+    }
+  },
+  {
+    "body": "fatal: cannot open tun0",
+    "severity": 21,
+    "severity_text": "FATAL",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[Sun Nov 22 14:38:16 UTC 2026] fatal: cannot open tun0"
+    }
+  },
+  {
     "body": "Client has not sent any data.",
     "severity": 9,
     "severity_text": "INFO",
@@ -826,6 +989,65 @@
     }
   },
   {
+    "body": "[opentelemetry.sdk.metrics._internal.export] Exception while exporting metrics",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "opentelemetry.sdk.metrics._internal.export",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "ERROR:opentelemetry.sdk.metrics._internal.export:Exception while exporting metrics"
+    }
+  },
+  {
+    "body": "[Example] Started in 2.1 seconds",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "Example",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:13.666Z  INFO 1 --- [worker] Example                    : Started in 2.1 seconds",
+      "process.pid": 1,
+      "thread.name": "worker"
+    }
+  },
+  {
+    "body": "[c.e.demo.Service] Cache is cold",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "c.e.demo.Service",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22 14:38:13.666  WARN 4242 --- [main] c.e.demo.Service : Cache is cold",
+      "process.pid": 4242,
+      "thread.name": "main"
+    }
+  },
+  {
+    "body": "[c.e.demo.Controller] Request failed",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "c.e.demo.Controller",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:13.666+01:00 ERROR 7 --- [demo-app] [nio-8080-exec-1] c.e.demo.Controller : Request failed",
+      "process.pid": 7,
+      "thread.name": "nio-8080-exec-1",
+      "vstan.springboot.application": "demo-app"
+    }
+  },
+  {
+    "body": "[c.e.demo.Poller] tick",
+    "severity": 5,
+    "severity_text": "DEBUG",
+    "scope": "c.e.demo.Poller",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "2026-11-22T14:38:14.001Z DEBUG 1 --- [   scheduling-1] c.e.demo.Poller                          : tick",
+      "process.pid": 1,
+      "thread.name": "scheduling-1"
+    }
+  },
+  {
     "body": "Failed to connect to Systems Manager",
     "severity": 13,
     "severity_text": "WARN",
@@ -867,7 +1089,7 @@
     }
   },
   {
-    "body": "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down",
+    "body": "Interface GigabitEthernet0/1, changed state to down",
     "severity": 13,
     "severity_text": "WARN",
     "scope": "",
@@ -875,6 +1097,7 @@
       "service.name": "LINK"
     },
     "attributes": {
+      "log.record.original": "%LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down",
       "network.interface.name": "GigabitEthernet0/1",
       "vstan.cisco.facility": "LINK",
       "vstan.cisco.mnemonic": "UPDOWN",
@@ -882,7 +1105,7 @@
     }
   },
   {
-    "body": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+    "body": "Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
     "severity": 13,
     "severity_text": "WARN",
     "scope": "",
@@ -890,6 +1113,7 @@
       "service.name": "SW_MATM"
     },
     "attributes": {
+      "log.record.original": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
       "network.interface.name": "Gi4/0/45",
       "vstan.cisco.facility": "SW_MATM",
       "vstan.cisco.mnemonic": "MACFLAP_NOTIF",
@@ -897,7 +1121,7 @@
     }
   },
   {
-    "body": "%COPY-N-TRAP: The copy operation was completed successfully",
+    "body": "The copy operation was completed successfully",
     "severity": 10,
     "severity_text": "INFO",
     "scope": "",
@@ -905,13 +1129,14 @@
       "service.name": "COPY"
     },
     "attributes": {
+      "log.record.original": "%COPY-N-TRAP: The copy operation was completed successfully",
       "vstan.cisco.facility": "COPY",
       "vstan.cisco.mnemonic": "TRAP",
       "vstan.cisco.severity": "N"
     }
   },
   {
-    "body": "Client Association",
+    "body": "Client Association 02:00:5e:00:00:01 ap CiscoAP-Down wlan 1 radio 2.4GHz",
     "severity": 9,
     "severity_text": "INFO",
     "scope": "",
@@ -919,6 +1144,7 @@
       "service.name": "APF"
     },
     "attributes": {
+      "client.mac.address": "02:00:5e:00:00:01",
       "code.file.path": "apf_80211.c",
       "code.line.number": 13338,
       "thread.name": "apfMsConnTask_0",
@@ -929,6 +1155,67 @@
       "vstan.wifi.client.ap": "CiscoAP-Down",
       "vstan.wifi.radio": "2.4GHz",
       "vstan.wifi.wlan.id": "1"
+    }
+  },
+  {
+    "body": "Failed to process association request 02:00:5e:00:00:02 wlan 1 ssid ExampleNet",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {
+      "service.name": "APF"
+    },
+    "attributes": {
+      "client.mac.address": "02:00:5e:00:00:02",
+      "code.file.path": "apf_80211.c",
+      "code.line.number": 5120,
+      "thread.name": "apfMsConnTask_1",
+      "vstan.cisco.facility": "APF",
+      "vstan.cisco.mnemonic": "ASSOCREQ_PROC_FAILED",
+      "vstan.cisco.severity": "3",
+      "vstan.wifi.ap.name": "DownAP-Master",
+      "vstan.wifi.ssid": "ExampleNet",
+      "vstan.wifi.wlan.id": "1"
+    }
+  },
+  {
+    "body": "Supported rates check failed 02:00:5e:00:00:02",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {
+      "service.name": "APF"
+    },
+    "attributes": {
+      "client.mac.address": "02:00:5e:00:00:02",
+      "code.file.path": "apf_utils.c",
+      "code.line.number": 2210,
+      "thread.name": "apfMsConnTask_1",
+      "vstan.cisco.facility": "APF",
+      "vstan.cisco.mnemonic": "CHECK_SUPP_RATES_FAILED",
+      "vstan.cisco.severity": "3",
+      "vstan.wifi.ap.name": "DownAP-Master"
+    }
+  },
+  {
+    "body": "Client Deauthentication ap CiscoAP-Down wlan 2 radio 5GHz",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {
+      "service.name": "APF"
+    },
+    "attributes": {
+      "code.file.path": "apf_80211.c",
+      "code.line.number": 9981,
+      "thread.name": "apfMsConnTask_0",
+      "vstan.cisco.facility": "APF",
+      "vstan.cisco.mnemonic": "CLIENT_DEAUTH",
+      "vstan.cisco.severity": "6",
+      "vstan.wifi.ap.name": "DownAP-Master",
+      "vstan.wifi.client.ap": "CiscoAP-Down",
+      "vstan.wifi.radio": "5GHz",
+      "vstan.wifi.wlan.id": "2"
     }
   },
   {
@@ -1045,7 +1332,7 @@
     "attributes": {}
   },
   {
-    "body": "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 3.78.202.199:443",
+    "body": "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 203.0.113.10:443",
     "severity": 9,
     "severity_text": "INFO",
     "scope": "",
@@ -1053,7 +1340,7 @@
       "service.name": "audit"
     },
     "attributes": {
-      "log.record.original": "audit: type=1400 audit(1795129202.123:456): apparmor=\"ALLOWED\" operation=\"file_perm\" class=\"net\" profile=\"snap.amazon-ssm-agent.amazon-ssm-agent\" pid=1234 comm=\"agent\" requested=\"send\" addr=3.78.202.199 port=443",
+      "log.record.original": "audit: type=1400 audit(1795129202.123:456): apparmor=\"ALLOWED\" operation=\"file_perm\" class=\"net\" profile=\"snap.amazon-ssm-agent.amazon-ssm-agent\" pid=1234 comm=\"agent\" requested=\"send\" addr=203.0.113.10 port=443",
       "log.source": "kernel",
       "vstan.audit.serial": 456,
       "vstan.audit.type": 1400
@@ -1089,6 +1376,21 @@
       "k8s.pod.uid": "uid-1",
       "log.record.original": "I1220 03:18:01.710490    1233 prober.go:120] \"Probe failed\" probeType=\"Readiness\" pod=\"kube-system/kube-apiserver-node-1\" podUID=\"uid-1\"",
       "process.pid": 1233
+    }
+  },
+  {
+    "body": "started",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {
+      "service.name": "worker"
+    },
+    "attributes": {
+      "code.file.path": "main.go",
+      "code.line.number": 10,
+      "log.record.original": "{\"level\":\"info\",\"ts\":1795129202.123,\"caller\":\"main.go:10\",\"msg\":\"started\",\"service\":\"worker\",\"hostname\":\"host-1\",\"version\":\"1.2\"}",
+      "vstan.logrus.version": "1.2"
     }
   },
   {

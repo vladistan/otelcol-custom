@@ -1,7 +1,5 @@
 # Windows Edge Collector
 
-<!-- cspell:ignore vstan RCODE IOAV LGIS LGIF DBAS DBAF -->
-
 `otelcol-edge` for `windows/amd64` collects host metrics, Windows performance counters and event logs. It sends OTLP over HTTP to the gateway endpoint and keeps a persistent queue on disk. Release 0.3.1 sends metrics and raw event logs with no local processors.
 
 The sample config is `test/configs/windows-edge.yaml`. Every receiver collects at the send interval (60s, filesystem 15m) because 0.3.1 has no summarizer.

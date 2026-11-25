@@ -252,7 +252,7 @@ func TestALBGunzipAndSQSDelete(t *testing.T) {
 		wantAttr(t, rec, "client.address", "192.0.2.10")
 		wantAttr(t, rec, "aws.elb.status.code", int64(200))
 		wantAttr(t, rec, "aws.elb.target_processing_time", 0.042)
-		wantAttr(t, rec, "log.source", "aws.elb")
+		wantAttr(t, rec, "log.source", "elb")
 		wantAttr(t, rec, "event.category", "access")
 		ports[rec.attrs["client.port"]] = true
 	}

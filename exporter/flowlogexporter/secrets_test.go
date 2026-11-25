@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore expvarz ztype zlatencybucket zspanname Fflowlog
-
 package flowlogexporter
 
 import (

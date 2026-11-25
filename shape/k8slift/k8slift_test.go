@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore slift
-
 package k8slift
 
 import (
@@ -31,9 +29,9 @@ func str(t *testing.T, m pcommon.Map, key string) string {
 
 func TestLift_MovesNamespacePodAndNodeIntoTheResource(t *testing.T) {
 	res := raw(t, map[string]any{"cloud.provider": "gcp"})
-	rec := raw(t, map[string]any{"k8s.namespace.name": "billing-sync", "k8s.pod.name": "billing-sync-abc", "k8s.node.name": "k8s-2", "other": "x"})
+	rec := raw(t, map[string]any{"k8s.namespace.name": "billing-sync", "k8s.pod.name": "billing-sync-abc", "k8s.node.name": "node-2", "other": "x"})
 	Lift(res, rec)
-	if str(t, res, "k8s.namespace.name") != "billing-sync" || str(t, res, "k8s.pod.name") != "billing-sync-abc" || str(t, res, "k8s.node.name") != "k8s-2" {
+	if str(t, res, "k8s.namespace.name") != "billing-sync" || str(t, res, "k8s.pod.name") != "billing-sync-abc" || str(t, res, "k8s.node.name") != "node-2" {
 		t.Fatalf("resource = %v", res.AsRaw())
 	}
 	if _, ok := rec.Get("k8s.pod.name"); ok {
@@ -46,9 +44,9 @@ func TestLift_MovesNamespacePodAndNodeIntoTheResource(t *testing.T) {
 
 func TestLift_ShortNamesAreAccepted(t *testing.T) {
 	res := pcommon.NewMap()
-	rec := raw(t, map[string]any{"namespace": "kube-system", "pod": "coredns-1", "node": "k8s-1"})
+	rec := raw(t, map[string]any{"namespace": "kube-system", "pod": "coredns-1", "node": "node-1"})
 	Lift(res, rec)
-	if str(t, res, "k8s.namespace.name") != "kube-system" || str(t, res, "k8s.pod.name") != "coredns-1" || str(t, res, "k8s.node.name") != "k8s-1" {
+	if str(t, res, "k8s.namespace.name") != "kube-system" || str(t, res, "k8s.pod.name") != "coredns-1" || str(t, res, "k8s.node.name") != "node-1" {
 		t.Fatalf("resource = %v", res.AsRaw())
 	}
 }
@@ -63,12 +61,12 @@ func TestLift_ResourceValueWins(t *testing.T) {
 }
 
 func TestLift_HostNameComesFromTheNode(t *testing.T) {
-	res := raw(t, map[string]any{"k8s.node.name": "k8s-2"})
+	res := raw(t, map[string]any{"k8s.node.name": "node-2"})
 	Lift(res, pcommon.NewMap())
-	if str(t, res, "host.name") != "k8s-2" {
+	if str(t, res, "host.name") != "node-2" {
 		t.Fatalf("resource = %v", res.AsRaw())
 	}
-	res = raw(t, map[string]any{"k8s.node.name": "k8s-2", "host.name": "kept"})
+	res = raw(t, map[string]any{"k8s.node.name": "node-2", "host.name": "kept"})
 	Lift(res, pcommon.NewMap())
 	if str(t, res, "host.name") != "kept" {
 		t.Fatalf("resource = %v", res.AsRaw())
@@ -76,11 +74,11 @@ func TestLift_HostNameComesFromTheNode(t *testing.T) {
 }
 
 func TestParsePodStatus_ReadsTheStatusLine(t *testing.T) {
-	st, ok := ParsePodStatus("Pod billing-sync/billing-sync-gcp-prod-29918700-abcde: Succeeded (0/1 ready) on k8s-2")
+	st, ok := ParsePodStatus("Pod billing-sync/billing-sync-gcp-prod-29918700-abcde: Succeeded (0/1 ready) on node-2")
 	if !ok {
 		t.Fatal("not parsed")
 	}
-	if st.Namespace != "billing-sync" || st.Pod != "billing-sync-gcp-prod-29918700-abcde" || st.Phase != "Succeeded" || st.Ready != "0/1" || st.Node != "k8s-2" {
+	if st.Namespace != "billing-sync" || st.Pod != "billing-sync-gcp-prod-29918700-abcde" || st.Phase != "Succeeded" || st.Ready != "0/1" || st.Node != "node-2" {
 		t.Fatalf("got %+v", st)
 	}
 	if got := st.Text(); got != "Succeeded (0/1 ready)" {
@@ -105,10 +103,10 @@ func TestParsePodStatus_NoReadyNoNode(t *testing.T) {
 
 func TestNodeFromStaticPod_StripsTheComponentPrefix(t *testing.T) {
 	for _, c := range []struct{ pod, want string }{
-		{"kube-apiserver-k8s-1", "k8s-1"},
-		{"kube-controller-manager-k8s-2", "k8s-2"},
-		{"kube-scheduler-k8s-3", "k8s-3"},
-		{"etcd-k8s-1", "k8s-1"},
+		{"kube-apiserver-node-1", "node-1"},
+		{"kube-controller-manager-node-2", "node-2"},
+		{"kube-scheduler-node-3", "node-3"},
+		{"etcd-node-1", "node-1"},
 		{"coredns-5d78c9869d-abcde", ""},
 		{"kube-apiserver-", ""},
 		{"", ""},
@@ -121,11 +119,11 @@ func TestNodeFromStaticPod_StripsTheComponentPrefix(t *testing.T) {
 }
 
 func TestNodeFromStaticPod_ConfigPrefixesExtendTheDefaults(t *testing.T) {
-	got, ok := NodeFromStaticPod("kube-vip-k8s-1", []string{"kube-vip-"})
-	if !ok || got != "k8s-1" {
+	got, ok := NodeFromStaticPod("kube-vip-node-1", []string{"kube-vip-"})
+	if !ok || got != "node-1" {
 		t.Fatalf("got %q %v", got, ok)
 	}
-	if got, ok := NodeFromStaticPod("etcd-k8s-1", []string{"kube-vip-"}); !ok || got != "k8s-1" {
+	if got, ok := NodeFromStaticPod("etcd-node-1", []string{"kube-vip-"}); !ok || got != "node-1" {
 		t.Fatalf("defaults lost: %q %v", got, ok)
 	}
 }

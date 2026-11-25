@@ -1,5 +1,3 @@
-// cspell:ignore vstan
-
 package openvpnstatusreceiver
 
 import (

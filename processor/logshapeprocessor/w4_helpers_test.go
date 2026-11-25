@@ -14,7 +14,7 @@ import (
 
 // attributeKeyed are the branches that claim by an attribute (a task file name, a cloud resource id,
 // the openvpnstatus counters), so a body-only sample file cannot reach them; their tests send the attributes.
-var attributeKeyed = map[string]bool{"openvpn": true, "pbs": true, "pve": true, "serialconsole": true, "stderrhint": true}
+var attributeKeyed = map[string]bool{"openvpn": true, "pbs": true, "pve": true, "serialconsole": true, "stderrhint": true, "charon": true}
 
 // runW4 sends one record and returns it with its resource.
 func runW4(t *testing.T, in input) (plog.LogRecord, pcommon.Resource) {

@@ -33,7 +33,7 @@ func TestEKSAuditStreamIsTaggedAudit(t *testing.T) {
 		"cloudwatch.log.group.name": "/aws/eks/prod/cluster", "cloudwatch.log.stream": "kube-apiserver-audit-1",
 	})
 
-	wantStr(t, rec.log.Attributes(), "log.source", "aws.eks")
+	wantStr(t, rec.log.Attributes(), "log.source", "eks")
 	wantStr(t, rec.log.Attributes(), "event.category", "audit")
 }
 
@@ -42,14 +42,14 @@ func TestEKSOtherStreamDefaultsToApplication(t *testing.T) {
 		"cloudwatch.log.group.name": "/aws/eks/prod/cluster", "cloudwatch.log.stream": "authenticator-1",
 	})
 
-	wantStr(t, rec.log.Attributes(), "log.source", "aws.eks")
+	wantStr(t, rec.log.Attributes(), "log.source", "eks")
 	wantStr(t, rec.log.Attributes(), "event.category", "application")
 }
 
 func TestLoadBalancerEntriesAreTaggedGCPLB(t *testing.T) {
 	rec := oneThrough(t, "sourcetag/gcp", map[string]any{"gcp.resource_type": "http_load_balancer", "gcp.label.project_id": "p1"})
 
-	wantStr(t, rec.log.Attributes(), "log.source", "gcp.lb")
+	wantStr(t, rec.log.Attributes(), "log.source", "lb")
 	wantStr(t, rec.log.Attributes(), "event.category", "access")
 	wantStr(t, rec.resource, "cloud.account.id", "p1")
 }

@@ -1,4 +1,3 @@
-<!-- cspell:ignore onprem -->
 
 # Central NetFlow flow log
 

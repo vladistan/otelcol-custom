@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore prio nsec
-
 package kernellogprocessor
 
 import (
@@ -57,7 +55,7 @@ func TestIsKernelLog(t *testing.T) {
 		},
 		{
 			name:     "strongSwan IPsec",
-			input:    `14[NET] <efd7edbd-4bdf-46bd-b17c-c1d569b4c5a7|1> sending packet: from 24.2.177.2[500] to 3.212.18.114[500] (1164 bytes)`,
+			input:    `14[NET] <efd7edbd-4bdf-46bd-b17c-c1d569b4c5a7|1> sending packet: from 203.0.113.20[500] to 203.0.113.21[500] (1164 bytes)`,
 			expected: true,
 		},
 		{
@@ -175,7 +173,7 @@ func TestParseKernelLog(t *testing.T) {
 		},
 		{
 			name:              "strongSwan IPsec",
-			input:             `14[NET] <efd7edbd-4bdf-46bd-b17c-c1d569b4c5a7|1> sending packet: from 24.2.177.2[500] to 3.212.18.114[500]`,
+			input:             `14[NET] <efd7edbd-4bdf-46bd-b17c-c1d569b4c5a7|1> sending packet: from 203.0.113.20[500] to 203.0.113.21[500]`,
 			expectedSubsystem: "ipsec",
 			expectedExtra:     map[string]string{"ipsec.component": "NET", "ipsec.connection": "efd7edbd-4bdf-46bd-b17c-c1d569b4c5a7|1"},
 		},

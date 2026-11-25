@@ -3,21 +3,18 @@
 
 package logshapeprocessor
 
-// cspell:ignore awselb
-
 import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
 // branchNames lists every branch in detector order: the first branch that claims a record wins.
-// cspell:ignore mosquitto kaudit
 var branchNames = []string{
-	"flow", "klog", "uvicorn", "collector", "mongod", "gcpjson", "tracing", "pino", "logrus", "postgres", "redis", "nginx", "sentry", "cisco", "syslog",
+	"flow", "klog", "uvicorn", "pylogger", "collector", "mongod", "gcpjson", "tracing", "pino", "springboot", "logrus", "postgres", "redis", "nginx", "sentry", "cisco", "vpnscript", "serialconsole", "syslog",
 	"influx", "oauth2proxy", "coredns", "gcplb", "awselb", "s3access", "gcpaudit", "eksaudit", "cloudtrail",
-	"rabbitmq", "mosquitto", "stallcheck", "kaudit", "smartd", "gocd", "cron", "openvpn", "pbs", "pve", "serialconsole",
+	"rabbitmq", "mosquitto", "stallcheck", "kaudit", "smartd", "gocd", "cron", "sshd", "systemd", "openvpn", "pbs", "pve",
 	"logfmt", "clickhouse", "calico", "ssmagent", "litellm", "stderrhint",
-	"lldpd", "k8s",
+	"lldpd", "k8s", "charon", "autoscaler",
 }
 
 // rec is the record a branch reads and writes. parse works on a copy, so a
@@ -60,6 +57,8 @@ func newBranches(cfg *Config) ([]branch, error) {
 			out = append(out, newKlogBranch(cfg.Klog))
 		case "uvicorn":
 			out = append(out, newUvicornBranch(cfg.Uvicorn))
+		case "pylogger":
+			out = append(out, newPyLoggerBranch())
 		case "logrus":
 			out = append(out, newLogrusBranch(cfg.Logrus))
 		case "postgres":
@@ -71,11 +70,13 @@ func newBranches(cfg *Config) ([]branch, error) {
 		case "sentry":
 			out = append(out, newSentryBranch(cfg.Sentry))
 		case "cisco":
-			b, err := newCiscoBranch(cfg.Cisco)
+			b, err := newCiscoBranch(cfg.Cisco, cfg.WLANSSIDs)
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, b)
+		case "vpnscript":
+			out = append(out, newVPNScriptBranch())
 		case "syslog":
 			out = append(out, newSyslogBranch(cfg.Syslog))
 		case "collector":
@@ -105,7 +106,7 @@ func newBranches(cfg *Config) ([]branch, error) {
 		case "eksaudit":
 			out = append(out, newEKSAuditBranch(cfg.AccountAliases))
 		case "cloudtrail":
-			out = append(out, newCloudTrailBranch(cfg.AccountAliases))
+			out = append(out, newCloudTrailBranch(cfg.AccountAliases, cfg.UserAliases))
 		case "rabbitmq":
 			out = append(out, newRabbitMQBranch())
 		case "mosquitto":
@@ -120,6 +121,10 @@ func newBranches(cfg *Config) ([]branch, error) {
 			out = append(out, newGoCDBranch())
 		case "cron":
 			out = append(out, newCronBranch())
+		case "sshd":
+			out = append(out, newSSHDBranch())
+		case "systemd":
+			out = append(out, newSystemdBranch())
 		case "openvpn":
 			out = append(out, newOpenVPNBranch())
 		case "pbs":
@@ -144,6 +149,12 @@ func newBranches(cfg *Config) ([]branch, error) {
 			out = append(out, newStderrHintBranch())
 		case "k8s":
 			out = append(out, newK8sBranch(cfg.K8s))
+		case "charon":
+			out = append(out, newCharonBranch())
+		case "autoscaler":
+			out = append(out, newAutoscalerBranch())
+		case "springboot":
+			out = append(out, newSpringBootBranch())
 		}
 	}
 	for i, b := range out {
@@ -152,16 +163,39 @@ func newBranches(cfg *Config) ([]branch, error) {
 	return out, nil
 }
 
+// mapTextKeys are the keys of a map body that hold its text, in the order they are read.
+var mapTextKeys = []string{"text", "MESSAGE"}
+
+// mapTextKey names the first key of a map body that holds a string, or "" when none does.
+func mapTextKey(m pcommon.Map) string {
+	for _, k := range mapTextKeys {
+		if v, ok := m.Get(k); ok && v.Type() == pcommon.ValueTypeStr {
+			return k
+		}
+	}
+	return ""
+}
+
 func bodyText(lr plog.LogRecord) string {
 	switch lr.Body().Type() {
 	case pcommon.ValueTypeStr:
 		return lr.Body().Str()
 	case pcommon.ValueTypeMap:
-		if v, ok := lr.Body().Map().Get("text"); ok && v.Type() == pcommon.ValueTypeStr {
+		m := lr.Body().Map()
+		if k := mapTextKey(m); k != "" {
+			v, _ := m.Get(k)
 			return v.Str()
 		}
 	}
 	return ""
+}
+
+// keepOriginal writes the raw line unless an earlier pass already did: the second pass sees the shaped
+// body, and the raw line must not be replaced by it.
+func keepOriginal(a pcommon.Map, raw string) {
+	if _, ok := a.Get(originalKey); !ok {
+		a.PutStr(originalKey, raw)
+	}
 }
 
 func sourceOf(lr plog.LogRecord, res pcommon.Resource) string {

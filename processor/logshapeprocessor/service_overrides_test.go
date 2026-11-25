@@ -91,7 +91,7 @@ func overrideTrailInput(session, eventID string) input {
 	in := input{
 		body: "ssm.amazonaws.com GetParameter",
 		attrs: map[string]any{
-			"log.source":              "aws.cloudtrail",
+			"log.source":              "cloudtrail",
 			"event.category":          "audit",
 			"rpc.method":              "ssm.amazonaws.com/GetParameter",
 			"aws.principal.arn":       "arn:aws:sts::111122223333:assumed-role/TestRole/" + session,
@@ -105,7 +105,7 @@ func overrideTrailInput(session, eventID string) input {
 
 func TestConsume_ServiceOverrides_ListedName_Replaced(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.ServiceNameOverrides = map[string]string{"test-session": "ops-team"}
+	cfg.ServiceNameOverrides = map[string]string{"TestRole/test-session": "ops-team"}
 	h := newHarness(t, cfg)
 
 	_, res := h.run(overrideTrailInput("test-session", "e1"))
@@ -122,8 +122,8 @@ func TestConsume_ServiceOverrides_UnlistedName_Untouched(t *testing.T) {
 
 	_, res := h.run(overrideTrailInput("test-session", "e1"))
 
-	if got := attrStr(t, res.Attributes(), "service.name"); got != "test-session" {
-		t.Fatalf("service.name = %q, want test-session", got)
+	if got := attrStr(t, res.Attributes(), "service.name"); got != "TestRole/test-session" {
+		t.Fatalf("service.name = %q, want TestRole/test-session", got)
 	}
 }
 
@@ -132,14 +132,14 @@ func TestConsume_ServiceOverrides_NilMap_NoOp(t *testing.T) {
 
 	_, res := h.run(overrideTrailInput("test-session", "e1"))
 
-	if got := attrStr(t, res.Attributes(), "service.name"); got != "test-session" {
-		t.Fatalf("service.name = %q, want test-session", got)
+	if got := attrStr(t, res.Attributes(), "service.name"); got != "TestRole/test-session" {
+		t.Fatalf("service.name = %q, want TestRole/test-session", got)
 	}
 }
 
 func TestConsume_ServiceOverrides_MixedBatch_PerRecord(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.ServiceNameOverrides = map[string]string{"test-session": "ops-team"}
+	cfg.ServiceNameOverrides = map[string]string{"TestRole/test-session": "ops-team"}
 	h := newHarness(t, cfg)
 	ld := overrideTrailInput("test-session", "e1").logs()
 	second := overrideTrailInput("other-session", "e2").logs()
@@ -161,7 +161,7 @@ func TestConsume_ServiceOverrides_MixedBatch_PerRecord(t *testing.T) {
 			}
 		}
 	}
-	if len(got) != 2 || got["e1"] != "ops-team" || got["e2"] != "other-session" {
+	if len(got) != 2 || got["e1"] != "ops-team" || got["e2"] != "TestRole/other-session" {
 		t.Fatalf("per-record services = %v", got)
 	}
 }

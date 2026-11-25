@@ -39,8 +39,9 @@ func createDefaultConfig() component.Config {
 			ServiceName: "redis", SetServiceName: true, PreserveOriginal: true,
 			RewriteMessages: true, AdjustSeverity: true,
 		},
-		Uvicorn: UvicornConfig{ExtractHTTPFields: true, RewriteMessages: true, AdjustSeverity: true},
-		Nginx:   NginxConfig{SetServiceName: true, ServiceName: "nginx", ParseTimestamp: true},
+		Uvicorn:    UvicornConfig{ExtractHTTPFields: true, RewriteMessages: true, AdjustSeverity: true},
+		Nginx:      NginxConfig{SetServiceName: true, ServiceName: "nginx", ParseTimestamp: true},
+		Autoscaler: AutoscalerConfig{KeepRatio: 0.2},
 		Sentry: SentryConfig{
 			SetServiceName: true, ServiceName: "sentry", ParseTimestamp: true,
 			PreserveOriginal: true, ExtractHTTPFields: true,

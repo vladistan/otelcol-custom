@@ -1,13 +1,13 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore upid taskid vstan
-
 package logshapeprocessor
 
 import (
 	"errors"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,8 +65,18 @@ func fileUPID(r *rec) (upid, bool) {
 	return upid{}, false
 }
 
+// pbsDaemons are the syslog identifiers of the Proxmox Backup Server daemons.
+var pbsDaemons = []string{"proxmox-backup-proxy", "proxmox-backup-api", "proxmox-backup"}
+
+// pbsPeer is the peer a daemon line starts with: "[[::ffff:192.0.2.10]:38835] text".
+var pbsPeer = regexp.MustCompile(`^\[\[([^\]]+)\]:(\d+)\] (.+)$`)
+
+// levelToken finds a level word in the text of a daemon line.
+var levelToken = regexp.MustCompile(`(?i)\b(trace|debug|info|warn|warning|error|critical|fatal)\b`)
+
 // pbsBranch shapes Proxmox Backup Server task log lines: "<time>: text" in a file named by the
-// task id. The datastore prefixes the body and the task type is the service.
+// task id. The datastore prefixes the body and the task type is the service. A journald record of a
+// daemon is claimed by its syslog identifier; a task log file name wins over the identifier.
 type pbsBranch struct{}
 
 func newPBSBranch() *pbsBranch { return &pbsBranch{} }
@@ -74,11 +84,41 @@ func newPBSBranch() *pbsBranch { return &pbsBranch{} }
 func (*pbsBranch) name() string { return "pbs" }
 
 func (*pbsBranch) claims(r *rec) bool {
-	_, ok := fileUPID(r)
-	return ok && pbsShape.MatchString(r.body)
+	if _, ok := fileUPID(r); ok {
+		return pbsShape.MatchString(r.body)
+	}
+	return r.body != "" && slices.Contains(pbsDaemons, journalIdent(r.lr))
 }
 
-func (*pbsBranch) parse(r *rec) error {
+// parseDaemon shapes a daemon line: the identifier is the service, the journal pid is an integer
+// attribute, a leading peer becomes the client address and port, and a level word in the text gives
+// the severity.
+func (*pbsBranch) parseDaemon(r *rec) {
+	a := r.lr.Attributes()
+	keepOriginal(a, r.body)
+	if pid, ok := journalPID(r.lr); ok {
+		a.PutInt("process.pid", pid)
+	}
+	text := r.body
+	if m := pbsPeer.FindStringSubmatch(text); m != nil {
+		a.PutStr("client.address", strings.TrimPrefix(m[1], "::ffff:"))
+		if port, err := strconv.ParseInt(m[2], 10, 64); err == nil {
+			a.PutInt("client.port", port)
+		}
+		text = m[3]
+	}
+	if m := levelToken.FindStringSubmatch(text); m != nil {
+		applyLevel(r.lr, wordLevel(strings.ToLower(m[1])))
+	}
+	r.res.Attributes().PutStr("service.name", journalIdent(r.lr))
+	r.lr.Body().SetStr(text)
+}
+
+func (b *pbsBranch) parse(r *rec) error {
+	if _, ok := fileUPID(r); !ok && slices.Contains(pbsDaemons, journalIdent(r.lr)) {
+		b.parseDaemon(r)
+		return nil
+	}
 	u, ok := fileUPID(r)
 	m := pbsShape.FindStringSubmatch(r.body)
 	if !ok || m == nil {

@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore Fdata
-
 package sourcetagprocessor
 
 import (
@@ -64,8 +62,8 @@ func TestCloudServiceName_IsAbsentWhenOneResourceMixesSources(t *testing.T) {
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
 	sl := rl.ScopeLogs().AppendEmpty()
-	sl.LogRecords().AppendEmpty().Attributes().PutStr("log.source", "aws.cloudtrail")
-	sl.LogRecords().AppendEmpty().Attributes().PutStr("log.source", "aws.elb")
+	sl.LogRecords().AppendEmpty().Attributes().PutStr("log.source", "cloudtrail")
+	sl.LogRecords().AppendEmpty().Attributes().PutStr("log.source", "elb")
 
 	sink := new(consumertest.LogsSink)
 	consume(t, newProc(t, "aws", sink, nopSettings()), ld)
@@ -103,7 +101,7 @@ func TestAWS_ACloudRegionAloneDoesNotMakeTheProviderAWS(t *testing.T) {
 	wantAbsent(t, res, "cloud.provider")
 }
 
-// Live gcp.lb rows carry zone=global and no region label.
+// Live lb rows carry zone=global and no region label.
 func TestGCP_LoadBalancerRowsWithZoneGlobalGetRegionGlobal(t *testing.T) {
 	res, _ := tag(t, "gcp", input{res: map[string]string{
 		"gcp.resource_type":              "http_load_balancer",
@@ -119,7 +117,7 @@ func TestGCP_LoadBalancerRowsWithZoneGlobalGetRegionGlobal(t *testing.T) {
 	wantStr(t, res, "cloud.account.id", "example-project")
 }
 
-// Live gcp.audit rows without a location label: 228 of 300 sampled carry a zone, 48 a region.
+// Live audit rows without a location label: 228 of 300 sampled carry a zone, 48 a region.
 func TestGCP_AuditRowsTakeTheRegionFromTheZoneOrRegionLabel(t *testing.T) {
 	audit := "cloudaudit.googleapis.com%2Fdata_access"
 	cases := map[string]struct {
@@ -139,7 +137,7 @@ func TestGCP_AuditRowsTakeTheRegionFromTheZoneOrRegionLabel(t *testing.T) {
 			res, lr := tag(t, "gcp", input{res: labels})
 
 			wantStr(t, res, "cloud.region", c.want)
-			wantStr(t, lr.Attributes(), "log.source", "gcp.audit")
+			wantStr(t, lr.Attributes(), "log.source", "audit")
 		})
 	}
 }

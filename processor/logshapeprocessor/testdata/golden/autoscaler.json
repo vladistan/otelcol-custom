@@ -1,0 +1,38 @@
+[
+  {
+    "body": "autoscaler nodes 3/5",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":3,\"autoscaledNodesTarget\":5,\"clusterWide\":{\"health\":{\"status\":\"Healthy\",\"nodeCounts\":{\"registered\":{\"total\":3,\"ready\":3}}},\"scaleUp\":{\"status\":\"InProgress\"}}}}",
+      "vstan.autoscaler.nodes": 3,
+      "vstan.autoscaler.target": 5
+    }
+  },
+  {
+    "body": "autoscaler nodes 12/8",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":12,\"autoscaledNodesTarget\":8,\"clusterWide\":{\"health\":{\"status\":\"Healthy\"},\"scaleDown\":{\"status\":\"CandidatesPresent\"}}}}",
+      "vstan.autoscaler.nodes": 12,
+      "vstan.autoscaler.target": 8
+    }
+  },
+  {
+    "body": "autoscaler nodes 0/1",
+    "severity": 0,
+    "severity_text": "",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "{\"status\":{\"autoscaledNodesCount\":0,\"autoscaledNodesTarget\":1}}",
+      "vstan.autoscaler.nodes": 0,
+      "vstan.autoscaler.target": 1
+    }
+  }
+]

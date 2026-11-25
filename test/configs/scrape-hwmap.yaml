@@ -1,10 +1,9 @@
-# cspell:ignore hwmap hwmapprocessor milli
 # Scrape pod that maps raw SNMP metrics to hw.* names with the hwmap processor (docs/hwmap.md).
 #
-# The hwmap rules read metrics named in the snmp receiver config. This sample declares one interface metric
-# only, to stay short; a real config declares a metric for each source below (snmp.sensor.temperature and so on)
-# with its column OID, and puts the index and name columns in `attributes`. All names, indexes and values here
-# are documentation examples.
+# The hwmap rules read metrics named in the snmp receiver config. This sample declares the interface byte
+# counters, the interface state, the interface speed and the uptime only, to stay short; a real config declares
+# a metric for each source below (snmp.sensor.temperature and so on) with its column OID, and puts the index and
+# name columns in `attributes`. All names, indexes and values here are documentation examples.
 #
 # Validate the rule block with the unit tests of the processor, which load this file:
 #   go test ./processor/hwmapprocessor -run TestSample
@@ -22,6 +21,8 @@ receivers:
     attributes:
       interface:
         oid: "1.3.6.1.2.1.31.1.1.1.1" # IF-MIB ifName
+      interface.index:
+        oid: "1.3.6.1.2.1.2.2.1.1" # IF-MIB ifIndex
     metrics:
       snmp.interface.in.bytes:
         unit: By
@@ -34,6 +35,46 @@ receivers:
           - oid: "1.3.6.1.2.1.31.1.1.1.6"
             attributes:
               - name: interface
+              - name: interface.index
+      snmp.interface.out.bytes:
+        unit: By
+        description: Octets sent, IF-MIB ifHCOutOctets
+        sum:
+          aggregation: cumulative
+          monotonic: true
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.10"
+            attributes:
+              - name: interface
+              - name: interface.index
+      snmp.interface.oper.status:
+        unit: "1"
+        description: Operational state, IF-MIB ifOperStatus (1 up, 2 down, 3 testing, 4 unknown, 5 dormant, 6 notPresent, 7 lowerLayerDown)
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.2.2.1.8"
+            attributes:
+              - name: interface
+              - name: interface.index
+      snmp.system.uptime:
+        unit: cs
+        description: Time since the agent started in centiseconds, SNMPv2-MIB sysUpTime
+        gauge:
+          value_type: int
+        scalar_oids:
+          - oid: "1.3.6.1.2.1.1.3.0"
+      snmp.interface.high_speed:
+        unit: Mbit/s
+        description: Current interface speed, IF-MIB ifHighSpeed
+        gauge:
+          value_type: int
+        column_oids:
+          - oid: "1.3.6.1.2.1.31.1.1.1.15"
+            attributes:
+              - name: interface
+              - name: interface.index
 processors:
   memory_limiter:
     check_interval: 1s
@@ -161,6 +202,137 @@ processors:
           network.interface.name: "{port.name}"
         constants:
           poe.measure: allocated
+      # Interface counters keep their type: a cumulative sum leaves as a cumulative sum. The index and the name
+      # come from columns of the same row; a point with no name gets no hw.name.
+      - name: interface-in-bytes
+        match:
+          metric: snmp.interface.in.bytes
+        target: hw.network.io
+        unit: By
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: receive
+      - name: interface-out-bytes
+        match:
+          metric: snmp.interface.out.bytes
+        target: hw.network.io
+        unit: By
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: transmit
+      - name: interface-in-errors
+        match:
+          metric: snmp.interface.in.errors
+        target: hw.errors
+        unit: "{error}"
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: receive
+          error.type: interface
+      - name: interface-out-errors
+        match:
+          metric: snmp.interface.out.errors
+        target: hw.errors
+        unit: "{error}"
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: transmit
+          error.type: interface
+      # Packet counters. Keep these two rules only when the snmp receiver config declares
+      # snmp.interface.in.packets and snmp.interface.out.packets (ifHCInUcastPkts and ifHCOutUcastPkts count
+      # unicast packets only).
+      - name: interface-in-packets
+        match:
+          metric: snmp.interface.in.packets
+        target: hw.network.packets
+        unit: "{packet}"
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: receive
+      - name: interface-out-packets
+        match:
+          metric: snmp.interface.out.packets
+        target: hw.network.packets
+        unit: "{packet}"
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        constants:
+          network.io.direction: transmit
+      # ifOperStatus is an enum: 1 is up and any other value is not. The point is 1 or 0, and the state name
+      # stays in hw.network.oper_state. A value outside 1 to 7 gives 0 with the number kept, and is counted.
+      - name: interface-oper-status
+        match:
+          metric: snmp.interface.oper.status
+        target: hw.network.up
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
+        enum_gauge:
+          on: ["1"]
+          state_attribute: hw.network.oper_state
+          names:
+            "1": up
+            "2": down
+            "3": testing
+            "4": unknown
+            "5": dormant
+            "6": notPresent
+            "7": lowerLayerDown
+      # TimeTicks are centiseconds. A counter that wrapped is emitted as read.
+      - name: system-uptime
+        match:
+          metric: snmp.system.uptime
+        target: system.uptime
+        unit: s
+        scale: 0.01
+      # Wi-Fi radio utilization from percent to a ratio; the names stay and a value above 100 is not cut.
+      - name: wifi-utilization-channel
+        match:
+          metric: wifi.radio.utilization.channel
+        target: wifi.radio.utilization.channel
+        unit: "1"
+        scale: 0.01
+      - name: wifi-utilization-rx
+        match:
+          metric: wifi.radio.utilization.rx
+        target: wifi.radio.utilization.rx
+        unit: "1"
+        scale: 0.01
+      - name: wifi-utilization-tx
+        match:
+          metric: wifi.radio.utilization.tx
+        target: wifi.radio.utilization.tx
+        unit: "1"
+        scale: 0.01
+      # Interface speed: Mbit/s to bytes per second (1 Mbit/s is 125000 By/s). A speed of 0 stays 0.
+      - name: interface-bandwidth-limit
+        match:
+          metric: snmp.interface.high_speed
+        target: hw.network.bandwidth.limit
+        unit: By/s
+        scale: 125000
+        labels:
+          hw.type: network
+          hw.id: "{interface.index}"
+          hw.name: "{interface}"
   batch: {}
 exporters:
   debug:

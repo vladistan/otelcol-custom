@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore faddr fport vstan auid
-
 package logshapeprocessor
 
 import (
@@ -14,12 +12,12 @@ import (
 
 // INVENTED values in the shape of a kernel audit line of an AppArmor decision on a network call.
 // Replace it with a real line when one is delivered.
-const auditAllowed = `audit: type=1400 audit(1795129202.123:456): apparmor="ALLOWED" operation="file_perm" class="net" profile="snap.amazon-ssm-agent.amazon-ssm-agent" pid=1234 comm="agent" requested="send" faddr=3.78.202.199 fport=443`
+const auditAllowed = `audit: type=1400 audit(1795129202.123:456): apparmor="ALLOWED" operation="file_perm" class="net" profile="snap.amazon-ssm-agent.amazon-ssm-agent" pid=1234 comm="agent" requested="send" faddr=203.0.113.10 fport=443`
 
 func TestKernelAudit_ApparmorLine_GivesTheOneLineBodyAndTheServiceAudit(t *testing.T) {
 	lr, res := runW4(t, input{body: auditAllowed})
 
-	w4Body(t, lr, "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 3.78.202.199:443")
+	w4Body(t, lr, "[apparmor] ALLOWED file_perm send, profile snap.amazon-ssm-agent.amazon-ssm-agent, to 203.0.113.10:443")
 	w4Severity(t, lr, plog.SeverityNumberInfo, "INFO")
 	w4Time(t, lr, time.Unix(1795129202, 123000000).UTC())
 	a := lr.Attributes()

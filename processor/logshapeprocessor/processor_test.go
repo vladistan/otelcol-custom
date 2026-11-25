@@ -171,9 +171,9 @@ func TestConsume_ManyRecordsInOneBatch_AreEachRouted(t *testing.T) {
 func TestConsume_StaticPodRow_GetsItsHostFromThePodName(t *testing.T) {
 	h := newHarness(t, defaultConfig())
 
-	_, res := h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "kube-apiserver-k8s-1"}})
+	_, res := h.run(input{body: klogLine, ts: recordTime, resource: map[string]any{"k8s.pod.name": "kube-apiserver-node-1"}})
 
-	if attrStr(t, res.Attributes(), "host.name") != "k8s-1" {
+	if attrStr(t, res.Attributes(), "host.name") != "node-1" {
 		t.Fatalf("resource = %v", res.Attributes().AsRaw())
 	}
 }

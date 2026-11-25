@@ -10,7 +10,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-const nginxLine = `35.191.119.180 - - [20/Nov/2026:00:26:38 +0000] "POST /api/7/envelope/ HTTP/1.1" 200 41 "-" "sentry.python/2.35.0" "63.180.51.163, 34.117.68.0"`
+const nginxLine = `198.51.100.40 - - [20/Nov/2026:00:26:38 +0000] "POST /api/7/envelope/ HTTP/1.1" 200 41 "-" "sentry.python/2.35.0" "198.51.100.50, 203.0.113.40"`
 
 func TestNginx_AccessLine_GivesTheBodyTheClientTheProxyAndTheTime(t *testing.T) {
 	h := newHarness(t, defaultConfig())
@@ -22,8 +22,8 @@ func TestNginx_AccessLine_GivesTheBodyTheClientTheProxyAndTheTime(t *testing.T) 
 	}
 	a := lr.Attributes()
 	for k, want := range map[string]string{
-		"http.request.method": "POST", "url.path": "/api/7/envelope/", "client.address": "63.180.51.163",
-		"network.peer.address": "35.191.119.180", "user_agent.original": "sentry.python/2.35.0",
+		"http.request.method": "POST", "url.path": "/api/7/envelope/", "client.address": "198.51.100.50",
+		"network.peer.address": "198.51.100.40", "user_agent.original": "sentry.python/2.35.0",
 		"log.record.original": nginxLine, "network.protocol.name": "http", "network.protocol.version": "1.1",
 	} {
 		if got := attrStr(t, a, k); got != want {

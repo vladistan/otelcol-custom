@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore upid vzdump vstan
-
 package logshapeprocessor
 
 import (
@@ -18,7 +16,7 @@ const (
 	// A task id as it appears in the file name: node, pid, pstart, task id, start, worker, id and user.
 	pbsGC   = `UPID:backup:0001A2B3:0C0D0E0F:65F1A2B3:65F1A2C0:garbage_collection:aws\x2dapps:root@pam:`
 	pbsLog  = `UPID:backup:0001A2B4:0C0D0E10:65F1A2B4:65F1A2C1:logrotate::root@pam:`
-	pveDump = "/var/log/pve/tasks/A/UPID:s01:00001A2B:0C0D0E0F:65F1A2B3:65F1A2C0:vzdump::root@pam:"
+	pveDump = "/var/log/pve/tasks/A/UPID:node1:00001A2B:0C0D0E0F:65F1A2B3:65F1A2C0:vzdump::root@pam:"
 )
 
 func pbsInput(upid, body string) input {

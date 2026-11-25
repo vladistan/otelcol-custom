@@ -21,7 +21,7 @@ func TestParseCiscoMnemonic_RealProductionSamples(t *testing.T) {
 			// Doc 1: base-cluster3-48 (Cisco IOS switch)
 			// testdata/AZsknQ9CPSMYvmTMdYE_.json
 			name:  "switch_macflap",
-			input: "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+			input: "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
 			expected: &CiscoLogInfo{
 				Facility:     "SW_MATM",
 				Severity:     "4",
@@ -33,7 +33,7 @@ func TestParseCiscoMnemonic_RealProductionSamples(t *testing.T) {
 			// Doc 2: wifi-ap (Cisco WLC) - currently NOT parsed by OTTL
 			// testdata/AZsk2Q9CPSMYvmRPgIRV.json
 			name:  "wlc_client_associate",
-			input: "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+			input: "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
 			expected: &CiscoLogInfo{
 				Facility:     "APF",
 				Severity:     "5",
@@ -434,7 +434,7 @@ func TestExtractAllInterfaceNames(t *testing.T) {
 
 func TestParseWLCLog_RealProductionSample(t *testing.T) {
 	// Real WLC log from wifi-ap.home.example.com
-	input := "DownAP-Master: *apfMsConnTask_0: Dec 15 23:44:44.693: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1."
+	input := "DownAP-Master: *apfMsConnTask_0: Dec 15 23:44:44.693: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1."
 
 	result := ParseWLCLog(input)
 	assert.NotNil(t, result)
@@ -466,7 +466,7 @@ func TestParseWLCLog_FieldExtraction(t *testing.T) {
 	}{
 		{
 			name:         "client_associate",
-			input:        "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+			input:        "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
 			apName:       "DownAP-Master",
 			threadName:   "apfMsConnTask_0",
 			codeFilepath: "apf_80211.c",
@@ -588,7 +588,7 @@ func TestCleanWLCMessage(t *testing.T) {
 	}{
 		{
 			name:     "full_extraction",
-			input:    "Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+			input:    "Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
 			expected: "Client Association",
 		},
 		{

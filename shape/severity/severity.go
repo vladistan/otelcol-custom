@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore dpanic eror NOERROR NXDOMAIN
-
 // Package severity maps the level names of each log source to one OpenTelemetry
 // severity. The text always comes from the number. An unknown value stays unset.
 package severity

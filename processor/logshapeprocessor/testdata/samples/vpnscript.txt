@@ -1,0 +1,16 @@
+# provenance: partly real; real lines: 1-10
+# evidence: lines 1-10 are the first lines of the journald records of a VPN configuration script, read from the lab log store on 2026-11-23, with the host name in the fetch lines replaced. Lines 11-14 are invented to show the other timestamp forms the branch reads (ISO with a zone, and the date command form)
+[2026-11-23 02:23:53]   Services updated: 0
+[2026-11-23 02:23:53] Configuration update complete:
+[2026-11-23 02:23:53]   No changes for unbound, skipping update
+[2026-11-23 02:23:53]   No change in /etc/unbound/unbound.conf
+[2026-11-23 02:23:52]   No changes for strongswan, skipping update
+[2026-11-23 02:23:52]   No change in /etc/ipsec.secrets
+[2026-11-23 02:23:51]   Fetching gw1-ipsec-secrets -> /etc/ipsec.secrets
+[2026-11-23 02:23:51]   No change in /etc/ipsec.conf
+[2026-11-23 02:23:51]   Fetching gw1-ipsec-conf -> /etc/ipsec.conf
+[2026-11-23 02:23:51] Processing service: strongswan
+[2026-11-22 14:38:13] tunnel up
+[2026-11-22T14:38:14Z] peer handshake slow, warning
+[2026-11-22T14:38:15+01:00] connection error on tun0
+[Sun Nov 22 14:38:16 UTC 2026] fatal: cannot open tun0

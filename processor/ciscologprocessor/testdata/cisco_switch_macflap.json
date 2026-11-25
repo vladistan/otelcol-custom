@@ -10,9 +10,9 @@
       "cisco_mnemonic": "MACFLAP_NOTIF",
       "cisco_seq": "661",
       "client.hostname": "Mac",
-      "client.mac": "62:12:24:a7:dd:56",
+      "client.mac": "00:00:5e:00:53:05",
       "log.source": "syslog",
-      "message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+      "message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
       "net.host.ip": "::",
       "net.host.name": "::",
       "net.host.port": "4319",
@@ -20,12 +20,12 @@
       "net.peer.name": "base-cluster3-48.home.example.com",
       "net.peer.port": "1027",
       "net.transport": "IP.UDP",
-      "original_message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
+      "original_message": "661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43",
       "priority": "188",
       "source.ip": "192.0.2.239"
     },
     "body": {
-      "text": "Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43"
+      "text": "Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43"
     },
     "data_stream": {
       "dataset": "generic.otel",

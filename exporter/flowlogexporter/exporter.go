@@ -34,6 +34,7 @@ type logsExporter struct {
 
 	mu     sync.RWMutex
 	c      conn
+	lost   bool // c was dropped after a connection error and must be dialled again
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
@@ -198,13 +199,14 @@ func (e *logsExporter) insertWithRetry(ctx context.Context, rows []row) error {
 
 // insert sends the rows in one prepared batch that names only the columns some row fills.
 func (e *logsExporter) insert(ctx context.Context, rows []row) error {
-	c := e.conn()
-	if c == nil {
-		return errNotConnected
+	c, err := e.connOrRedial(ctx)
+	if err != nil {
+		return err
 	}
 	cols := usedColumns(rows)
 	b, err := c.PrepareBatch(ctx, e.statement(cols))
 	if err != nil {
+		e.dropIfConnError(c, err)
 		return fmt.Errorf("prepare: %w", err)
 	}
 	defer func() { _ = b.Close() }()
@@ -222,9 +224,46 @@ func (e *logsExporter) insert(ctx context.Context, rows []row) error {
 		}
 	}
 	if err := b.Send(); err != nil {
+		e.dropIfConnError(c, err)
 		return fmt.Errorf("send: %w", err)
 	}
 	return nil
+}
+
+// connOrRedial returns the connection. After a connection error it dials a fresh one; before the
+// first connect it returns errNotConnected, because connectLoop owns that dial.
+func (e *logsExporter) connOrRedial(ctx context.Context) (conn, error) {
+	if c := e.conn(); c != nil {
+		return c, nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.c != nil {
+		return e.c, nil
+	}
+	if !e.lost {
+		return nil, errNotConnected
+	}
+	c, err := e.dial(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("redial: %w", err)
+	}
+	e.c, e.lost = c, false
+	return c, nil
+}
+
+// dropIfConnError closes c and forgets it when err is not an answer from the server, so the next
+// attempt opens a fresh connection.
+func (e *logsExporter) dropIfConnError(c conn, err error) {
+	if !isConnError(err) {
+		return
+	}
+	e.mu.Lock()
+	if e.c == c {
+		e.c, e.lost = nil, true
+	}
+	e.mu.Unlock()
+	_ = c.Close()
 }
 
 // usedColumns are the table columns, in table order, that at least one row fills.

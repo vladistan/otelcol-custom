@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore SERVFAIL NXDOMAIN NOERROR NOTIMP rcode vstan
-
 import (
 	"strings"
 	"testing"

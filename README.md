@@ -1,7 +1,5 @@
 # otelcol-custom
 
-<!-- cspell:ignore hwmap hwmapprocessor -->
-
 Custom OpenTelemetry Collector distribution with extended log-parsing processors.
 
 ## Overview
@@ -406,6 +404,24 @@ processors:
   logrecombine:
     container_identifier: body.CONTAINER_ID   # default
 ```
+
+#### Serial console fragments
+
+With `require_attribute` set, `logrecombine` runs in a glue mode for the GCE serial console, whose long lines arrive as wrapped fragments. Only records that carry the label (a bool or the text `true`) are touched; the rest pass through. The other glue options are all off until set.
+
+| Option | Meaning | Default |
+|---|---|---|
+| `require_attribute` | Record attribute that marks the records to glue | off |
+| `source_identifier` | Also reads `resource.<name>` and record attributes with dots in the name | `body._PID` |
+| `is_first_entry_pattern` | A record that matches starts a new line | ISO timestamp |
+| `never_glue_patterns` | Regexes for standalone lines, which are never glued and end the open sequence | none |
+| `empty_patterns` | Regexes for records dropped after the glue, such as a bare `\r\n` | none |
+| `min_previous_length` | The fragment before a record must be this long for the record to join it | 0 |
+| `fragment_suffix` | Removed from every fragment but the last | empty |
+| `max_text_size` | Bytes at which a sequence is passed on | 65536 |
+| `gap_timeout`, `max_timeout` | Pass a sequence on after no new fragment, or after this age | 10ms, 80ms |
+
+Counters: `otelcol_logrecombine_glued`, `otelcol_logrecombine_uid_not_rising`, `otelcol_logrecombine_empty_dropped`. `docs/log-shaping.md` has the rules and the reference config; `test/configs/scrape.yaml` runs it in the scrape image before `logshape`.
 
 ### Journald resource attributes
 
@@ -1073,6 +1089,7 @@ Linux edge only), `gpureceiver` (own module, NVIDIA GPU metrics through NVML),
 `idracreceiver` (own module, Dell iDRAC health and sensors through Redfish, Linux edge only),
 `inventoryreceiver` (own module, daily hardware facts as info gauges, Linux and Windows edge),
 `ipmireceiver` (own module, BMC sensors and FRU inventory over IPMI, scrape image only),
+`ippreceiver` (own module, printer state, supply levels and job queue over IPP, scrape image only),
 `hwschema` (own module, the `hw.*` vocabulary and metric builder of the two BMC receivers),
 `megaraidreceiver` (own module, MegaRAID status and events through the megaraid_sas ioctl node, Linux edge only),
 `openvpnstatusreceiver` (own module, OpenVPN client traffic from the status file, Linux edge only),

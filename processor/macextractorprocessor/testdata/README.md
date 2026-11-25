@@ -8,11 +8,11 @@ These files are used by `TestExtractMACs_FromTestdataFiles` in `macextract_test.
 
 | File | Format | Expected MAC |
 |------|--------|--------------|
-| cisco_mac_flapping.txt | Cisco (aabb.ccdd.eeff) | 26:d9:e0:17:39:3d |
-| dhcp_request_standard.txt | Standard (aa:bb:cc:dd:ee:ff) | 10:db:00:db:15:02 |
-| dhcp_ack_with_hostname.txt | Standard | c4:4f:33:91:a6:58 |
-| dhcpv6_solicit_eui64.txt | IPv6 EUI-64 (fe80::XXff:feXX) | 00:25:90:8b:db:a0 |
-| dhcpv6_reply_with_duid.txt | DUID-LL (00:03:00:01:MAC) | 26:d9:e0:17:39:3d |
+| cisco_mac_flapping.txt | Cisco (aabb.ccdd.eeff) | 00:00:5e:00:53:03 |
+| dhcp_request_standard.txt | Standard (aa:bb:cc:dd:ee:ff) | 00:00:5e:00:53:02 |
+| dhcp_ack_with_hostname.txt | Standard | 00:00:5e:00:53:08 |
+| dhcpv6_solicit_eui64.txt | IPv6 EUI-64 (fe80::XXff:feXX) | 00:00:5e:00:53:09 |
+| dhcpv6_reply_with_duid.txt | DUID-LL (00:03:00:01:MAC) | 00:00:5e:00:53:03 |
 
 ## Supported Formats
 

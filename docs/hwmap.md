@@ -1,7 +1,5 @@
 # hwmap processor
 
-<!-- cspell:ignore hwmap milli -->
-
 The `hwmap` processor renames metrics and reshapes their points by rules in the collector config. It exists for sources that give raw numbers and texts, such as SNMP tables, and for which the target names (`hw.temperature`, `hw.status`, `hw.fan.speed`) are a mapping table, not code. A new mapping needs a config change and no rebuild.
 
 It is in the scrape image (`otelcol-scrape`) only. It does nothing until a metrics pipeline lists it, and with no `rules` it passes every point through untouched. It never runs a command.
@@ -13,7 +11,8 @@ A rule picks the points of one metric, then:
 1. renames the metric to `target`;
 2. multiplies the value by `scale`, or drops the point when it equals `drop_when_value`;
 3. or, for a `status` rule, turns the value or an attribute into `hw.status` points;
-4. sets `hw.type`, `hw.id` and `hw.name`, fixed attributes and resource attributes.
+4. or, for an `enum_gauge` rule, turns the value or an attribute into one point that is 1 or 0;
+5. sets `hw.type`, `hw.id` and `hw.name`, fixed attributes and resource attributes.
 
 The type stays the same: a gauge leaves as a gauge, a sum as a sum with its temporality and monotonic flag. Both timestamps of every point are kept. The first rule of a metric that matches a point takes it, in config order.
 
@@ -52,7 +51,7 @@ processors:
 | `match.metric` | Name of the source metric. |
 | `match.attributes` | Attribute keys the point needs. An empty value means the key must exist; a value must also be equal. The keys are yours: nothing about them is fixed. |
 | `target` | Name of the metric the points leave as. |
-| `unit` | Unit of the target. One of `Cel`, `W`, `V`, `A`, `By`, `1`, `rpm`, `s`, `ms`, `Hz`. Empty keeps the unit of the source (`1` for a status rule). The list is closed: it holds the units of the hw.* metrics and of the mapping tables in use, and a unit such as `J` or `bit/s` is added when a mapping needs it. |
+| `unit` | Unit of the target. One of `Cel`, `W`, `V`, `A`, `By`, `1`, `rpm`, `s`, `ms`, `Hz`, `{error}`, `{packet}`, `By/s`. Empty keeps the unit of the source (`1` for a status or `enum_gauge` rule). The list is closed: it holds the units of the hw.* metrics and of the mapping tables in use, and a unit such as `J` or `bit/s` is added when a mapping needs it. |
 | `scale` | A finite factor above 0; the value is multiplied by it and leaves as a double. Without it an integer stays an integer. With a `scale` and no `unit` the metric keeps the unit of the source, so set `unit` whenever the factor changes it. |
 | `drop_when_value` | A point equal to this number is dropped. No count is raised. Use it for an unset threshold of 0. |
 | `labels` | Point attributes from templates. `{key}` takes the value of the source attribute `key`. A template whose attribute is missing leaves that label off. |
@@ -60,10 +59,11 @@ processors:
 | `constants` | Fixed attributes, set on every emitted point as literal text. |
 | `resource` | Fixed attributes (`hw.vendor`, `hw.model`) set on the resource of the batch that holds an emitted point. |
 | `status` | See below. |
+| `enum_gauge` | See below. A rule has `status` or `enum_gauge`, not both. |
 
 Later steps win: source attributes, then the index name, then labels, then constants.
 
-Factors in use: millidegrees Celsius to `Cel` 0.001, milliwatts to `W` 0.001, `KiBy` to `By` 1024, percent to a ratio 0.01, units of 0.1 W to `W` 0.1.
+Factors in use: millidegrees Celsius to `Cel` 0.001, milliwatts to `W` 0.001, `KiBy` to `By` 1024, percent to a ratio 0.01, units of 0.1 W to `W` 0.1, centiseconds to `s` 0.01, Mbit/s to `By/s` 125000 (an interface speed of 0 stays 0).
 
 ## Status rules
 
@@ -89,16 +89,54 @@ status:
 - Each unlisted text is counted per point in `otelcol_hwmap_unmapped_states{rule}` and logged once per value. After 1024 different values it logs one line and counts only.
 - A numeric value is written as an integer for the lookup, so a double of 2.0 matches the key `"2"`.
 
+## Enum gauge rules
+
+An `enum_gauge` rule turns a state into one gauge point per source point: 1 when the raw state is in `on`, 0 for any other state. The raw state stays on every point as an attribute. Use it where a state is a plain up or down, as `hw.network.up`. A status rule gives one point per listed state with `hw.state`, and an `enum_gauge` rule does not change that.
+
+```yaml
+enum_gauge:
+  source: value                      # value (default) or attribute
+  attribute: link.state              # the attribute that holds the state when source is attribute
+  on: ["1"]                          # the raw states that give 1
+  state_attribute: hw.network.oper_state   # default hw.state
+  names:                             # optional: the text kept in state_attribute for each raw state
+    "1": up
+    "2": down
+```
+
+- The point is a gauge and an integer, whatever the type of the source. The unit is `1` unless the rule sets one.
+- Every `on` entry must be in `names` when `names` is set.
+- With `names`, a raw state that is not listed gives 0, keeps the raw text in the state attribute, and is counted in `otelcol_hwmap_unmapped_states{rule}` and logged once per value. With no `names`, every state is kept as read and none is counted.
+- A numeric value is written as an integer for the lookup, as in a status rule.
+- A point with no `attribute` (source `attribute`) is not mapped: it passes unchanged and is counted in `otelcol_hwmap_unmapped_points`.
+
+## Interface, uptime and Wi-Fi rules
+
+The sample config holds these rules. They are config only, except for the enum gauge above. The interface index and name are the point attributes `interface.index` and `interface` of the snmp receiver config; a point with no name gets no `hw.name` and keeps `hw.id`.
+
+| Source metric | Target | Unit | Attributes added |
+|---|---|---|---|
+| `snmp.interface.in.bytes`, `out.bytes` | `hw.network.io` (cumulative sum) | `By` | `network.io.direction` `receive` or `transmit` |
+| `snmp.interface.in.errors`, `out.errors` | `hw.errors` (cumulative sum) | `{error}` | the direction and `error.type` `interface` |
+| `snmp.interface.in.packets`, `out.packets` | `hw.network.packets` (cumulative sum) | `{packet}` | the direction |
+| `snmp.interface.oper.status` | `hw.network.up` (gauge, 1 for up) | `1` | `hw.network.oper_state`: `up`, `down`, `testing`, `unknown`, `dormant`, `notPresent`, `lowerLayerDown` for 1 to 7 |
+| `snmp.system.uptime` | `system.uptime` | `s` | none; centiseconds times 0.01, and a wrapped value is emitted as read |
+| `wifi.radio.utilization.channel`, `.rx`, `.tx` | the same names | `1` | none; percent times 0.01, and a value above 100 gives a ratio above 1 |
+
+Every interface series carries `hw.type` `network`, `hw.id` from the interface index and `hw.name` from the interface name. `snmp.lldp.neighbor`, `wifi.radio.clients`, `wifi.ssid.clients`, `wifi.radio.channel` and `wifi.ap.status` have no rule and pass unchanged.
+
+The old names `snmp.interface.*` and `snmp.system.uptime` stop with these rules: nothing is written under both names and nothing is backfilled. Dashboards and alerts that read the old names change to the new ones.
+
 ## Counters
 
 | Counter | Counts |
 |---|---|
 | `otelcol_hwmap_unmapped_points{metric}` | Points no rule matched (every point of a metric that has no rule, and points of a metric whose rules all said no). They pass unchanged. |
-| `otelcol_hwmap_unmapped_states{rule}` | Points whose state text is not in the `status.map` of the rule. |
+| `otelcol_hwmap_unmapped_states{rule}` | Points whose state text is not in the `status.map` of the rule, or not in the `enum_gauge.names` of the rule. |
 
 ## Checks at load
 
-The config does not load on a duplicate rule name or match, a missing name, metric or target, an unknown unit, a scale that is 0, negative, NaN or infinite, an unbalanced `{` in a template, an empty attribute key, a status map that points to a state not in `states`, a `default_state` not in `states`, an `attribute` source with no attribute, or an `index_names` with no attribute. The error names the rule.
+The config does not load on a duplicate rule name or match, a missing name, metric or target, an unknown unit, a scale that is 0, negative, NaN or infinite, an unbalanced `{` in a template, an empty attribute key, a status map that points to a state not in `states`, a `default_state` not in `states`, an `attribute` source with no attribute, or an `index_names` with no attribute. An `enum_gauge` also fails on an empty `on` list, an `on` entry that is not in `names`, an empty key or entry, and a rule that has both `status` and `enum_gauge`. The error names the rule.
 
 ## Limits
 
@@ -110,4 +148,4 @@ The config does not load on a duplicate rule name or match, a missing name, metr
 
 ## Sample
 
-`test/configs/scrape-hwmap.yaml` holds rules for temperatures with thresholds, a state enum, sensors named by index, a text state with a default, and unit conversions. The unit tests of the processor load that file.
+`test/configs/scrape-hwmap.yaml` holds rules for temperatures with thresholds, a state enum, sensors named by index, a text state with a default, unit conversions, and the interface, uptime and Wi-Fi rules. The unit tests of the processor load that file.

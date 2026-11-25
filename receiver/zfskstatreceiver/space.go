@@ -119,6 +119,9 @@ type spaceResult struct {
 	datasetRan            bool
 	poolObjs, datasetObjs int
 	poolTime, datasetTime time.Duration
+	// Reads that failed in this scrape: one for each pool read or statistics call, dataset read or child
+	// list. An object that vanished between the list and the read is not a failure.
+	poolFailures, datasetFailures int
 }
 
 // spaceSource reads pool and dataset space through the control device.
@@ -132,6 +135,8 @@ type spaceSource struct {
 	mu          sync.Mutex // held by a read
 	api         zfsAPI
 	needsReopen bool // the device went away; close it and open it again
+
+	poolFails, datasetFails int // failed reads of the scrape in progress
 
 	lateMu sync.Mutex
 	late   chan *spaceResult // the read that outran the timeout
@@ -211,6 +216,7 @@ func (s *spaceSource) connect() (ok, unsupported bool) {
 func (s *spaceSource) read(pools []string) *spaceResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.poolFails, s.datasetFails = 0, 0
 	r := &spaceResult{isSupported: true, datasetRan: s.datasetsOn()}
 	ok, unsupported := s.connect()
 	if unsupported {
@@ -254,12 +260,14 @@ func (s *spaceSource) readPools(r *spaceResult, pools []string) {
 			s.logger.Debug("ZFS pool is gone between the list and the read", zap.String("zfs.pool", name))
 		default:
 			failed++
+			s.poolFails++
 			s.noteErr(err)
 			s.ep.warn("pool:"+name, "Cannot read ZFS pool space", zap.String("zfs.pool", name), zap.Error(err))
 		}
 	}
 	r.poolOK = failed == 0 || failed < len(pools)
 	r.poolObjs = len(r.pools)
+	r.poolFailures = s.poolFails
 	r.poolTime = s.now().Sub(start)
 }
 
@@ -300,6 +308,7 @@ func (s *spaceSource) readPool(name string) (poolSpace, error) {
 	case isPoolOrDatasetGone(err):
 		s.logger.Debug("ZFS pool is gone before its statistics", zap.String("zfs.pool", name))
 	default:
+		s.poolFails++
 		s.noteErr(err)
 		s.ep.warn("stats:"+name, "Cannot read ZFS pool statistics, so no vdev error or scrub series",
 			zap.String("zfs.pool", name), zap.Error(err))
@@ -410,6 +419,7 @@ func (s *spaceSource) readDatasets(r *spaceResult) {
 	}
 	r.datasets = s.capDatasets(r.datasets)
 	r.datasetObjs = len(r.datasets)
+	r.datasetFailures = s.datasetFails
 	r.datasetTime = s.now().Sub(start)
 }
 
@@ -464,6 +474,7 @@ func (s *spaceSource) walk(r *spaceResult, pool string, visits *int) {
 			}
 		}
 		if err != nil && !isPoolOrDatasetGone(err) {
+			s.datasetFails++
 			s.noteErr(err)
 			s.ep.warn("children:"+parent, "Cannot list the children of a ZFS dataset",
 				zap.String("zfs.dataset", parent), zap.Error(err))
@@ -481,9 +492,11 @@ func (s *spaceSource) addDataset(r *spaceResult, pool, name string, props *nvLis
 	case isPoolOrDatasetGone(err):
 		s.logger.Debug("ZFS dataset is gone between the list and the read", zap.String("zfs.dataset", name))
 	case err != nil:
+		s.datasetFails++
 		s.noteErr(err)
 		s.ep.warn(key, "Cannot read ZFS dataset space", zap.String("zfs.dataset", name), zap.Error(err))
 	case props == nil:
+		s.datasetFails++
 		s.ep.warn(key, "ZFS dataset reply has no properties", zap.String("zfs.dataset", name))
 	default:
 		s.ep.clear(key)
@@ -713,25 +726,28 @@ func emitCollector(sm pmetric.ScopeMetrics, r *spaceResult, now pcommon.Timestam
 		ok        bool
 		objects   int
 		took      time.Duration
+		failures  int
 	}
-	rows := []row{{"pool", r.poolOK, r.poolObjs, r.poolTime}}
+	rows := []row{{"pool", r.poolOK, r.poolObjs, r.poolTime, r.poolFailures}}
 	if r.datasetRan {
-		rows = append(rows, row{"dataset", r.datasetOK, r.datasetObjs, r.datasetTime})
+		rows = append(rows, row{"dataset", r.datasetOK, r.datasetObjs, r.datasetTime, r.datasetFailures})
 	}
 	success := newGauge(sm, "zfs.collector.success", "1", "1 when the read of the collector ended without a failure, else 0.")
 	duration := newGauge(sm, "zfs.collector.duration", "s", "Time the read of the collector took.")
 	objects := newGauge(sm, "zfs.collector.objects", "{object}", "Pools or datasets the collector read.")
+	failures := newGauge(sm, "zfs.collector.failures", "{failure}", "Reads of the collector that failed in this scrape; the other objects still report.")
 	for _, c := range rows {
 		ok := int64(0)
 		if c.ok {
 			ok = 1
 		}
-		for _, dp := range []pmetric.NumberDataPoint{success.AppendEmpty(), duration.AppendEmpty(), objects.AppendEmpty()} {
+		for _, dp := range []pmetric.NumberDataPoint{success.AppendEmpty(), duration.AppendEmpty(), objects.AppendEmpty(), failures.AppendEmpty()} {
 			dp.Attributes().PutStr("collector", c.collector)
 			dp.SetTimestamp(now)
 		}
 		success.At(success.Len() - 1).SetIntValue(ok)
 		duration.At(duration.Len() - 1).SetDoubleValue(c.took.Seconds())
 		objects.At(objects.Len() - 1).SetIntValue(int64(c.objects))
+		failures.At(failures.Len() - 1).SetIntValue(int64(c.failures))
 	}
 }

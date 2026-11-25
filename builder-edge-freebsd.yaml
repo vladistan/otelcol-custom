@@ -16,6 +16,9 @@ replaces:
   # Pin sentry-go to the version cmd/otelcol-custom compiles against. The builder
   # compiles before the entrypoint is copied in; unpinned it takes the newest release.
   - github.com/getsentry/sentry-go => github.com/getsentry/sentry-go v0.29.1
+  # Contrib file_storage with a local patch: a buffer file is checked in a child process, and a corrupt one is
+  # renamed to <name>.corrupt-<date> and recreated
+  - github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage => ../../extension/storage/filestorage
   # Custom components from this repository (paths relative to build/edge/ directory)
   - github.com/vladistan/otelcol-custom/receiver/openvpnstatusreceiver => ../../receiver/openvpnstatusreceiver
   - github.com/vladistan/otelcol-custom/processor/normalizedloadprocessor => ../../processor/normalizedloadprocessor
@@ -25,7 +28,6 @@ replaces:
   - github.com/vladistan/otelcol-custom/shape/multiline => ../../shape/multiline
   - github.com/vladistan/otelcol-custom/shape/severity => ../../shape/severity
   - github.com/vladistan/otelcol-custom/shape/strip => ../../shape/strip
-  # cspell:ignore k8slift
   - github.com/vladistan/otelcol-custom/shape/body => ../../shape/body
   - github.com/vladistan/otelcol-custom/shape/httpaccess => ../../shape/httpaccess
   - github.com/vladistan/otelcol-custom/shape/k8slift => ../../shape/k8slift

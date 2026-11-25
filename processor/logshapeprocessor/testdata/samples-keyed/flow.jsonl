@@ -1,6 +1,5 @@
 # provenance: invented
 # One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
-# cspell:ignore UPID vzdump qmstart Exim vstan
 {"provenance": "invented", "body": "", "attributes": {"flow.type": "netflow_v9", "flow.sampler_address": "192.0.2.1", "source.address": "192.0.2.5", "destination.address": "198.51.100.9", "flow.src_as": 64496, "flow.dst_as": 64497}, "resource": {}}
 {"provenance": "invented", "body": "", "attributes": {"flow.type": "netflow_v9", "flow.sampler_address": "192.0.2.1", "source.address": "198.51.100.20", "destination.address": "192.0.2.5", "flow.src_as": "64498", "flow.dst_as": 0}, "resource": {}}
 {"provenance": "invented", "body": "", "attributes": {"flow.type": "ipfix", "flow.sampler_address": "192.0.2.2", "source.address": "192.0.2.30", "destination.address": "203.0.113.4", "flow.src_as": 64496, "flow.dst_as": 64499}, "resource": {}}

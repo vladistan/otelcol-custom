@@ -6,7 +6,9 @@ package logshapeprocessor
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/vladistan/otelcol-custom/shape/severity"
@@ -40,12 +42,34 @@ type Config struct {
 	Hints map[string]Hint `mapstructure:"hints"`
 	// AccountAliases maps a cloud account id to a display name and replaces the default for that id. Empty by default.
 	AccountAliases map[string]string `mapstructure:"account_aliases"`
+	// UserAliases maps the GUID of an Identity Center user to a name for the caller of CloudTrail events. Empty by default.
+	UserAliases map[string]string `mapstructure:"user_aliases"`
+	// WLANSSIDs maps a WLAN id to its SSID. The cisco branch uses it when a wireless controller message names the WLAN but not the SSID. Empty by default.
+	WLANSSIDs map[string]string `mapstructure:"wlan_ssids"`
 	// GCPLBErrorValues extends the load balancer status detail values treated as errors.
 	GCPLBErrorValues []string `mapstructure:"gcp_lb_error_values"`
 	// K8s holds the options of the Kubernetes branch.
 	K8s K8sConfig `mapstructure:"k8s"`
 	// ServiceNameOverrides maps a detected service name to the name to emit and replaces the default for that key.
 	ServiceNameOverrides map[string]string `mapstructure:"service_name_overrides"`
+	// Autoscaler holds the options of the autoscaler branch.
+	Autoscaler AutoscalerConfig `mapstructure:"autoscaler"`
+	// SeverityFromLine holds the option that gives a record with no severity the level of its line.
+	SeverityFromLine SeverityFromLineConfig `mapstructure:"severity_from_line"`
+}
+
+// SeverityFromLineConfig holds the options of the severity-from-line step.
+type SeverityFromLineConfig struct {
+	// Services lists the service.name values whose records arrive with no severity. A listed record that has
+	// none takes the level token of its line; one with a severity keeps it. Empty by default: no record changes.
+	Services []string `mapstructure:"services"`
+}
+
+// AutoscalerConfig holds the options of the autoscaler branch.
+type AutoscalerConfig struct {
+	// KeepRatio is the share of rows with a node count equal to the target that the branch keeps, from 0 to 1.
+	// Rows with a count that differs from the target are always kept. Default 0.2.
+	KeepRatio float64 `mapstructure:"keep_ratio"`
 }
 
 // K8sConfig holds the options of the Kubernetes branch.
@@ -144,7 +168,7 @@ type CiscoConfig struct {
 	SetHostname bool `mapstructure:"set_hostname"`
 	// CleanBody removes the syslog priority prefix from the body.
 	CleanBody bool `mapstructure:"clean_body"`
-	// RewriteMessages replaces the body with the message part of HP and WLC lines.
+	// RewriteMessages replaces the body with the message part of IOS, switch, HP and WLC lines.
 	RewriteMessages bool `mapstructure:"rewrite_messages"`
 	// AdjustSeverity sets WARN for interface and topology events and reads the Cisco level otherwise.
 	AdjustSeverity bool `mapstructure:"adjust_severity"`
@@ -206,6 +230,25 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("account_aliases[%q]: empty alias", id)
 		}
 	}
+	for guid, name := range c.UserAliases {
+		if guid == "" {
+			return errors.New("user_aliases: empty user id")
+		}
+		if name == "" {
+			return fmt.Errorf("user_aliases[%q]: empty name", guid)
+		}
+	}
+	for id, ssid := range c.WLANSSIDs {
+		if id == "" {
+			return errors.New("wlan_ssids: empty WLAN id")
+		}
+		if _, err := strconv.ParseUint(id, 10, 32); err != nil {
+			return fmt.Errorf("wlan_ssids[%q]: the WLAN id must be a number", id)
+		}
+		if ssid == "" {
+			return fmt.Errorf("wlan_ssids[%q]: empty SSID", id)
+		}
+	}
 	for i, v := range c.GCPLBErrorValues {
 		if v == "" {
 			return fmt.Errorf("gcp_lb_error_values[%d]: empty value", i)
@@ -217,6 +260,14 @@ func (c *Config) Validate() error {
 		}
 		if to == "" {
 			return fmt.Errorf("service_name_overrides[%q]: empty replacement", from)
+		}
+	}
+	if r := c.Autoscaler.KeepRatio; math.IsNaN(r) || r < 0 || r > 1 {
+		return fmt.Errorf("autoscaler.keep_ratio: %v is outside 0 to 1", r)
+	}
+	for i, s := range c.SeverityFromLine.Services {
+		if s == "" {
+			return fmt.Errorf("severity_from_line.services[%d]: empty service name", i)
 		}
 	}
 	return nil

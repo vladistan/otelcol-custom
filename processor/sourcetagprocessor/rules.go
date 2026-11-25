@@ -40,14 +40,14 @@ const (
 	formatS3Access   = "aws.s3access"
 	formatELBAccess  = "aws.elbaccess"
 
-	sourceCloudTrail = "aws.cloudtrail"
-	sourceS3Access   = "aws.s3access"
-	sourceELB        = "aws.elb"
-	sourceEKS        = "aws.eks"
+	sourceCloudTrail = "cloudtrail"
+	sourceS3Access   = "s3access"
+	sourceELB        = "elb"
+	sourceEKS        = "eks"
 	sourceCloudWatch = "aws.cloudwatch"
-	sourceGCPAudit   = "gcp.audit"
+	sourceGCPAudit   = "audit"
 	sourceGCPRun     = "gcp.cloudrun"
-	sourceGCPLB      = "gcp.lb"
+	sourceGCPLB      = "lb"
 	sourceAzure      = "azure.activity"
 	sourceAuth0      = "auth0"
 
@@ -229,7 +229,7 @@ func regionOfZone(zone string) string {
 	return zone
 }
 
-// gcpRecord sets gcp.audit with no nil guard: an audit resource id outranks any source set earlier.
+// gcpRecord sets log.source audit with no nil guard: an audit resource id outranks any source set earlier.
 func gcpRecord(res, _ pcommon.Map, lr plog.LogRecord) {
 	attrs := lr.Attributes()
 	if matches(res, gcpResourceID, gcpAuditID) {

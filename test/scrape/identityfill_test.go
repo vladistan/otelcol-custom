@@ -54,7 +54,7 @@ func TestGKEAuditEntryIsFilledAfterSourceTag(t *testing.T) {
 	rec := recordsOf(final.AllLogs()[0])[0]
 	wantStr(t, rec.resource, "host.name", "cluster-a")
 	wantStr(t, rec.resource, "service.name", "gcp-audit")
-	wantStr(t, rec.log.Attributes(), "log.source", "gcp.audit")
+	wantStr(t, rec.log.Attributes(), "log.source", "audit")
 	if got := rec.log.Body().Str(); got == "" {
 		t.Fatalf("audit body is empty, want the method and resource")
 	}

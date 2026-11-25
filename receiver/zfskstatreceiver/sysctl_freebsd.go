@@ -8,25 +8,24 @@ package zfskstatreceiver
 import (
 	"encoding/binary"
 	"slices"
+	"sync"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-const (
-	// maxOIDLen is CTL_MAXNAME, the longest OID the kernel returns.
-	maxOIDLen = 24
-	// maxNameLen bounds one sysctl name returned by the OID name call.
-	maxNameLen = 1024
-)
+// maxNameLen bounds one sysctl name returned by the OID name call.
+const maxNameLen = 1024
 
-// Meta sysctls under CTL_SYSCTL (0): name of an OID, next OID, OID of a name.
+// Meta sysctls under CTL_SYSCTL (0): name of an OID and OID of a name. The next-OID calls are in sysctl.go.
 var (
 	ctlName     = []int32{0, 1}
-	ctlNext     = []int32{0, 2}
 	ctlNameToID = []int32{0, 3}
 )
+
+// nextMetaOnce picks the next-OID call once, from what the kernel has.
+var nextMetaOnce = sync.OnceValue(func() []int32 { return nextMeta(lookupOID) })
 
 func realSysctl() sysctlFns {
 	return sysctlFns{
@@ -138,13 +137,7 @@ func lookupOID(name string) ([]int32, error) {
 }
 
 func nextOID(oid []int32) ([]int32, error) {
-	mib := append(append([]int32{}, ctlNext...), oid...)
-	buf := make([]byte, maxOIDLen*4)
-	n, err := rawSysctl(mib, buf, nil)
-	if err != nil {
-		return nil, err
-	}
-	return decodeOID(buf[:n]), nil
+	return nextOIDVia(rawSysctl, nextMetaOnce(), oid)
 }
 
 func oidName(oid []int32) (string, error) {

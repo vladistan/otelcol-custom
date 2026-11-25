@@ -1,11 +1,10 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -128,7 +127,7 @@ func TestRedis_JournaldTextBody_IsRead(t *testing.T) {
 	out := h.runBatch(ld)
 
 	got := out.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
-	if got.Body().Str() != "from a map body" {
-		t.Errorf("body = %v", got.Body().AsRaw())
+	if want := map[string]any{"text": "from a map body"}; !reflect.DeepEqual(got.Body().AsRaw(), want) {
+		t.Errorf("body = %v, want %v", got.Body().AsRaw(), want)
 	}
 }

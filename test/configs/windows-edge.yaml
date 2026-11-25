@@ -1,4 +1,3 @@
-# cspell:ignore logfmt
 # Windows edge collector sample config for 0.3.2.
 # Every component in this file is valid on Windows.
 # Summarization is off: windowhist is defined but not in the metrics pipeline, and every
@@ -298,7 +297,6 @@ processors:
     # The full name stays in winlog.event_data. Placeholder suffix; use your domain.
     dn_contractions:
       - ",OU=Domain Controllers,DC=lab,DC=example,DC=org"
-    # cspell:ignore LGIS
     # Extra or changed MSSQL audit action codes (event 33205); built-in codes need no entry.
     mssql_actions:
       LGIS: Login succeeded

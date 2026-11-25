@@ -68,6 +68,9 @@ Everything else in the static edge is in the build. `hostmetrics` works with the
 `zfskstat` reads ZFS through sysctl when `source` is `sysctl` (the default on FreeBSD). It
 reports `zfs.arc.*` and `zfs.pool.state` with the Linux names. FreeBSD 13.1 has no per-pool
 I/O kstat, so `zfs.pool.io.*` is absent; use the `hostmetrics` `disk` scraper for disk I/O.
-Set `datasets: true` for per-dataset I/O.
+Set `datasets: true` for per-dataset I/O. The pool state and the txg history are raw kstats,
+which the kernel hides from the ordinary sysctl listing; the receiver lists the tree with the
+`sysctl.nextnoskip` call when the kernel has it. On a kernel without it the pool series stay
+absent while `zfs.arc.*` still arrives.
 
 `test/configs/truenas-core-edge.yaml` is a complete sample for a TrueNAS CORE host.

@@ -17,6 +17,7 @@ replaces:
   - github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver => ../../receiver/cloudwatchmetricsreceiver
   - github.com/vladistan/otelcol-custom/receiver/ipmireceiver => ../../receiver/ipmireceiver
   - github.com/vladistan/otelcol-custom/receiver/hwschema => ../../receiver/hwschema
+  - github.com/vladistan/otelcol-custom/receiver/ippreceiver => ../../receiver/ippreceiver
   - github.com/vladistan/otelcol-custom/receiver/pvereceiver => ../../receiver/pvereceiver
   # go-ipmi is pre-1.0: the version is pinned here, and a bump is a deliberate change.
   - github.com/bougou/go-ipmi => github.com/bougou/go-ipmi v0.9.2
@@ -28,10 +29,11 @@ replaces:
   - github.com/open-telemetry/opentelemetry-collector-contrib/receiver/googlecloudmonitoringreceiver => ../../receiver/googlecloudmonitoringreceiver
   - github.com/vladistan/otelcol-custom/processor/sourcetagprocessor => ../../processor/sourcetagprocessor
   - github.com/vladistan/otelcol-custom/processor/identityfillprocessor => ../../processor/identityfillprocessor
+  - github.com/vladistan/otelcol-custom/processor/logrecombineprocessor => ../../processor/logrecombineprocessor
   - github.com/vladistan/otelcol-custom/processor/logshapeprocessor => ../../processor/logshapeprocessor
-  # cspell:ignore hwmap hwmapprocessor
+  - github.com/vladistan/otelcol-custom/processor/healthprobesampler => ../../processor/healthprobesampler
+  - github.com/vladistan/otelcol-custom/processor/internal/probesample => ../../processor/internal/probesample
   - github.com/vladistan/otelcol-custom/processor/hwmapprocessor => ../../processor/hwmapprocessor
-  # cspell:ignore k8slift
   - github.com/vladistan/otelcol-custom/shape/body => ../../shape/body
   - github.com/vladistan/otelcol-custom/shape/httpaccess => ../../shape/httpaccess
   - github.com/vladistan/otelcol-custom/shape/k8slift => ../../shape/k8slift
@@ -56,6 +58,8 @@ receivers:
   - gomod: github.com/vladistan/otelcol-custom/receiver/cloudwatchmetricsreceiver v0.0.0
   # Lab BMC sensors over IPMI; runs in a Deployment of its own (docs/scrape-collector.md)
   - gomod: github.com/vladistan/otelcol-custom/receiver/ipmireceiver v0.0.0
+  # Printer state, supplies and queue over IPP, one entry per printer; scrape image only
+  - gomod: github.com/vladistan/otelcol-custom/receiver/ippreceiver v0.0.0
   # Proxmox VE cluster resources and guest agent facts, one instance per node (docs/scrape-collector.md)
   - gomod: github.com/vladistan/otelcol-custom/receiver/pvereceiver v0.0.0
   # SNMP devices read by OID, one instance per device (contrib, alpha)
@@ -73,7 +77,11 @@ processors:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.164.1
   - gomod: github.com/vladistan/otelcol-custom/processor/sourcetagprocessor v0.0.0
   - gomod: github.com/vladistan/otelcol-custom/processor/identityfillprocessor v0.0.0
+  # logrecombine: glues the wrapped fragments of a serial console line before logshape (docs/log-shaping.md)
+  - gomod: github.com/vladistan/otelcol-custom/processor/logrecombineprocessor v0.0.0
   - gomod: github.com/vladistan/otelcol-custom/processor/logshapeprocessor v0.0.0
+  # healthprobe: samples health probe rows (docs/scrape-collector.md, Health probe sampling)
+  - gomod: github.com/vladistan/otelcol-custom/processor/healthprobesampler v0.0.0
   # hwmap: maps raw SNMP metrics to hw.* names by config rules (docs/hwmap.md)
   - gomod: github.com/vladistan/otelcol-custom/processor/hwmapprocessor v0.0.0
 exporters:

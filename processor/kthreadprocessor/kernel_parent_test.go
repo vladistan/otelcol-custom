@@ -1,6 +1,5 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
-// cspell:ignore kthr kthre kthrea kthrex shor kbloc
 
 package kthreadprocessor
 

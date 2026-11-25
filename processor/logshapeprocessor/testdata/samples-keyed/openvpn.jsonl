@@ -1,7 +1,6 @@
 # provenance: invented
 # One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
 # basis: record 1 follows a status row quoted in the collected samples (connected-since time and bytes in), but the port and the bytes out are not those of the quote. No record is a quoted row.
-# cspell:ignore UPID vzdump qmstart Exim vstan
 {"provenance": "invented", "body": "", "attributes": {"user.name": "user-a", "client.address": "198.51.100.7", "client.port": 51234, "vstan.openvpn.bytes_received": 32715571, "vstan.openvpn.bytes_sent": 46766490, "vstan.openvpn.connected_since": "2026-11-18 18:58:58"}, "resource": {}}
 {"provenance": "invented", "body": "", "attributes": {"user.name": "user-b", "client.address": "203.0.113.25", "client.port": 40022, "vstan.openvpn.bytes_received": 1024, "vstan.openvpn.bytes_sent": 2048, "vstan.openvpn.connected_since": "2026-11-20 06:30:01"}, "resource": {}}
 {"provenance": "invented", "body": "", "attributes": {"user.name": "user-a", "client.address": "198.51.100.7", "client.port": 51234, "bytes_received": 32715571, "bytes_sent": 46766490, "connected_since": "2026-11-18 18:58:58"}, "resource": {}}

@@ -1,0 +1,5 @@
+# provenance: real
+# One JSON record per line: a journald map body as the receiver makes it. The lines are captured daemon lines with the peer address replaced by a documentation-range one.
+{"identifier": "proxmox-backup-proxy", "pid": "1234", "text": "[[::ffff:192.0.2.10]:38835] failed to check for TLS handshake: couldn't peek into incoming TCP stream"}
+{"identifier": "proxmox-backup-proxy", "pid": "1234", "text": "[[::ffff:192.0.2.10]:50218] failed to check for TLS handshake: couldn't peek into incoming TCP stream"}
+{"identifier": "proxmox-backup-proxy", "pid": "1234", "text": "[[::ffff:192.0.2.10]:9239] failed to check for TLS handshake: couldn't peek into incoming TCP stream"}

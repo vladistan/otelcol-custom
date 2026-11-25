@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore vstan
-
 import (
 	"fmt"
 	"strings"
@@ -25,11 +23,11 @@ func eksAuditConfig() *Config {
 func eksAuditInput(body string) input {
 	return input{
 		body:  body,
-		attrs: map[string]any{"log.source": "aws.eks", "event.category": "audit"},
+		attrs: map[string]any{"log.source": "eks", "event.category": "audit"},
 		resource: map[string]any{
 			"cloudwatch.log.group.name": eksAuditTestGroup,
 			"cloudwatch.log.stream":     "kube-apiserver-audit-0001",
-			"service.name":              "aws.eks",
+			"service.name":              "eks",
 		},
 	}
 }
@@ -60,7 +58,7 @@ func TestConsume_EKSAudit_LeaseRecord_ShapesEveryField(t *testing.T) {
 	absent(t, r, "cloud.account.name")
 	attrInt(t, a, "http.response.status_code", 200)
 	if attrStr(t, a, "http.request.method") != "GET" || attrStr(t, a, "vstan.audit.level") != "Metadata" ||
-		attrStr(t, a, "log.record.original") != raw || attrStr(t, a, "log.source") != "aws.eks" {
+		attrStr(t, a, "log.record.original") != raw || attrStr(t, a, "log.source") != "eks" {
 		t.Fatalf("attributes = %v", a.AsRaw())
 	}
 }
@@ -188,7 +186,7 @@ func TestConsume_EKSAudit_NonJSONBody_PassesUnmatched(t *testing.T) {
 		t.Fatalf("body = %q", lr.Body().Str())
 	}
 	absent(t, res.Attributes(), "host.name")
-	if got := h.counter(unmatchedMetric, "source"); got["aws.eks"] != 1 {
+	if got := h.counter(unmatchedMetric, "source"); got["eks"] != 1 {
 		t.Fatalf("unmatched = %v", got)
 	}
 }
@@ -216,7 +214,7 @@ func TestConsume_EKSAudit_HeartbeatBatch_CountInEqualsOut(t *testing.T) {
 	for range n {
 		lr := lrs.AppendEmpty()
 		lr.Body().SetStr(eksAuditJSON("Metadata", "update", "system:kube-controller-manager", "leases", "kube-system", "kube-controller-manager", 200))
-		_ = lr.Attributes().FromRaw(map[string]any{"log.source": "aws.eks"})
+		_ = lr.Attributes().FromRaw(map[string]any{"log.source": "eks"})
 	}
 
 	if err := h.proc.ConsumeLogs(t.Context(), ld); err != nil {
@@ -242,13 +240,13 @@ func TestConsume_EKSAudit_MixedBatch_EachRecordKeepsItsOwnIdentity(t *testing.T)
 		return auditRec{
 			body: eksAuditJSON("Metadata", "get", user, "pods", "default", user, 200),
 			attrs: map[string]any{
-				"log.source":                "aws.eks",
+				"log.source":                "eks",
 				"cloudwatch.log.group.name": "/aws/eks/" + cluster + "/cluster",
 			},
 		}
 	}
 
-	out := h.auditBatch(map[string]any{"service.name": "aws.eks"}, []auditRec{
+	out := h.auditBatch(map[string]any{"service.name": "eks"}, []auditRec{
 		rec("alice", "cluster-a"), rec("bob", "cluster-b"), rec("carol", "cluster-a"),
 	})
 
@@ -284,7 +282,7 @@ func TestConsume_EKSAudit_ExistingOriginal_IsKept(t *testing.T) {
 }
 
 func TestConsume_EKSAudit_SecondPass_ChangesNothing(t *testing.T) {
-	attrs := map[string]any{"log.source": "aws.eks"}
+	attrs := map[string]any{"log.source": "eks"}
 	recs := []auditRec{
 		{body: eksAuditJSON("Metadata", "get", "alice", "pods", "d", "p", 200), attrs: attrs},
 		{body: eksAuditJSON("Metadata", "list", "bob", "pods", "d", "p", 503), attrs: attrs},
@@ -307,7 +305,7 @@ func TestConsume_EKSAudit_HugeBody_PassesUnmatchedQuickly(t *testing.T) {
 		t.Fatal("body changed")
 	}
 	absent(t, res.Attributes(), "host.name")
-	if got := h.counter(unmatchedMetric, "source"); got["aws.eks"] != 1 {
+	if got := h.counter(unmatchedMetric, "source"); got["eks"] != 1 {
 		t.Fatalf("unmatched = %v", got)
 	}
 	if elapsed > time.Second {
@@ -324,7 +322,7 @@ func TestConsume_EKSAudit_JSONWithoutAuditKeys_PassesUnmatched(t *testing.T) {
 	if lr.Body().Str() != raw {
 		t.Fatalf("body = %q", lr.Body().Str())
 	}
-	if got := h.counter(unmatchedMetric, "source"); got["aws.eks"] != 1 {
+	if got := h.counter(unmatchedMetric, "source"); got["eks"] != 1 {
 		t.Fatalf("unmatched = %v", got)
 	}
 }

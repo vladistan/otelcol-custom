@@ -1,0 +1,6 @@
+# provenance: invented
+# evidence: written from the format description of the Spring Boot console pattern; names and texts are placeholders, and stack trace lines are left out because only a header line is claimed
+2026-11-22T14:38:13.666Z  INFO 1 --- [worker] Example                    : Started in 2.1 seconds
+2026-11-22 14:38:13.666  WARN 4242 --- [main] c.e.demo.Service : Cache is cold
+2026-11-22T14:38:13.666+01:00 ERROR 7 --- [demo-app] [nio-8080-exec-1] c.e.demo.Controller : Request failed
+2026-11-22T14:38:14.001Z DEBUG 1 --- [   scheduling-1] c.e.demo.Poller                          : tick

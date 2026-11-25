@@ -24,6 +24,12 @@ type input struct {
 	resource map[string]any
 	scope    string
 	ts       time.Time
+
+	// bodyMap, when set, is the body in place of the text: a journald record as the receiver makes it.
+	bodyMap map[string]any
+	// severity and severityText are the severity the record arrives with.
+	severity     plog.SeverityNumber
+	severityText string
 }
 
 func (in input) logs() plog.Logs {
@@ -36,6 +42,13 @@ func (in input) logs() plog.Logs {
 	sl.Scope().SetName(in.scope)
 	lr := sl.LogRecords().AppendEmpty()
 	lr.Body().SetStr(in.body)
+	if in.bodyMap != nil {
+		if err := lr.Body().SetEmptyMap().FromRaw(in.bodyMap); err != nil {
+			panic(err)
+		}
+	}
+	lr.SetSeverityNumber(in.severity)
+	lr.SetSeverityText(in.severityText)
 	if err := lr.Attributes().FromRaw(in.attrs); err != nil {
 		panic(err)
 	}

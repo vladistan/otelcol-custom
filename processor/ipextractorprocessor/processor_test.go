@@ -33,7 +33,7 @@ func TestLogsProcessor_ExtractFromBody(t *testing.T) {
 		nextConsumer: sink,
 	}
 
-	logs := createTestLogsWithBody("DHCPACK on 192.0.2.165 to 10:d5:61:17:80:6b (hostname) via em0")
+	logs := createTestLogsWithBody("DHCPACK on 192.0.2.165 to 00:00:5e:00:53:01 (hostname) via em0")
 
 	err := processor.ConsumeLogs(context.Background(), logs)
 	require.NoError(t, err)

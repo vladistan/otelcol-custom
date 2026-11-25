@@ -1,4 +1,3 @@
-<!-- cspell:ignore slift vstan logfmt NOERROR awselb gcpaudit mosquitto kaudit apparmor eksaudit gcplb gcpjson oauth2proxy coredns stallcheck smartd serialconsole stderrhint lldpd litellm ssmagent UPID vzdump pmkr hostapd CLSM hwmap -->
 
 # Log shaping (`logshape` processor)
 
@@ -28,6 +27,17 @@ service:
 
 The helpers live under `shape/`, each its own Go module. They import nothing from the processor.
 
+### Journald map bodies
+
+A journald record can arrive with a map body: the text under `text` or `MESSAGE` and the journal fields (`_HOSTNAME`, `_PID`, `SYSLOG_IDENTIFIER`, `PRIORITY`) beside it.
+
+- Every branch reads the text from `text`, then from `MESSAGE`. A map with no string under either key passes unchanged and `otelcol_logshape_unmatched` counts it.
+- A branch that shapes the text leaves a map: the shaped text goes back under the key it was read from, and every other key stays. The `journaldprocessor` of the gateway then finds the journal fields it maps to `host.id` and the process attributes.
+- `PRIORITY` is dropped only when the branch changed the severity, because the old value no longer matches the record. A branch that leaves the severity as it was keeps `PRIORITY`.
+- A string body is shaped as before, and no map is built.
+
+A record shaped once is left as it is by a second `logshape` pass at the gateway. `smartd` and `stallcheck` keep an existing `log.record.original`, so the second pass does not replace the raw line with the shaped body.
+
 | Module | What it holds |
 |---|---|
 | `severity` | one level table per source (word, klog, mongod, ClickHouse, PostgreSQL, pino, Redis), HTTP status and DNS response code mapping, number to text |
@@ -48,38 +58,43 @@ The detector tries the branches in this order. The first one that claims a recor
 | `flow` | a record with `flow.src_as` or `flow.dst_as` | the AS names of the netflow receiver |
 | `klog` | a Kubernetes klog line (`I1119 23:05:39.184859 1 file.go:214] "message"`) | `klogprocessor` |
 | `uvicorn` | a line that starts with a uvicorn level prefix | `uvicornlogprocessor` |
+| `pylogger` | a Python logging line (`LEVEL:logger:message`), with the first line of a traceback; claimed after `uvicorn` | none |
 | `collector` | a collector console line whose fields name a component (`otelcol.component.id`), also in a syslog wrapper, or a node-logs row that holds the line in `original_message` | none |
 | `mongod` | a mongod structured JSON line (`t`, `s`, `c`, `id`, `ctx`, `msg`, `attr`) | none |
 | `gcpjson` | a GCP structured JSON line with `severity` and `message` | none |
 | `tracing` | a Rust tracing JSON line with `fields`, `level` and `target` | none |
 | `pino` | a pino JSON line with a numeric `level` and `time`, with an optional `[TAG]` prefix | none |
-| `logrus` | a logrus, zap or slog JSON line, a logrus text line, a zap console line | `logruslogprocessor` |
+| `springboot` | a Spring Boot console line (`time LEVEL pid --- [thread] logger : text`), with the first line of a stack trace; claimed before `logrus` | none |
+| `logrus` | a logrus, zap or slog JSON line, a logrus text line, a zap console line; the `service` key of a JSON line gives `service.name` | `logruslogprocessor` |
 | `postgres` | a PostgreSQL server line (`2026-11-19 22:42:20.918 UTC [815116] LOG:  text`) | `postgreslogprocessor` |
 | `redis` | a Redis server line (`1:M 19 Nov 2026 23:22:37.151 * text`) | `redislogprocessor` |
 | `nginx` | a combined access line | `nginxlogprocessor` |
 | `sentry` | a Sentry line (`02:30:21 [INFO] logger: text`) | `sentrylogprocessor` |
-| `cisco` | a Cisco, HP switch or WLC line, an access point kernel line behind a device clock (`[*11/19/2026 23:50:11.1234] text`), or a record already marked `cisco_facility`; the clock is stripped, and a routine message of the `cisco.access_point_downgrade` list drops from WARN to INFO (a list set in config replaces the built-in one) | `ciscologprocessor` |
+| `cisco` | a Cisco, HP switch or WLC line, an access point kernel line behind a device clock (`[*11/19/2026 23:50:11.1234] text`), or a record already marked `cisco_facility`; an IOS or switch line loses its sequence number, device clock and `%FAC-SEV-MNEMONIC:` prefix (facility, level and mnemonic stay as `vstan.cisco.*`), an access point line loses its clock, and a routine message of the `cisco.access_point_downgrade` list drops from WARN to INFO (a list set in config replaces the built-in one) | `ciscologprocessor` |
+| `vpnscript` | a script line `[timestamp] text` whose bracket is a timestamp; the only branch that defaults to INFO | none |
 | `syslog` | a record with a syslog line in `message`, a `priority`, or a syslog-shaped body; a wrapped line is shaped again by the branch that claims the inner text | `syslogprocessor` |
 | `influx` | an InfluxDB `[httpd]` access line | none |
 | `oauth2proxy` | an oauth2-proxy access line (client, user, time, upstream, method, path, status, size, duration) | none |
 | `coredns` | a CoreDNS query log line | none |
-| `gcplb` | a record with `log.source` `gcp.lb` | none |
-| `awselb` | a record with `log.source` `aws.elb` | none |
-| `s3access` | a record with `log.source` `aws.s3access` and an empty body | none |
-| `gcpaudit` | a record with `log.source` `gcp.audit` | none |
-| `eksaudit` | a record with `log.source` `aws.eks` whose body is a Kubernetes audit event (JSON with `verb` or `auditID`); other `aws.eks` lines pass through | none |
-| `cloudtrail` | a record with `log.source` `aws.cloudtrail` | none |
+| `gcplb` | a record with `log.source` `lb`; the body duration comes from `http.request.server.duration`, then `http.server.duration`, then `server.duration` | none |
+| `awselb` | a record with `log.source` `elb` | none |
+| `s3access` | a record with `log.source` `s3access` and an empty body | none |
+| `gcpaudit` | a record with `log.source` `audit` | none |
+| `eksaudit` | a record with `log.source` `eks` whose body is a Kubernetes audit event (JSON with `verb` or `auditID`); other `eks` lines pass through | none |
+| `cloudtrail` | a record with `log.source` `cloudtrail` | none |
 | `rabbitmq` | a rabbitmq line (`2026-11-20 00:27:56.299641+00:00 [info] <0.1.0> text`), with or without ANSI colour codes | none |
 | `mosquitto` | a Mosquitto connection, client or bridge line with a UTC time and no level | none |
 | `stallcheck` | the stall-check job line `published StallMinutes=2`, with or without the container runtime prefix | none |
-| `kaudit` | a kernel audit line that carries an AppArmor decision | none |
+| `kaudit` | a kernel audit line that carries an AppArmor decision; spaces and line ends around the line are ignored | none |
 | `smartd` | a smartd line (`Device: /dev/ada3, text`) | none |
 | `gocd` | GoCD Java wrapper lines (`jvm 1 \| time LEVEL [thread] Class:line - text`), one or several in a record | none |
-| `cron` | a body that starts with `cron: `; the tag becomes the service | none |
+| `cron` | a body that starts with `cron: `, or a journald map body whose `SYSLOG_IDENTIFIER` is `CRON`; the tag or the identifier becomes the service | none |
+| `sshd` | a journald map body whose `SYSLOG_IDENTIFIER` is `sshd`; a map without the identifier is not claimed | none |
+| `systemd` | a journald map body whose `SYSLOG_IDENTIFIER` is `systemd`; a map without the identifier is not claimed | none |
 | `openvpn` | an `openvpnstatus` record with an empty body, a user, a `bytes_received` and a `bytes_sent` | none |
-| `pbs` | a Proxmox Backup Server task log line in a file named by the task id | none |
+| `pbs` | a Proxmox Backup Server task log line in a file named by the task id, or a journald map body whose `SYSLOG_IDENTIFIER` is `proxmox-backup-proxy`, `proxmox-backup-api` or `proxmox-backup` (the file name wins when a record has both) | none |
 | `pve` | a whole Proxmox VE task log in one record, ending in a `TASK` result line | none |
-| `serialconsole` | a record of a GCE serial console (`cloud.resource_id` names `serialconsole.googleapis.com`) | none |
+| `serialconsole` | a record of a GCE serial console (`cloud.resource_id` names `serialconsole.googleapis.com`); claimed before `syslog` | none |
 | `logfmt` | a logfmt line with `msg=`, `level=` or `lvl=`, and `logger=`, `component=`, `module=`, `t=` or `ts=`, but not `time=` | none |
 | `clickhouse` | a ClickHouse server line (`2026.11.19 23:01:21.644520 [ 17 ] {} <Information> Logger: text`) | none |
 | `calico` | a calico node line (`2026-11-19 22:53:59.699 [INFO][73] felix/summary.go 100: text`) | none |
@@ -87,9 +102,13 @@ The detector tries the branches in this order. The first one that claims a recor
 | `litellm` | a litellm proxy line (`23:01:21 - LiteLLM Proxy:INFO: file.py:12 - text`), with or without colour codes | none |
 | `stderrhint` | the last text branch: a journal record of a container (`log.source` `journal`, `container.*` in the resource) with the severity ERROR that no branch found a level for | none |
 | `lldpd` | an lldpd neighbour record, a JSON body with `interface`, `chassis_id` and `port_id` | none |
-| `k8s` | a Kubernetes pod status line, an event as a JSON object or as `k8s.event.*` attributes, or a record with Kubernetes lift keys | none |
+| `k8s` | a Kubernetes pod status line, an event as a JSON object (the `note` of the event, else its `message`) or as `k8s.event.*` attributes, or a record with Kubernetes lift keys | none |
+| `charon` | a strongSwan charon line (`07[IKE] <conn\|2> text`) of a record whose resource `service.name` is `strongswan-starter` | `charonlogprocessor` |
+| `autoscaler` | a cluster autoscaler status row, a JSON body whose `status` has `autoscaledNodesCount` and `autoscaledNodesTarget` | none |
 
 A branch claims by the shape of the line. The old per-service filters are gone.
+
+**Renamed sources (breaking).** In 0.3.19 the source tagger writes `elb`, `eks`, `s3access`, `lb`, `audit` and `cloudtrail` in place of `aws.elb`, `aws.eks`, `aws.s3access`, `gcp.lb`, `gcp.audit` and `aws.cloudtrail`; no other `log.source` value changes, and nothing already stored is rewritten. Every query, alert, dashboard and retention rule that filters on an old value matches no new record and must change. Scrape collectors and gateways roll together: a record that still carries an old value reaches no renamed branch, passes `logshape` unchanged and is counted in `otelcol_logshape_unmatched` under its old `source`.
 
 ## Examples
 
@@ -222,19 +241,32 @@ attrs: client.address=192.0.2.7  http.request.method=GET  http.response.status_c
 **`cisco`**
 
 ```text
-in:    661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43
-body:  (the line, unchanged)
+in:    661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43
+body:  Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43
 sev:   WARN
 attrs: network.interface.name=Gi4/0/45  vstan.cisco.facility=SW_MATM  vstan.cisco.mnemonic=MACFLAP_NOTIF  vstan.cisco.severity=4
-       (resource: service.name=SW_MATM)
+       log.record.original=(the line)   (resource: service.name=SW_MATM)
 
-in:    DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 02:00:5e:00:00:01, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.
-body:  Client Association
+in:    %COPY-N-TRAP: The copy operation was completed successfully
+body:  The copy operation was completed successfully
 sev:   INFO
-attrs: code.file.path=apf_80211.c  code.line.number=13338  thread.name=apfMsConnTask_0  vstan.cisco.facility=APF
-       vstan.cisco.mnemonic=CLIENT_ASSOCIATE  vstan.cisco.severity=5  vstan.wifi.ap.name=DownAP-Master
-       vstan.wifi.client.ap=CiscoAP-Down  vstan.wifi.radio=2.4GHz  vstan.wifi.wlan.id=1
+attrs: vstan.cisco.facility=COPY  vstan.cisco.mnemonic=TRAP  vstan.cisco.severity=N  log.record.original=(the line)
+
+in:    DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:01, AP Name: ap-01, Radio: 2.4GHz , WLAN Id: 1.
+body:  Client Association 00:00:5e:00:53:01 ap ap-01 wlan 1 radio 2.4GHz
+sev:   INFO
+attrs: client.mac.address=00:00:5e:00:53:01  code.file.path=apf_80211.c  code.line.number=13338  thread.name=apfMsConnTask_0
+       vstan.cisco.facility=APF  vstan.cisco.mnemonic=CLIENT_ASSOCIATE  vstan.cisco.severity=5  vstan.wifi.ap.name=DownAP-Master
+       vstan.wifi.client.ap=ap-01  vstan.wifi.radio=2.4GHz  vstan.wifi.wlan.id=1
+
+in:    DownAP-Master: *apfMsConnTask_1: Dec 16 00:01:12.331: %APF-3-ASSOCREQ_PROC_FAILED: apf_80211.c:5120 Failed to process association request: Client MAC: 00-00-5E-00-53-01, WLAN: 1, SSID: ExampleNet.
+body:  Failed to process association request 00:00:5e:00:53:01 wlan 1 ssid ExampleNet
+attrs: client.mac.address=00:00:5e:00:53:01  vstan.wifi.wlan.id=1  vstan.wifi.ssid=ExampleNet  (and the cisco, code and thread attributes as above)
 ```
+
+An IOS or switch line starts with an optional sequence number, an optional device clock and the `%FAC-SEV-MNEMONIC:` prefix. With `cisco.rewrite_messages` on, the body keeps only the text after them; a part the line does not have is skipped, and the raw line stays in `log.record.original`. A line with other text before the prefix, or with nothing after it, keeps its body. The severity is the one the line had before the strip. HP switch lines and WLC lines already give the message part.
+
+A wireless controller line of the facility `APF` gets a body of the event text followed by the facts it carries, in the order client MAC, `ap <name>`, `wlan <id>`, `ssid <name>`, `radio <band>`. A fact the line lacks is left out. The facts are read from the labels `Client MAC:`, `Mobile MAC:` (or a MAC after `from`), `AP Name:`, `WLAN Id:` or `WLAN:`, `SSID:` and `Radio:`. `client.mac.address` is written on every APF event that names a client, in lower-case colon form whether the line writes the MAC with colons, hyphens or dots; an event that names no client gets none. `vstan.wifi.client.ap`, `vstan.wifi.radio` and `vstan.wifi.wlan.id` are set as before, and `vstan.wifi.ssid` when the SSID is known. The SSID comes from the line; when the line has none, `wlan_ssids` supplies it from the WLAN id, and with no entry the body and attributes carry no SSID. Other controller facilities and every other `cisco` line keep their body and attributes. The body is rewritten only with `cisco.rewrite_messages` on; the attributes are set either way.
 
 An access point kernel line starts with a device clock, `[*11/20/2026 06:11:26.3538] text`. The branch removes the clock and keeps the original line in `log.record.original`. Access points send these lines at WARN, so a routine message is lowered to INFO. The built-in list has two entries. An entry is a fragment, matched anywhere in the text without regard to case, and only a record that is WARN is changed.
 
@@ -288,10 +320,10 @@ attrs: client.address=198.51.100.42  client.port=56818  dns.question.name=exampl
        vstan.dns.response_code=REFUSED  vstan.dns.duration=7.0318e-05
 ```
 
-**`gcplb`** builds the body from the request attributes. `account_aliases` names the account.
+**`gcplb`** builds the body from the request attributes. `account_aliases` names the account: every project id with an entry gets that name as `cloud.account.name`, an entry whose name equals the id included, and a project with no entry gets the project id as its name. A row with no project id gets no name.
 
 ```text
-in:    log.source=gcp.lb  http.request.method=get  http.response.status_code=404  url.domain=grafana.example.org  url.path=/missing
+in:    log.source=lb  http.request.method=get  http.response.status_code=404  url.domain=grafana.example.org  url.path=/missing
        http.request.server.duration=0.012  gcp.load_balancing.status.details=response_sent_by_backend
        (resource: gcp.label.project_id=example-project  gcp.label.backend_service_name=k8s1-0a1b2c3d-monitoring-grafana-3000-4e5f6a7b)
 body:  GET grafana.example.org/missing 404 12ms
@@ -302,19 +334,19 @@ attrs: the input attributes, unchanged   (resource: host.name=example-project  s
 **`awselb`**
 
 ```text
-in:    log.source=aws.elb  http.request.method=GET  aws.elb.status.code=502  url.domain=app.example.org
+in:    log.source=elb  http.request.method=GET  aws.elb.status.code=502  url.domain=app.example.org
        url.full=https://app.example.org:443/api/v1/bus/status?x=1  aws.elb.target_processing_time=-1
        aws.elb.target_group_arn=arn:aws:elasticloadbalancing:eu-west-1:111122223333:targetgroup/app-tg/0123456789abcdef
        (resource: cloud.account.id=111122223333  cloud.resource_id=app/example-lb/50dc6c495c0c9188)
 body:  GET app.example.org/api/v1/bus/status 502
 sev:   ERROR
-attrs: the input attributes, unchanged   (resource: host.name=example-lb  service.name=app-tg)
+attrs: http.response.status_code=502 (int)  url.path=/api/v1/bus/status  the input attributes, unchanged   (resource: host.name=example-lb  service.name=app-tg)
 ```
 
 **`s3access`**
 
 ```text
-in:    log.source=aws.s3access  rpc.method=REST.GET.OBJECT  aws.s3.key=reports/2026/11/summary.csv  http.response.status_code=200
+in:    log.source=s3access  rpc.method=REST.GET.OBJECT  aws.s3.key=reports/2026/11/summary.csv  http.response.status_code=200
        http.response.body.size=52428  source.address=192.0.2.7  user.id=arn:aws:iam::111122223333:user/backup-sync
        (resource: aws.s3.bucket=example-bucket  cloud.account.id=111122223333)
 body:  REST.GET.OBJECT example-bucket/reports/2026/11/summary.csv 200 51.2KiB
@@ -325,18 +357,20 @@ attrs: client.address=192.0.2.7 (from source.address)  the other input attribute
 **`gcpaudit`**
 
 ```text
-in:    log.source=gcp.audit  gcp.audit.method.name=io.k8s.core.v1.configmaps.get  rpc.status_code=5  user.email=system:addon-manager
+in:    log.source=audit  gcp.audit.method.name=io.k8s.core.v1.configmaps.get  rpc.status_code=5  user.email=system:addon-manager
        body: io.k8s.core.v1.configmaps.get core/v1/namespaces/kube-system/configmaps/test-config NOT_FOUND
        (resource: gcp.label.project_id=proj-example)
-body:  io.k8s.core.v1.configmaps.get core/v1/namespaces/kube-system/configmaps/test-config NOT_FOUND
+body:  configmaps.get kube-system/test-config NOT_FOUND
 sev:   ERROR
-attrs: the input attributes, unchanged   (resource: host.name=proj-example  service.name=addon-manager)
+attrs: the input attributes, unchanged   (resource: host.name=proj-example  cloud.account.name=proj-example  service.name=addon-manager)
 ```
+
+A method starting with `io.k8s.` marks a Kubernetes row. Its host is `gcp.label.cluster_name`, else the project; other rows take the project. The service comes from `user.email`, else `user.id`. `cloud.account.name` is the alias of the project in `account_aliases`, or the project id when it has no entry, as in `gcplb`; a row with no project id gets no name. The body keeps the last two method elements and shortens a resource with a `namespaces` or `zones` segment to `scope/name`.
 
 **`eksaudit`**
 
 ```text
-in:    log.source=aws.eks
+in:    log.source=eks
        body: {"kind":"Event","level":"Metadata","verb":"update","auditID":"11111111-2222-3333-4444-5555555555ab","user":{"username":"system:serviceaccount:kube-system:test-autoscaler"},"objectRef":{"resource":"leases","namespace":"kube-system","name":"test-autoscaler"},"responseStatus":{"code":409}}
 body:  UPDATE leases kube-system/test-autoscaler 409
 sev:   WARN
@@ -346,12 +380,26 @@ attrs: http.request.method=UPDATE  http.response.status_code=409  vstan.audit.le
 **`cloudtrail`**
 
 ```text
-in:    log.source=aws.cloudtrail  rpc.method=ssm.amazonaws.com/GetParameter  aws.principal.arn=arn:aws:sts::111122223333:assumed-role/TestRole/test-session
+in:    log.source=cloudtrail  rpc.method=ssm.amazonaws.com/GetParameter  aws.principal.type=AssumedRole  aws.principal.arn=arn:aws:sts::111122223333:assumed-role/TestRole/test-session
        aws.request.parameters={"name":"/example/mappings/general"}   (resource: cloud.account.id=111122223333)
 body:  ssm:GetParameter /example/mappings/general
-sev:   unset (WARN when `aws.error.code` is set)
-attrs: the input attributes, unchanged   (resource: host.name=111122223333  service.name=test-session)
+sev:   unset (ERROR for `aws.error.code` AccessDenied, WARN for any other error code)
+attrs: the input attributes, unchanged   (resource: host.name=111122223333  service.name=TestRole/test-session)
 ```
+
+An AssumeRole body is `sts:AssumeRole <role> <session>`: the role name in full, the requested session name, else the session of the assumed role user in the response (an EC2 session gives the instance id). An S3 body is `s3:GetObject <bucket>/<key>`; a key over 40 characters is cut in the middle with `..`. `service.name` follows `aws.user_identity.type` (or `aws.principal.type`) for every event, not only AssumeRole (`secretsmanager:DescribeSecret` gets the same caller): AWSService gives the invoking service (`ssm`, or `AWS Internal` when the record says so), AssumedRole gives `<issuer role>/<session>`, AWSAccount gives the account alias or id, SAMLUser, WebIdentityUser and IAMUser give `user.name`. A missing or other type gives `cloudtrail`. A session name of ten or more digits (a timestamp that a program wrote) is machine-generated: it differs on every call, so it is left out of `service.name` and out of the AssumeRole body, and it is kept in `aws.user_identity.session_name`. An AssumedRole caller with such a session gets the issuer role name, else the role of `aws.principal.arn`, else `cloudtrail`; a shorter digit name or a name with letters stays readable. On an AssumeRole record, `accessKeyId` and `sessionToken` in the `credentials` block of `aws.response.elements` become `[REDACTED]`. Records already stored keep their values.
+
+An IdentityCenterUser row is a seventh caller type. The patched decoder of the scrape image writes `user.id` (the user GUID from `onBehalfOf`) and, for a sign-in event, `aws.service_event.role_name` and `aws.service_event.account_id` (the target account). `service.name` is the name that `user_aliases` gives the GUID, else the whole GUID; a row with no `user.id` gives `cloudtrail`.
+
+```text
+in:    log.source=cloudtrail  rpc.method=sso.amazonaws.com/GetRoleCredentials  aws.principal.type=IdentityCenterUser
+       user.id=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee  aws.service_event.role_name=ReadOnly  aws.service_event.account_id=444455556666
+       source.address=203.0.113.9   (resource: cloud.account.id=111122223333)
+body:  sso:GetRoleCredentials ReadOnly@444455556666 from 203.0.113.9
+attrs: the input attributes, unchanged   (resource: service.name=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee)
+```
+
+The `sso:GetRoleCredentials` body is `<role>@<target account> from <address>`. The account goes through `account_aliases` (the id when it has no entry), a missing role or account drops the `@` part, a missing address drops the `from` part, and a source that is not an address is used as given. The address is in the body of IdentityCenterUser rows only; any other identity type, and any other event of an Identity Center user, gets the plain body of the other CloudTrail rows. `source.address` and `user_agent.original` are attributes of every CloudTrail record and are stored in ClickHouse, a public address among them.
 
 **`rabbitmq`**
 
@@ -415,6 +463,21 @@ sev:   unset
 attrs: (resource: service.name=cron)
 ```
 
+A journald record of the identifier `CRON` with no tag keeps its text and gets the service `cron`.
+
+**`sshd`** and **`systemd`** read the identifier from the journald map body (`SYSLOG_IDENTIFIER`) and claim nothing without it. The shaped text goes back into the map under its key.
+
+```text
+in:    sshd[1201]: Failed password for invalid user admin from 192.0.2.77 port 40022 ssh2
+body:  Failed password for invalid user admin from 192.0.2.77 port 40022 ssh2
+sev:   WARN   (PRIORITY is dropped from the map)
+attrs: user.name=admin  client.address=192.0.2.77  client.port=40022 (int)  (resource: service.name=sshd)
+```
+
+A `pbs` daemon line (`[[::ffff:192.0.2.10]:38835] failed to check for TLS handshake: ...`) takes `service.name` from the identifier and an integer `process.pid` from the journal `_PID` when there is one, and keeps the raw line in `log.record.original`. A leading peer `[[::ffff:192.0.2.10]:38835] ` moves out of the body into `client.address` (the `::ffff:` prefix dropped) and an integer `client.port`. A level word in the text (`error`, `warn`, `info` and the like) gives the severity; a line with none keeps its severity and `PRIORITY`.
+
+`sshd` takes the user and the client only when the line carries them: `from <address> port <n>`, `from user <name> <address> port <n>` and `by <address> port <n>` all give the client. `Failed`, `refused connect`, `Invalid user` and `authentication failure` lines are WARN; `Accepted`, `session opened` and `session closed` lines are INFO; any other line keeps its severity. `systemd` keeps the message as the body, sets the service `systemd`, and gives ERROR to `Failed to ...`, `Failed with result` and `entered failed state` lines.
+
 **`openvpn`** builds the body from the attributes the `openvpnstatus` receiver writes.
 
 ```text
@@ -456,6 +519,17 @@ body:  [FAILED] Failed to start Docker Application Container Engine.
 sev:   ERROR   ([  OK  ] is INFO, a start job still running is WARN)
 attrs: (resource: host.name=host-a)
 ```
+
+A node line `<ts>+0000 <node> <tag>[<pid>]: text` also gives the tag as `service.name` and the pid as an integer `process.pid`. A `level=` word sets the severity (an unknown word leaves it unset), `msg=` gives the body without quotes (else the text after the tag), and two or more sha256 label entries in a row become `[N sha256 labels]`. The full line stays in `log.record.original`.
+
+```text
+in:    2026-11-22T10:00:00.123456+0000 node-a gcfsd-v2[2957]: time="2026-11-22T10:00:00Z" level=info msg="mounted layer"
+body:  mounted layer
+sev:   INFO
+attrs: process.pid=2957  (resource: service.name=gcfsd-v2)
+```
+
+When the record carries the label `gcp.label.is_text_escaped` (as `true` or the text `true`), the escaped quotes of a node line are undone before `level=` and `msg=` are read, up to three layers (`\"` and `\\\"` both become `"`), so `msg=\"example message\"` gives the body `example message`. Quotes inside a quoted value stay as the value wrote them. A record without the label is read as written. A node line whose text starts with a klog header (`I1123 02:00:02.000000 1234 server.go:55] ...`) takes its severity from the first letter (`I`, `W`, `E` or `F`) when no `level=` is there. A record whose body is a map with no `text` or `MESSAGE` string passes unchanged.
 
 **`logfmt`**
 
@@ -535,6 +609,120 @@ sev:   WARN
 attrs: (resource: host.name=node-b  k8s.namespace.name=team-a  k8s.pod.name=web-1  service.name=Pod/web-1)
 ```
 
+**`charon`** claims a strongSwan charon line of a record whose resource `service.name` is `strongswan-starter` (with or without the `.service` suffix). Any other service, or a line of that service that is not a charon line, passes to the other branches.
+
+```text
+in:    13[IKE] <vpn-client|82> CHILD_SA vpn-client{3} closed
+body:  [IKE] CHILD_SA vpn-client{3} closed
+sev:   unset
+attrs: thread.id=13  ipsec.component=IKE  ipsec.connection_id=vpn-client  ipsec.connection_seq=82
+       ipsec.child_sa=vpn-client  ipsec.child_sa_num=3  ipsec.child_sa_state=closed  log.record.original=(the line)
+
+in:    15[IKE] received AUTH_FAILED notify error
+body:  [IKE] received AUTH_FAILED notify error
+sev:   ERROR
+```
+
+`thread.id` is an integer (`07` gives 7, `00` gives 0); a thread that is not digits sets none. A line with no `<connection|number>` part sets no `ipsec.connection_*`. Other `ipsec.*` attributes come from packet, CHILD_SA, IKE_SA, SPI, traffic selector, proposal, DELETE and authentication lines. A packet line and a proposal line get a shorter body.
+
+The severity comes from the text. A line that reports a failure (`AUTH_FAILED`, a failed authentication or signature, a missing key or config, `giving up after`, `failed to`) is ERROR. A refused proposal, a retransmit, `unable to`, an `INVALID_*` or `TS_UNACCEPTABLE` notify, a peer that does not respond, or the words `error` and `failed` give WARN. The table never gives INFO, and a line it does not know keeps the severity it arrived with.
+
+`charon` replaces the `charonlog` processor. List one of the two in a pipeline, never both: `charonlog` rewrites the same lines before `logshape` sees them and writes `ipsec.thread_id` as text.
+
+**`autoscaler`** claims a JSON body whose `status` object holds `autoscaledNodesCount` and `autoscaledNodesTarget`. A body that lacks one of the two is not claimed. A count or target that is not an integer leaves the record as it was and `otelcol_logshape_parse_failed` counts it.
+
+```text
+in:    {"status":{"autoscaledNodesCount":3,"autoscaledNodesTarget":5,"clusterWide":{"health":{"status":"Healthy"}}}}
+body:  autoscaler nodes 3/5
+sev:   unset
+attrs: vstan.autoscaler.nodes=3  vstan.autoscaler.target=5  log.record.original=(the row)
+```
+
+A row whose count differs from its target is always kept. A row whose count equals its target is sampled: the branch keeps the share set in `autoscaler.keep_ratio` (default `0.2`) and drops the rest. `otelcol_logshape_sampled_out` counts the dropped rows, so the rows out plus that count equal the rows in.
+
+**`springboot`** claims a Spring Boot console line by its shape: a date and clock, a level of `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` or `FATAL`, a numeric pid, `---`, one or two bracketed items and the logger before a colon. It reads three forms: the Spring Boot 3 form with an ISO time and a zone (`Z` or an offset), the older form with a space and no zone, and the 3.4 form with an application bracket before the thread. A time with no zone is read as UTC. A line with the shape but a level outside the six or a pid that is not a number is not claimed and is not counted as a parse failure.
+
+```text
+in:    2026-11-22T14:38:13.666Z ERROR 7 --- [demo-app] [nio-8080-exec-1] c.e.demo.Controller : Request failed
+body:  [c.e.demo.Controller] Request failed
+sev:   ERROR
+time:  2026-11-22T14:38:13.666Z   scope: c.e.demo.Controller
+attrs: process.pid=7  thread.name=nio-8080-exec-1  vstan.springboot.application=demo-app  log.record.original=(the line)
+```
+
+The body drops the pid, `---`, the thread and the padding of the logger; an empty message gives `[logger]`. For a stack trace merged by `logrecombine` the body stays the header `[logger] message`, and the trace is in `exception.stacktrace`: `logrecombine` sets it with `exception.type` and `exception.message`, and the branch keeps all three; when the attribute is unset, the branch sets it to the whole merged text, header included, as `logrecombine` does. The branch sits before `logrus` and `postgres`, which can read a line that starts with a date, and its gate skips every body that does not start with a digit and hold ` --- [`. `gocd` claims a line that starts with `jvm ` and `springboot` one that starts with a date, so neither takes the other's lines.
+
+A stack trace arrives as a header line and then `at ...`, `Caused by: ...` and `... N more` lines. The branch claims the header line, so a record that holds the whole trace is shaped from its first line: the body and the severity are those of the header, and the whole text stays in `log.record.original`. `logrecombine` merges the lines: with its default `is_first_entry_pattern` (an ISO date with `T`) it starts a new entry at the first and third forms and appends the lines that follow. The older form has a space in place of the `T`, so the default does not start an entry at it; a pipeline that carries it sets `is_first_entry_pattern: '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}'`. Without `logrecombine` the continuation lines are separate records, are not claimed and pass unchanged.
+
+**`pylogger`** claims a line of the Python logging default format, `LEVEL:logger:message`: a level of `DEBUG`, `INFO`, `WARNING`, `WARN`, `ERROR`, `CRITICAL` or `FATAL`, a colon with no space, a logger of letters, digits, `_` and `.`, and a second colon. The logger ends at that colon, so a colon in the message stays in the message. A token that is not a level (`LOG:app:text`) or a logger with another character is not claimed and is not counted as a parse failure. The sample file holds a real line of a Python service (`# provenance: real`) with the service and host names left out; the other fixtures of the tests are invented.
+
+```text
+in:    INFO:app.core:key: value
+body:  [app.core] key: value
+sev:   INFO
+scope: app.core
+attrs: log.record.original=(the line)
+```
+
+`WARNING` gives WARN and `CRITICAL` gives FATAL; the other tokens give their own level. A uvicorn line (`INFO:     started`, a colon and then spaces) has no logger and stays with `uvicorn`, which comes first in the table, as do the lines of every other branch. A traceback arrives as a header line and then `Traceback (most recent call last):`, `File ...` and the exception line. The branch claims the header line, so a record that holds the whole traceback is shaped from its first line: the body and the severity are those of the header (`logrecombine` marks such a record ERROR, and the level of the header replaces that), and the whole text stays in `log.record.original`. `logrecombine` appends the lines that follow a header, but its default `is_first_entry_pattern` starts an entry only at an ISO date with `T`, so two logging lines that arrive within `gap_timeout` are merged into one record. A pipeline that carries these lines sets `is_first_entry_pattern: '^(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL):[A-Za-z0-9_.]+:'`. Without `logrecombine` the traceback lines are separate records, are not claimed and pass unchanged.
+
+**`vpnscript`** claims a script line of the form `[timestamp] text` when the bracket parses as a timestamp, and nothing else. Leading spaces and a trailing carriage return are trimmed before the claim. The timestamp forms are an ISO date and clock with a `T` or a space, an optional fraction and an optional zone (`Z`, `+01:00` or `+0100`), and the two forms of the `date` command (`Sun Nov 22 14:38:13 UTC 2026` and `Sun Nov 22 14:38:13 2026`). A time with no zone is UTC, and the zone abbreviation of a `date` form is read as UTC too. The sample file holds ten real lines of a VPN configuration script, with the host name replaced (`# provenance: partly real; real lines: 1-10`); the other timestamp forms are invented.
+
+```text
+in:    [2026-11-22T14:38:15+01:00] connection error on tun0
+body:  connection error on tun0
+sev:   ERROR
+time:  2026-11-22T13:38:15Z
+attrs: log.record.original=(the line)
+```
+
+The body is the text after the bracket. The severity is INFO unless the text names `ERROR`, `WARN`, `WARNING` or `FATAL` as a whole word, in any case; the highest level named wins. This is the one branch that defaults to INFO: every other branch leaves the severity unset when the line names none. A bracket that is not a timestamp (a thread name, a level tag, a date with no clock) is not claimed, so `sentry`, `pino` and `cisco` keep their lines. The branch sits after `cisco` and before `serialconsole` and `syslog`, and its gate skips every body that does not start with a bracket, after leading white space.
+
+### Gluing wrapped serial console lines
+
+The GCE serial console wraps a long line at a width of roughly 520 to 1100 characters and sends each piece as a record of its own. Only the first piece carries the tag (`<ts>+0000 <node> <tag>[<pid>]:`); the others are cut inside a token, often inside a sha256 digest, and every piece ends in `\r\n` like a whole line, so the end of a record is no boundary. The `logrecombine` processor glues them when its glue options are set; run it before `logshape`, so the branch shapes the whole line and counts a split hash list as one run.
+
+```yaml
+processors:
+  logrecombine/serial:
+    combine_field: body
+    source_identifier: resource.gcp.label.instance_id   # the node
+    container_identifier: ""
+    require_attribute: gcp.label.is_text_escaped         # only these records are touched
+    is_first_entry_pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[^ ]+\+0000 [^ ]+ [^ ]+\[[0-9]+\]:'
+    empty_patterns: ['^\\r\\n$']
+    never_glue_patterns: ['^\[ *[0-9]+\.[0-9]+\]', '\\x1b']   # the reference config lists six
+    min_previous_length: 515
+    fragment_suffix: '\r\n'
+    max_text_size: 65536
+    gap_timeout: 2s
+    max_timeout: 10s
+```
+
+`test/configs/scrape.yaml` holds the full list and puts the processor in `logs/gcp`, before `logshape/gcp`. The rules, for each record that has the `require_attribute` label, in the order of the node:
+
+| The record | What happens |
+|---|---|
+| matches `empty_patterns`, or has no text | the open sequence of the node is passed on, the record is dropped |
+| matches `never_glue_patterns` | the open sequence is passed on, the record goes on alone |
+| matches `is_first_entry_pattern` | the open sequence is passed on, the record starts a new one |
+| any other record, and the last fragment is at least `min_previous_length` long | the record joins the open sequence |
+| any other record, nothing open or the last fragment is shorter | the open sequence is passed on; the record starts a sequence when it is at least that long, else it goes on alone |
+
+A wrapped fragment reaches the wrap width and the last piece of a line is shorter, so a short fragment ends a sequence. A standalone line (a kernel line, a colour-coded console line, an ssh key block, a syslog line, a hex dump) is never glued, even when it follows a long fragment.
+
+The `fragment_suffix` is removed from every fragment but the last, so a digest that was cut at a boundary is whole again. The joined text is the body of the record of the first fragment, and `log.record.original` takes the same text when the record has it; every other attribute is the first fragment's. A sequence is passed on when the next record ends it, after `gap_timeout` with no new fragment, after `max_timeout` in all, at `max_text_size` bytes, and at shutdown. A record without the label, or without the node attribute, passes untouched and neither ends nor joins a sequence.
+
+A fragment whose `log.record.uid` is not above the previous one of its node still joins, in the order it arrived, and is counted. `source_identifier` reads `resource.<name>` as a resource attribute and `attributes.<name>` as a record attribute whose name may hold dots; the name `attributes.a.b` keeps meaning attribute `a` when no attribute `b.a` exists.
+
+A line that a standalone row interrupts (a console line in the middle of a hash list) keeps its first part cut, because no rule can join across a row that is not a fragment. This is rare: well under one wrapped line in a hundred on the sample the rules were measured on.
+
+| Metric | Meaning |
+|---|---|
+| `otelcol_logrecombine_glued` | Records made of two or more fragments. |
+| `otelcol_logrecombine_uid_not_rising` | Records whose uid did not rise above the previous one of their node. |
+| `otelcol_logrecombine_empty_dropped` | Empty records dropped after the glue. |
+
 ## Configuration
 
 ```yaml
@@ -545,6 +733,10 @@ processors:
       nginx: {service: tea-frontend} # service.name, scope name or log.source must equal
     account_aliases:                 # default: none
       "111122223333": prod
+    user_aliases:                    # default: none
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee": test-user
+    wlan_ssids:                      # default: none
+      "1": ExampleNet
     klog:
       year: 0                        # scalar: replaces the year taken from the record time
       static_pod_prefixes: [kube-vip-] # list: extends the defaults
@@ -557,17 +749,21 @@ Code holds every default. A scalar in the configuration replaces it, a list exte
 |---|---|---|---|
 | `branches` | list | every branch | The branches that may claim a record. An unknown name fails validation. |
 | `hints` | map of branch to `{service, scope, source}` | none | Narrows a branch to records from one service, scope or source. Every field that is set must match. A hint for an unknown branch fails validation. |
-| `account_aliases` | map | none | Cloud account or project id to a display name, for the load balancer, bucket, audit and CloudTrail branches. An empty id or alias fails validation. |
+| `account_aliases` | map | none | Cloud account or project id to a display name, for the load balancer, bucket, audit and CloudTrail branches. The audit and `gcplb` branches set `cloud.account.name` for every GCP project: the alias of an entry (an identity entry included), or the project id when it has no entry. The AWS branches set it only for an account with an entry. An empty id or alias fails validation. |
+| `user_aliases` | map | none | Identity Center user GUID to a name, for the caller (`service.name`) of CloudTrail events. An empty GUID or name fails validation and the message names the entry. |
+| `wlan_ssids` | map | none | WLAN id to SSID, for APF wireless controller lines that name the WLAN but not the SSID. The SSID of the line wins over the map. An empty id or SSID, or an id that is not a number, fails validation and the message names the entry. |
 | `gcp_lb_error_values` | list | `unsupported_method`, `invalid_http2_request_content_length` | Load balancer status details that raise a record to WARN. The list extends the built-in one. |
 | `service_name_overrides` | map | none | A service name a branch derived, to the name that replaces it. A name not in the map is untouched and an empty derived name is never overridden. Only `service.name` on the resource changes. It applies to every branch. |
 | `k8s.static_pod_nodes` | list | none | Extends the node names that static pods are known to run on. |
+| `autoscaler.keep_ratio` | float | `0.2` | The share of autoscaler rows with a count equal to the target that is kept, from 0 to 1. A value outside that range fails validation. Rows with unequal count and target are always kept. |
+| `severity_from_line.services` | list | none | The `service.name` values whose records arrive with severity 0. A listed record with no severity takes the level token of its line; a record with a severity keeps it. An empty entry fails validation and the message names its position. |
 | `klog.year` | int | `0` | The year of the line; `0` takes it from the record time (klog lines carry month and day only). |
 | `klog.static_pod_prefixes` | list | `kube-apiserver-`, `kube-controller-manager-`, `kube-scheduler-`, `etcd-` | Static pod name prefixes used to infer the node from the pod name. The list extends the built-in one. |
 | `klog.level_overrides` | map | `I`, `W`, `E`, `F` to a level word | Replaces the level of a klog letter. An unknown level word fails validation. |
 | `syslog.source_attribute` | string | `message` | The attribute that holds the raw line. |
 | `syslog.set_hostname`, `set_service_name`, `map_severity`, `preserve_original`, `clean_body` | bool | `true` | Set `host.name` from the line, `service.name` from the tag, the severity from the priority, keep the raw line in `log.record.original`, replace the body with the message part. |
 | `cisco.source_attribute` | string | `log.record.original` | The attribute that holds the raw line. |
-| `cisco.set_hostname`, `clean_body`, `rewrite_messages`, `adjust_severity` | bool | `true` | Set `host.name` from `net.peer.name`, strip the syslog prefix, replace the body of HP and WLC lines with the message part, set the severity. |
+| `cisco.set_hostname`, `clean_body`, `rewrite_messages`, `adjust_severity` | bool | `true` | Set `host.name` from `net.peer.name`, strip the syslog prefix, replace the body of IOS, switch, HP and WLC lines with the message part, set the severity. |
 | `cisco.port_database_path` | string | empty | An optional YAML file of port aliases per host. |
 | `cisco.access_point_downgrade` | list | built-in list | Message fragments of routine access point kernel lines, matched without case, that drop from WARN to INFO. The built-in list is `pmkr0 lookup` and `client roamed`. A non-empty list set here replaces it; an empty list keeps it. |
 | `logrus.rewrite_messages`, `adjust_severity`, `parse_timestamp` | bool | `true` | Replace the body with the message plus the error, set the severity, set the record time from the line. |
@@ -591,8 +787,9 @@ The Windows event summaries, the `dn_contractions` list and the `fswatch` `roots
 |---|---|---|
 | `otelcol_logshape_unmatched` | `source` (`log.source`, or `none`) | Records no branch claimed. |
 | `otelcol_logshape_parse_failed` | `format` (the branch) | Records a branch claimed and could not parse, including a recovered panic. |
+| `otelcol_logshape_sampled_out` | `format` (the branch) | Records a branch sampled out and dropped. Only `autoscaler` rows with a count equal to the target. |
 
-Both are counters of records. The processor adds the counts of one batch at the end of the batch.
+All three are counters of records. The processor adds the counts of one batch at the end of the batch.
 
 ## Images
 
@@ -633,27 +830,33 @@ Rename table (`shape/rename`): `file.size_final` to `file.size`; `real_address` 
 - SeverityText and SeverityNumber come from one table, so they always agree.
 - HTTP access lines: 5xx is ERROR, 4xx is WARN, the rest INFO.
 - Level sources: the uvicorn prefix, `[LEVEL]` tags, logfmt `level=`, klog I, W, E and F, PostgreSQL LOG, WARNING and ERROR, Redis `.`, `-`, `*` and `#`, logrus, zap and slog `level`.
+- A service listed in `severity_from_line.services` that sends records with severity 0 gets the level of the line, whichever branch claimed the record or none did. The step runs after the branches, so a severity a branch set is kept. It reads `log.record.original` when a branch kept the raw line, else the body.
+  - The level is read from a `level=`, `lvl=` or `severity=` value, from a word in brackets or parentheses such as `[WARN]` or `(crit)`, or from the first word of the line, after a leading timestamp if there is one.
+  - The first of these in the line decides. A first word that is not a level word is skipped, but a `level=` value or a bracketed word outside the level table, such as `level=chatty`, leaves the severity unset.
+  - A level word in the middle of a sentence is not a token, so `the sync saw an error` stays unset.
 
 ## Bodies
 
 The body is `[component] text` plus a few `key=value` pairs. Process ids, thread ids, timestamps, level tags and wrapper prefixes leave the body and become attributes. Access lines read `METHOD path status size`, with the verb in uppercase. The client is the first `X-Forwarded-For` entry and the proxy goes to `network.peer.address`; a line without one takes the peer as the client.
 
-The body of a load balancer or bucket line holds no account, project or region, so the same line gives the same body in every deployment. Only the resource follows the account: `host.name`, `service.name` and `cloud.account.name` come from the account or project id and `account_aliases`. The `aws.s3access` encoding does not write `cloud.account.id`. The scrape config must add it to those records (a resource attribute set by the receiver that reads the bucket); without it the `s3access` branch sets no `cloud.account.name`, and the body is unchanged.
+The body of a load balancer or bucket line holds no account, project or region, so the same line gives the same body in every deployment. Only the resource follows the account: `host.name`, `service.name` and `cloud.account.name` come from the account or project id and `account_aliases`. The `s3access` encoding does not write `cloud.account.id`. The scrape config must add it to those records (a resource attribute set by the receiver that reads the bucket); without it the `s3access` branch sets no `cloud.account.name`, and the body is unchanged.
 
 ## Row counts
 
 Some sources send fewer records or different records after shaping:
 
 - A Python or Java traceback that arrives as many records is merged into one ERROR record by `logrecombine`, and blank or whitespace-only records are dropped there.
+- The wrapped fragments of a serial console line are glued into one record, and a record that holds only `\r\n` is dropped, when `logrecombine` runs with the glue options (see above). On the sample the rules were measured on, the glue removed about 6 percent of the serial records, and the bare lines were about 14 percent more.
 - A Windows host that watches a synced folder sends far fewer `fswatch` records once the default exclusions apply. See [windows-edge.md](windows-edge.md).
 - A record that `logshape` cannot claim or parse is not dropped. It leaves unchanged.
+- The `autoscaler` branch drops most autoscaler rows whose node count equals the target, by `autoscaler.keep_ratio`. `otelcol_logshape_sampled_out` counts them.
 
 The CHANGELOG lists each change of a count with its release.
 
 ## Known limits
 
 - A Proxmox task log of tens of kilobytes stays one body; the processor sets no size cap.
-- A serial console record that holds only `\r\n` keeps an empty body. The blank drop of `logrecombine` removes it when the pipeline sends the record through that processor first.
+- A serial console record that holds only `\r\n` keeps an empty body. The blank drop of `logrecombine` removes it when the pipeline sends the record through that processor first; with the glue options its `empty_patterns` do it.
 - Only Python and Java traces are merged into one ERROR record with `exception.*`. A Go panic or a ClickHouse stack trace is joined by the gap rule but gets no severity or exception attributes.
 
 ## Changes from the old processors
@@ -664,6 +867,7 @@ The CHANGELOG lists each change of a count with its release.
 - `error` becomes `exception.message` (and `exception.type` for an error object), joined to the message with one colon.
 - A logrus, zap or slog line whose time cannot be read is counted in `otelcol_logshape_parse_failed` and kept as it was. A line with no time is shaped.
 - Number and boolean fields keep their type as attributes: `vstan.logrus.count` is an integer when the line has `"count":3`.
+- The body of an IOS or switch line has no sequence number, device clock or `%FAC-SEV-MNEMONIC:` prefix; the old `ciscologprocessor` kept them. `charon` writes `thread.id` as an integer and a severity from the text, where `charonlog` wrote `ipsec.thread_id` as text and no severity.
 - `client.ip` is `client.address`; `source.ip` is `source.address`; `http.response.body.bytes` is `http.response.body.size`; the nginx remote user is `user.name`; the browser OS of an nginx line is `user_agent.os.name`, not `os.name`.
 - The `openvpnstatus` receiver writes `user.name`, `client.address`, `client.port` and `vstan.openvpn.*` in place of `common_name`, `real_address`, `bytes_received`, `bytes_sent` and `connected_since`, and marks a client shown as `UNDEF` with `unauthenticated`. The AS numbers of the netflow receiver are renamed by the `flow` branch, because that receiver is an upstream module.
 
@@ -699,9 +903,9 @@ GROUP BY k ORDER BY n DESC
 
 ## Fixtures and benchmarks
 
-`testdata/samples/<format>.txt` holds sample lines of each text format, with documentation-range addresses and no host, account or secret. `testdata/samples-keyed/<branch>.jsonl` holds one JSON record per line for the branches that claim by attributes (`flow`, `gcplb`, `awselb`, `s3access`, `gcpaudit`, `eksaudit`, `cloudtrail`, `openvpn`, `pbs`, `pve`, `serialconsole`, `stderrhint`); each record says if it is `real` (a layout quoted from a capture, with names replaced) or `invented` (written from the format description).
+`testdata/samples/<format>.txt` holds sample lines of each text format, with documentation-range addresses and no host, account or secret. `testdata/samples-keyed/<branch>.jsonl` holds one JSON record per line for the branches that claim by attributes (`flow`, `gcplb`, `awselb`, `s3access`, `gcpaudit`, `eksaudit`, `cloudtrail`, `openvpn`, `pbs`, `pve`, `serialconsole`, `stderrhint`, `charon`); each record says if it is `real` (a layout quoted from a capture, with names replaced) or `invented` (written from the format description).
 
-Every sample file starts with one marker line. A text sample has `# provenance: real`, `# provenance: invented` or `# provenance: partly real; real lines: 1, 3-4`, where the numbers count the sample lines and not the comments, and a `# evidence:` sentence that names the quote or says the lines are written from the format. A keyed file has the same marker, with `real records:` and the record numbers in place of `real lines:`, and its per-record `provenance` fields must agree with it. A line is real only when it was captured, with names and addresses replaced; every other line is invented, and a line with no evidence counts as invented. A test fails on a missing, doubled, unknown or inconsistent marker. The text samples are 3 real, 12 partly real and 16 invented; the keyed files are 0 real, 2 partly real and 10 invented.
+Every sample file starts with one marker line. A text sample has `# provenance: real`, `# provenance: invented` or `# provenance: partly real; real lines: 1, 3-4`, where the numbers count the sample lines and not the comments, and a `# evidence:` sentence that names the quote or says the lines are written from the format. A keyed file has the same marker, with `real records:` and the record numbers in place of `real lines:`, and its per-record `provenance` fields must agree with it. A line is real only when it was captured, with names and addresses replaced; every other line is invented, and a line with no evidence counts as invented. A test fails on a missing, doubled, unknown or inconsistent marker. The text samples are 4 real, 13 partly real and 18 invented; the keyed files are 0 real, 2 partly real and 10 invented.
 
 A test runs every sample through its own branch and through the full table, checks that no other branch takes it, that severity text and number agree, that integer attributes are integers and that no deprecated name is written. A scrub test fails on private addresses, account numbers, e-mail addresses, internal domain suffixes and secrets. `go test -bench Formats` runs 1000-record batches per format.
 

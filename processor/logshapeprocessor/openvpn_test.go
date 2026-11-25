@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore vstan
-
 package logshapeprocessor
 
 import "testing"
@@ -10,7 +8,7 @@ import "testing"
 // The attributes of an openvpnstatus record, which has an empty body.
 func openvpnRecord() map[string]any {
 	return map[string]any{
-		"common_name": "tyler", "real_address": "74.70.174.118:51234",
+		"common_name": "tyler", "real_address": "198.51.100.60:51234",
 		"bytes_received": int64(32715571), "bytes_sent": int64(46766490), "connected_since": "2026-11-18 18:58:58",
 	}
 }
@@ -18,9 +16,9 @@ func openvpnRecord() map[string]any {
 func TestOpenVPN_EmptyBodyRecord_GetsTheOneLineBodyAndTheOfficialNames(t *testing.T) {
 	lr, _ := runW4(t, input{attrs: openvpnRecord()})
 
-	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 74.70.174.118, in 31.2MiB, out 44.6MiB")
+	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 198.51.100.60, in 31.2MiB, out 44.6MiB")
 	a := lr.Attributes()
-	if attrStr(t, a, "user.name") != "tyler" || attrStr(t, a, "client.address") != "74.70.174.118" || attrStr(t, a, "vstan.openvpn.connected_since") != "2026-11-18 18:58:58" {
+	if attrStr(t, a, "user.name") != "tyler" || attrStr(t, a, "client.address") != "198.51.100.60" || attrStr(t, a, "vstan.openvpn.connected_since") != "2026-11-18 18:58:58" {
 		t.Fatalf("attributes = %v", a.AsRaw())
 	}
 	attrInt(t, a, "client.port", 51234)
@@ -31,22 +29,22 @@ func TestOpenVPN_EmptyBodyRecord_GetsTheOneLineBodyAndTheOfficialNames(t *testin
 
 func TestOpenVPN_RecordWithTheOfficialNamesAlready_GetsTheSameBody(t *testing.T) {
 	lr, _ := runW4(t, input{attrs: map[string]any{
-		"user.name": "tyler", "client.address": "74.70.174.118", "client.port": int64(51234),
+		"user.name": "tyler", "client.address": "198.51.100.60", "client.port": int64(51234),
 		"bytes_received": int64(32715571), "bytes_sent": int64(46766490), "connected_since": "2026-11-18 18:58:58",
 	}})
 
-	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 74.70.174.118, in 31.2MiB, out 44.6MiB")
+	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 198.51.100.60, in 31.2MiB, out 44.6MiB")
 }
 
 // The names the openvpnstatus receiver writes today.
 func TestOpenVPN_RecordFromTheReceiver_GetsTheBodyAndKeepsItsNames(t *testing.T) {
 	lr, _ := runW4(t, input{attrs: map[string]any{
-		"user.name": "tyler", "client.address": "74.70.174.118", "client.port": int64(51234),
+		"user.name": "tyler", "client.address": "198.51.100.60", "client.port": int64(51234),
 		"vstan.openvpn.bytes_received": int64(32715571), "vstan.openvpn.bytes_sent": int64(46766490),
 		"vstan.openvpn.connected_since": "2026-11-18 18:58:58",
 	}})
 
-	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 74.70.174.118, in 31.2MiB, out 44.6MiB")
+	w4Body(t, lr, "tyler connected since 2026-11-18 18:58:58 from 198.51.100.60, in 31.2MiB, out 44.6MiB")
 	a := lr.Attributes()
 	attrInt(t, a, "client.port", 51234)
 	attrInt(t, a, "vstan.openvpn.bytes_received", 32715571)

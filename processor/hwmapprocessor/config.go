@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore hwmap hwmapprocessor
-
 package hwmapprocessor
 
 import (
@@ -25,6 +23,8 @@ const (
 // units are the units a rule may give its points. The scale turns the source unit into one of these.
 var units = map[string]bool{
 	"Cel": true, "W": true, "V": true, "A": true, "By": true, "1": true, "rpm": true, "s": true, "ms": true, "Hz": true,
+	"{error}": true, "{packet}": true,
+	"By/s": true,
 }
 
 // Config lists the mapping rules. The processor does nothing until a pipeline lists it.
@@ -57,6 +57,8 @@ type Rule struct {
 	Resource map[string]string `mapstructure:"resource"`
 	// Status turns a value or an attribute into hw.status points.
 	Status *Status `mapstructure:"status"`
+	// EnumGauge turns a value or an attribute into one 1/0 gauge point; it excludes Status.
+	EnumGauge *EnumGauge `mapstructure:"enum_gauge"`
 }
 
 // Match selects points by metric name and attributes.
@@ -88,6 +90,64 @@ type Status struct {
 	// StateAttribute and RawAttribute name the attributes of the state and of the raw text.
 	StateAttribute string `mapstructure:"state_attribute"`
 	RawAttribute   string `mapstructure:"raw_attribute"`
+}
+
+// EnumGauge describes how a raw state becomes one gauge point that is 1 or 0.
+type EnumGauge struct {
+	// Source is "value" (the number of the point, the default) or "attribute".
+	Source string `mapstructure:"source"`
+	// Attribute holds the raw state when Source is "attribute".
+	Attribute string `mapstructure:"attribute"`
+	// On lists the raw states that give 1; every other state gives 0.
+	On []string `mapstructure:"on"`
+	// Names turns a raw state into the text kept in the state attribute. With names, a raw state that
+	// is not listed is kept as read, counted and logged once.
+	Names map[string]string `mapstructure:"names"`
+	// StateAttribute names the attribute that keeps the state on every point.
+	StateAttribute string `mapstructure:"state_attribute"`
+}
+
+func (g *EnumGauge) stateAttribute() string {
+	if g.StateAttribute == "" {
+		return defaultStateAttribute
+	}
+	return g.StateAttribute
+}
+
+func (g *EnumGauge) source() string {
+	if g.Source == "" {
+		return sourceValue
+	}
+	return g.Source
+}
+
+func (g *EnumGauge) validate() error {
+	switch g.source() {
+	case sourceValue:
+	case sourceAttribute:
+		if g.Attribute == "" {
+			return errors.New("enum_gauge.attribute is missing")
+		}
+	default:
+		return fmt.Errorf("enum_gauge.source %q is not value or attribute", g.Source)
+	}
+	if len(g.On) == 0 {
+		return errors.New("enum_gauge.on is empty")
+	}
+	for raw := range g.Names {
+		if raw == "" {
+			return errors.New("enum_gauge.names has an empty key")
+		}
+	}
+	for _, raw := range g.On {
+		if raw == "" {
+			return errors.New("enum_gauge.on has an empty entry")
+		}
+		if _, listed := g.Names[raw]; len(g.Names) > 0 && !listed {
+			return fmt.Errorf("enum_gauge.on state %q is not in names", raw)
+		}
+	}
+	return nil
 }
 
 func (s *Status) states() []string {
@@ -180,6 +240,12 @@ func (r *Rule) validate() error {
 	}
 	if r.IndexNames != nil && r.IndexNames.Attribute == "" {
 		return errors.New("index_names.attribute is missing")
+	}
+	if r.Status != nil && r.EnumGauge != nil {
+		return errors.New("status and enum_gauge cannot both be set")
+	}
+	if r.EnumGauge != nil {
+		return r.EnumGauge.validate()
 	}
 	if r.Status != nil {
 		return r.Status.validate()

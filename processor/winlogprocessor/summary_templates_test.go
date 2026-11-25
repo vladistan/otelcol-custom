@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore RCODE ForestDnsZones SQLTELEMETRY SQLEXPRESS IOAV CEIP LGIS LGIF SQLServerCEIP vstan
-
 package winlogprocessor
 
 import (

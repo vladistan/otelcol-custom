@@ -90,7 +90,9 @@
     "severity": 9,
     "severity_text": "INFO",
     "scope": "",
-    "resource": {},
+    "resource": {
+      "service.name": "worker"
+    },
     "attributes": {
       "code.file.path": "main.go",
       "code.line.number": 10,

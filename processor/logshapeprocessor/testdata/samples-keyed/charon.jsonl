@@ -1,0 +1,8 @@
+# provenance: invented
+# One JSON record per line: provenance is real (a captured line or layout, names and addresses replaced) or invented (written from the format description).
+# basis: written from the strongSwan message format; the first line is the form an operator report quoted. Names and addresses are documentation values.
+{"provenance": "invented", "body": "07[IKE] sending DPD request", "attributes": {}, "resource": {"service.name": "strongswan-starter"}, "severity_number": 0}
+{"provenance": "invented", "body": "13[IKE] <vpn-client|82> CHILD_SA vpn-client{3} closed", "attributes": {}, "resource": {"service.name": "strongswan-starter"}, "severity_number": 0}
+{"provenance": "invented", "body": "14[NET] sending packet: from 192.0.2.1[500] to 203.0.113.50[500] (1164 bytes)", "attributes": {}, "resource": {"service.name": "strongswan-starter.service"}, "severity_number": 0}
+{"provenance": "invented", "body": "15[IKE] received AUTH_FAILED notify error", "attributes": {}, "resource": {"service.name": "strongswan-starter"}, "severity_number": 9}
+{"provenance": "invented", "body": "15[IKE] peer didn't accept the proposal", "attributes": {}, "resource": {"service.name": "strongswan-starter"}, "severity_number": 0}

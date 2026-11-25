@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore dccp eigrp encap etherip idrp igmp ipcomp ipip mpls narp nonxt ospfigp rohc udplite vrrp wesp
-
 package flowlogexporter
 
 // protocolNumbers maps the IANA protocol names the receiver writes to their numbers.

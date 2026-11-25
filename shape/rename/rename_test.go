@@ -85,17 +85,17 @@ func TestApply_EachRenameOfTheTable_MovesTheValueInPlace(t *testing.T) {
 }
 
 func TestApply_RealAddress_SplitsIntoClientAddressAndIntegerPort(t *testing.T) {
-	m := mapOf(map[string]any{"real_address": "74.70.174.118:51234"})
+	m := mapOf(map[string]any{"real_address": "198.51.100.60:51234"})
 	Apply(m)
 	mustAbsent(t, m, "real_address")
-	mustStr(t, m, "client.address", "74.70.174.118")
+	mustStr(t, m, "client.address", "198.51.100.60")
 	mustInt(t, m, "client.port", 51234)
 }
 
 func TestApply_RealAddressWithoutPort_GivesOnlyTheAddress(t *testing.T) {
-	m := mapOf(map[string]any{"real_address": "74.70.174.118"})
+	m := mapOf(map[string]any{"real_address": "198.51.100.60"})
 	Apply(m)
-	mustStr(t, m, "client.address", "74.70.174.118")
+	mustStr(t, m, "client.address", "198.51.100.60")
 	mustAbsent(t, m, "client.port", "real_address")
 }
 
@@ -253,9 +253,9 @@ func TestFileLine_SplitsAFileAndALineNumber(t *testing.T) {
 }
 
 func TestApply_KeysWithoutARule_AreUntouched(t *testing.T) {
-	m := mapOf(map[string]any{"log.source": "gcp.lb", "flow.type": "t", "http.request.method": "GET", "Namespace": "ns"})
+	m := mapOf(map[string]any{"log.source": "lb", "flow.type": "t", "http.request.method": "GET", "Namespace": "ns"})
 	Apply(m)
-	mustStr(t, m, "log.source", "gcp.lb")
+	mustStr(t, m, "log.source", "lb")
 	mustStr(t, m, "flow.type", "t")
 	mustStr(t, m, "http.request.method", "GET")
 	mustStr(t, m, "Namespace", "ns")

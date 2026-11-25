@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore awselb
-
 import (
 	"math"
 	"net/url"
@@ -30,7 +28,7 @@ func newAWSELBBranch(aliases map[string]string) *awsELBBranch {
 
 func (*awsELBBranch) name() string { return "awselb" }
 
-func (*awsELBBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "aws.elb" }
+func (*awsELBBranch) claims(r *rec) bool { return sourceOf(r.lr, r.res) == "elb" }
 
 func (b *awsELBBranch) parse(r *rec) error {
 	a, res := r.lr.Attributes(), r.res.Attributes()
@@ -52,6 +50,13 @@ func (b *awsELBBranch) parse(r *rec) error {
 	}
 	lbSetBody(r, body.HTTP(line))
 	lbSetSeverity(r.lr, status, hasStatus)
+	// The semconv names are what healthprobe and other samplers read; the aws.elb.status.code and url.full source attributes stay.
+	if hasStatus {
+		a.PutInt("http.response.status_code", int64(status))
+	}
+	if path != "" {
+		a.PutStr("url.path", path)
+	}
 
 	if lb := principal.LoadBalancerName(lbString("cloud.resource_id", res, a)); lb != "" {
 		res.PutStr("host.name", lb)

@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore etcdserver mvcc controllerv PLEG
-
 package klogprocessor
 
 import (
@@ -142,7 +140,7 @@ func TestParseKlog(t *testing.T) {
 		},
 		{
 			name:            "kubelet probe failed",
-			input:           `I1220 03:18:01.710490    1233 prober.go:120] "Probe failed" probeType="Readiness" pod="kube-system/kube-apiserver-k8s-0" podUID="040476ba7586efa8b66c57331451b5fa" containerName="kube-apiserver" probeResult="failure" output="HTTP probe failed with statuscode: 500"`, // pragma: allowlist secret
+			input:           `I1220 03:18:01.710490    1233 prober.go:120] "Probe failed" probeType="Readiness" pod="kube-system/kube-apiserver-node-0" podUID="040476ba7586efa8b66c57331451b5fa" containerName="kube-apiserver" probeResult="failure" output="HTTP probe failed with statuscode: 500"`, // pragma: allowlist secret
 			expectNil:       false,
 			expectedLevel:   "I",
 			expectedMessage: "Probe failed",
@@ -150,7 +148,7 @@ func TestParseKlog(t *testing.T) {
 			expectedLine:    "120",
 			expectedExtra: map[string]string{
 				"probeType":     "Readiness",
-				"pod":           "kube-system/kube-apiserver-k8s-0",
+				"pod":           "kube-system/kube-apiserver-node-0",
 				"podUID":        "040476ba7586efa8b66c57331451b5fa", // pragma: allowlist secret
 				"containerName": "kube-apiserver",
 				"probeResult":   "failure",
@@ -158,7 +156,7 @@ func TestParseKlog(t *testing.T) {
 		},
 		{
 			name:            "kubelet SyncLoop probe",
-			input:           `I0102 05:00:33.603375    1344 kubelet.go:2643] "SyncLoop (probe)" probe="readiness" status="ready" pod="taxtime/backend-8478b5b58b-8v7ds"`,
+			input:           `I0102 05:00:33.603375    1344 kubelet.go:2643] "SyncLoop (probe)" probe="readiness" status="ready" pod="example-app/backend-8478b5b58b-8v7ds"`,
 			expectNil:       false,
 			expectedLevel:   "I",
 			expectedMessage: "SyncLoop (probe)",
@@ -167,7 +165,7 @@ func TestParseKlog(t *testing.T) {
 			expectedExtra: map[string]string{
 				"probe":  "readiness",
 				"status": "ready",
-				"pod":    "taxtime/backend-8478b5b58b-8v7ds",
+				"pod":    "example-app/backend-8478b5b58b-8v7ds",
 			},
 		},
 		{

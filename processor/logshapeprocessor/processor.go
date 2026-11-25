@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"reflect"
 	"runtime/debug"
 	"sync"
@@ -28,6 +29,10 @@ type shapeProcessor struct {
 	next     consumer.Logs
 	tel      *telemetry
 	logger   *zap.Logger
+	// draw is the random source of the autoscaler sampling, a number in [0, 1).
+	draw func() float64
+	// lineServices is the set of service names of severity_from_line.services.
+	lineServices map[string]struct{}
 	// panicked holds the branches whose panic was logged: each is logged once.
 	panicked sync.Map
 }
@@ -55,7 +60,13 @@ func newProcessor(set processor.Settings, cfg *Config, next consumer.Logs) (*sha
 	if err != nil {
 		return nil, err
 	}
-	p := &shapeProcessor{cfg: cfg, hints: cfg.Hints, next: next, tel: tel, logger: set.Logger}
+	p := &shapeProcessor{cfg: cfg, hints: cfg.Hints, next: next, tel: tel, logger: set.Logger, draw: rand.Float64}
+	if n := len(cfg.SeverityFromLine.Services); n > 0 {
+		p.lineServices = make(map[string]struct{}, n)
+		for _, s := range cfg.SeverityFromLine.Services {
+			p.lineServices[s] = struct{}{}
+		}
+	}
 	p.setBranches(branches)
 	return p, nil
 }
@@ -79,7 +90,7 @@ func (p *shapeProcessor) Shutdown(context.Context) error { return nil }
 // branch left. The input resource and scope are only copied, never changed.
 func (p *shapeProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 	out := plog.NewLogs()
-	unmatched, failed := map[string]int64{}, map[string]int64{}
+	unmatched, failed, sampled := map[string]int64{}, map[string]int64{}, map[string]int64{}
 	r, w := new(rec), newWork()
 	for i := range ld.ResourceLogs().Len() {
 		rl := ld.ResourceLogs().At(i)
@@ -91,8 +102,16 @@ func (p *shapeProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 			sl := rl.ScopeLogs().At(j)
 			w.scopeDirty = true
 			for k := range sl.LogRecords().Len() {
-				to := p.route(w, r, rl.Resource(), sl.Scope(), sl.LogRecords().At(k), unmatched, failed)
-				if to.resChanged || to.scopeChanged {
+				lr := sl.LogRecords().At(k)
+				to := p.route(w, r, rl.Resource(), sl.Scope(), lr, unmatched, failed, sampled)
+				if p.lineServices != nil && !to.drop {
+					res := rl.Resource()
+					if to.resChanged {
+						res = to.res
+					}
+					p.levelFromLine(res, lr)
+				}
+				if to.resChanged || to.scopeChanged || to.drop {
 					if changed == nil {
 						changed = make([]routed, recordCount(rl))
 					}
@@ -111,12 +130,14 @@ func (p *shapeProcessor) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
 		for j := range rl.ScopeLogs().Len() {
 			sl := rl.ScopeLogs().At(j)
 			for k := range sl.LogRecords().Len() {
-				groups.add(j, sl, changed[idx], sl.LogRecords().At(k))
+				if !changed[idx].drop {
+					groups.add(j, sl, changed[idx], sl.LogRecords().At(k))
+				}
 				idx++
 			}
 		}
 	}
-	p.tel.flush(ctx, unmatched, failed)
+	p.tel.flush(ctx, unmatched, failed, sampled)
 	return p.next.ConsumeLogs(ctx, out)
 }
 
@@ -129,16 +150,17 @@ func recordCount(rl plog.ResourceLogs) int {
 }
 
 // routed is where a record goes after routing. Resource and Scope are set only when the branch changed them.
+// A dropped record is left out of the output.
 type routed struct {
 	res   pcommon.Resource
 	scope pcommon.InstrumentationScope
 
-	resChanged, scopeChanged bool
+	resChanged, scopeChanged, drop bool
 }
 
 // route sends the record to the first branch that claims it. The branch works on the scratch objects of
 // w, and the scratch record replaces the real one only when the parse succeeds.
-func (p *shapeProcessor) route(w *work, r *rec, res pcommon.Resource, scope pcommon.InstrumentationScope, lr plog.LogRecord, unmatched, failed map[string]int64) routed {
+func (p *shapeProcessor) route(w *work, r *rec, res pcommon.Resource, scope pcommon.InstrumentationScope, lr plog.LogRecord, unmatched, failed, sampled map[string]int64) routed {
 	*r = rec{lr: lr, res: res, scope: scope, body: bodyText(lr)}
 	var s seen
 	for _, i := range p.tbl.candidates(r.body) {
@@ -155,6 +177,7 @@ func (p *shapeProcessor) route(w *work, r *rec, res pcommon.Resource, scope pcom
 		if !claimed {
 			continue
 		}
+		saved := saveMapBody(lr)
 		sr := w.prepare(lr, res, scope, r.body, r.memo)
 		if err := safeParse(b, sr); err != nil {
 			w.resDirty, w.scopeDirty = true, true // the failed parse may have written them
@@ -164,7 +187,12 @@ func (p *shapeProcessor) route(w *work, r *rec, res pcommon.Resource, scope pcom
 		if b.name() == "syslog" {
 			p.parseInner(sr, failed)
 		}
+		if b.name() == "autoscaler" && p.sampledOut(sr) {
+			sampled[b.name()]++
+			return routed{drop: true}
+		}
 		w.lr.MoveTo(lr)
+		saved.restore(lr)
 		out := routed{}
 		if !mapsEqual(res.Attributes(), w.res.Attributes()) {
 			out.res, out.resChanged = w.changedResource(), true

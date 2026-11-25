@@ -46,7 +46,7 @@ func gateRecords(text string, withSources bool) []*rec {
 	if !withSources {
 		return out
 	}
-	for _, src := range []string{"gcp.lb", "aws.elb", "aws.s3access", "gcp.audit", "aws.eks", "aws.cloudtrail", "journal"} {
+	for _, src := range []string{"lb", "elb", "s3access", "audit", "eks", "cloudtrail", "journal"} {
 		onRecord := plog.NewLogRecord()
 		onRecord.Body().SetStr(text)
 		onRecord.Attributes().PutStr("log.source", src)
@@ -165,7 +165,7 @@ func TestGate_TheFirstClaimThroughTheTableIsTheFirstClaimOfALinearScan(t *testin
 func TestGate_TheSweepMakesEveryTextBranchClaimSomething(t *testing.T) {
 	res := runSweep(t)
 	for _, name := range res.branchName {
-		if res.claims[name] == 0 && !attributeKeyed[name] && !slices.Contains(sourceKeyedBranches, name) {
+		if res.claims[name] == 0 && !attributeKeyed[name] && !journalKeyed[name] && !slices.Contains(sourceKeyedBranches, name) {
 			t.Errorf("no input made branch %s claim: its gate is untested", name)
 		}
 	}

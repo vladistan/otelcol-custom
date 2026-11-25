@@ -124,6 +124,7 @@ value is not zero.
 | `zfs.collector.success` | gauge | `1` | `collector` (`pool`, `dataset`) | 1 when the read ended without a failure, else 0 |
 | `zfs.collector.duration` | gauge | `s` | `collector` | time the read took |
 | `zfs.collector.objects` | gauge | `{object}` | `collector` | pools or datasets read |
+| `zfs.collector.failures` | gauge | `{failure}` | `collector` | pool and dataset reads that failed in the scrape; objects that vanished are not counted |
 | `zfs.arc.size` | gauge | `By` | none | `arcstats` `size` |
 | `zfs.arc.hits` | monotonic sum | `{hit}` | none | `arcstats` `hits` |
 | `zfs.arc.misses` | monotonic sum | `{miss}` | none | `arcstats` `misses` |
@@ -195,7 +196,8 @@ the table, such as a split pool, gives no `zfs.pool.health` point and one warnin
 clears. `zfs.pool.vdev.errors`, `zfs.pool.scrub.state` and `zfs.pool.resilver.state` appear
 only when the pool reply holds them, and a pool statistics call that fails or carries an
 error in its reply gives none of them and one warning. A failed ioctl for
-one pool or dataset skips that object with one warning. `zfs.collector.success` is 0
+one pool or dataset skips that object with one warning and adds one to
+`zfs.collector.failures`; the other objects still report. `zfs.collector.success` is 0
 when the device cannot be opened, every pool read failed or a dataset listing broke;
 `zfs.collector.objects` shows the pool and dataset counts read. A host with no pools
 sends none of these. When `/dev/zfs` cannot be opened one warning per episode names the
@@ -982,8 +984,6 @@ initialization:
 All four are read once at process start; there is no live-reload. Sentry
 itself is only initialized if a non-placeholder DSN is compiled into the
 binary and `OTELCOL_CUSTOM_DISABLE_TELEMETRY` is unset.
-
-<!-- cspell:ignore HKLM -->
 
 An empty `OTELCOL_CUSTOM_SENTRY_DSN` keeps the built-in DSN. A value that does
 not parse as a DSN is ignored: the collector logs a warning that names the

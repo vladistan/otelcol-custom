@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore vstan
-
 import (
 	"encoding/json"
 	"errors"
@@ -18,7 +16,7 @@ import (
 )
 
 // eksAuditBranch shapes the JSON audit events the API server of an EKS cluster
-// writes to CloudWatch (log.source aws.eks).
+// writes to CloudWatch (log.source eks).
 type eksAuditBranch struct {
 	aliases map[string]string
 	// last holds the event decoded by claims so parse of the same record
@@ -40,13 +38,13 @@ func newEKSAuditBranch(aliases map[string]string) *eksAuditBranch {
 
 func (*eksAuditBranch) name() string { return "eksaudit" }
 
-// claims takes an aws.eks record whose body is an audit event. Other aws.eks
+// claims takes an eks record whose body is an audit event. Other eks
 // lines are application logs.
 func (b *eksAuditBranch) claims(r *rec) bool {
-	if sourceOf(r.lr, r.res) != "aws.eks" {
+	if sourceOf(r.lr, r.res) != "eks" {
 		return false
 	}
-	// Cheap byte checks first: most aws.eks lines are not audit events.
+	// Cheap byte checks first: most eks lines are not audit events.
 	if len(r.body) > eksMaxBody || (!strings.Contains(r.body, `"verb"`) && !strings.Contains(r.body, `"auditID"`)) {
 		return false
 	}

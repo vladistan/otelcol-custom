@@ -1,7 +1,5 @@
 # File-watch receiver (`fswatch`)
 
-<!-- cspell:ignore vstan -->
-
 Emits one log record for each new file under watched directories. It reads no
 file contents. It is part of the Windows `otelcol-edge` build only. Status: alpha.
 

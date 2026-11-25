@@ -32,7 +32,7 @@ func TestLogsProcessor_ExtractFromBody(t *testing.T) {
 		nextConsumer: sink,
 	}
 
-	logs := createTestLogsWithBody("DHCPACK on 192.0.2.150 to 10:d5:61:17:80:6b (hostname) via em0")
+	logs := createTestLogsWithBody("DHCPACK on 192.0.2.150 to 00:00:5e:00:53:01 (hostname) via em0")
 
 	err := processor.ConsumeLogs(context.Background(), logs)
 	require.NoError(t, err)
@@ -43,7 +43,7 @@ func TestLogsProcessor_ExtractFromBody(t *testing.T) {
 	lr := resultLogs.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0)
 	mac, found := lr.Attributes().Get("client.mac")
 	assert.True(t, found)
-	assert.Equal(t, "10:d5:61:17:80:6b", mac.Str())
+	assert.Equal(t, "00:00:5e:00:53:01", mac.Str())
 }
 
 func TestLogsProcessor_ExtractFromWhitelistedAttribute(t *testing.T) {
@@ -223,7 +223,7 @@ func TestLogsProcessor_NoMACInBodyIgnoresOtherAttrs(t *testing.T) {
 	sl := rl.ScopeLogs().AppendEmpty()
 	lr := sl.LogRecords().AppendEmpty()
 	lr.Body().SetStr("Claude session event: PostToolUse") // no MAC in body
-	lr.Attributes().PutStr("event_payload", `{"tool_response": {"stdout": "- mac: \"c4:4f:33:91:a6:58\""}}`)
+	lr.Attributes().PutStr("event_payload", `{"tool_response": {"stdout": "- mac: \"00:00:5e:00:53:08\""}}`)
 	// no original_message attribute - should not find any MAC
 
 	err := processor.ConsumeLogs(context.Background(), logs)

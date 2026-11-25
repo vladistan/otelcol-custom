@@ -169,7 +169,7 @@ func TestCloudTrailGivesOneRecordPerEntry(t *testing.T) {
 	// A record with no severity stays unset; an error code raises it to WARN.
 	wantSev := []plog.SeverityNumber{plog.SeverityNumberUnspecified, plog.SeverityNumberWarn, plog.SeverityNumberUnspecified}
 	for i, r := range recs {
-		wantStr(t, r.log.Attributes(), "log.source", "aws.cloudtrail")
+		wantStr(t, r.log.Attributes(), "log.source", "cloudtrail")
 		wantStr(t, r.log.Attributes(), "event.category", "audit")
 		wantStr(t, r.resource, "cloud.provider", "aws")
 		wantStr(t, r.resource, "cloud.account.id", "111122223333")
@@ -194,7 +194,7 @@ func TestS3AccessLogSource(t *testing.T) {
 		t.Fatal("no records from the S3 access log line")
 	}
 	for _, r := range recs {
-		wantStr(t, r.log.Attributes(), "log.source", "aws.s3access")
+		wantStr(t, r.log.Attributes(), "log.source", "s3access")
 		wantStr(t, r.log.Attributes(), "event.category", "access")
 		if r.log.SeverityNumber() != plog.SeverityNumberUnspecified {
 			t.Fatalf("severity = %v, want unset", r.log.SeverityNumber())
@@ -304,7 +304,7 @@ func TestAuditEntrySource(t *testing.T) {
 	sink := new(consumertest.LogsSink)
 	proc := newSourceTag(t, "sourcetag/gcp", sink)
 	rec := recordsOf(through(t, gcpDecoder(t), proc, sink, compact(t, readFile(t, "testdata/gcp-audit-entry.json"))))[0]
-	wantStr(t, rec.log.Attributes(), "log.source", "gcp.audit")
+	wantStr(t, rec.log.Attributes(), "log.source", "audit")
 	wantStr(t, rec.log.Attributes(), "event.category", "audit")
 	wantStr(t, rec.resource, "cloud.account.id", "proj-example")
 	wantAbsent(t, rec.resource, "service.name")

@@ -3,8 +3,6 @@
 
 package logshapeprocessor
 
-// cspell:ignore rcode qtype qname vstan
-
 import (
 	"errors"
 	"math"

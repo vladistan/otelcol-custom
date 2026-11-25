@@ -1,8 +1,6 @@
 // Copyright 2024 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore servicel dpanic tdpanic
-
 package logruslogprocessor
 
 import (

@@ -1,7 +1,10 @@
 # provenance: partly real; real lines: 2-5
-# evidence: lines 2 to 5 come from captured switch and controller lines, names replaced; line 1 is written from the format
+# evidence: lines 2 to 5 come from captured switch and controller lines, names replaced; lines 1 and 6 to 8 are written from the format, the failure and deauthentication texts invented
 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
-661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 6212.24a7.dd56 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43
+661: *Dec 16 00:36:36.024: %SW_MATM-4-MACFLAP_NOTIF: Host 0000.5e00.5305 in vlan 1 is flapping between port Gi4/0/45 and port Gi4/0/43
 %COPY-N-TRAP: The copy operation was completed successfully
 DownAP-Master: *apfMsConnTask_0: Dec 16 00:00:44.695: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 02:00:5e:00:00:01, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.
  Dec 15 22:56:14 switch-c-1 TRAPMGR[dot1s_task]: traps.c(763) 284 %% Spanning Tree Topology Change Received
+DownAP-Master: *apfMsConnTask_1: Dec 16 00:01:12.331: %APF-3-ASSOCREQ_PROC_FAILED: apf_80211.c:5120 Failed to process association request: Client MAC: 02:00:5e:00:00:02, WLAN: 1, SSID: ExampleNet.
+DownAP-Master: *apfMsConnTask_1: Dec 16 00:01:13.402: %APF-3-CHECK_SUPP_RATES_FAILED: apf_utils.c:2210 Supported rates check failed. Mobile MAC: 02:00:5e:00:00:02
+DownAP-Master: *apfMsConnTask_0: Dec 16 00:02:01.118: %APF-6-CLIENT_DEAUTH: apf_80211.c:9981 Client Deauthentication: AP Name: CiscoAP-Down, Radio: 5GHz , WLAN Id: 2.

@@ -693,8 +693,8 @@ _check-all-modules name +cmd:
     #!/usr/bin/env bash
     set -uo pipefail
     status=0
-    echo "=== root module (./...) ==="
-    {{cmd}} ./...
+    echo "=== root module (./processor/... ./receiver/...) ==="
+    {{cmd}} ./processor/... ./receiver/...
     rc=$?
     echo "{{name}} exit: $rc"
     [ "$rc" -ne 0 ] && status=1

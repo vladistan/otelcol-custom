@@ -44,6 +44,8 @@ Stability is alpha for both logs and metrics (`README.md:9`). The block is optio
 
 Confirmed. `processRecords` walks the `Records` array and appends one log record per entry (`cloudtraillog/unmarshaler.go:270-324`). No splitting step is needed.
 
+The patched decoder also reads `userIdentity.onBehalfOf` and `serviceEventDetails`, which upstream drops, so an Identity Center event carries `user.id`, `aws.user_identity.on_behalf_of.identity_store_arn`, `aws.service_event.role_name` and `aws.service_event.account_id`. A null `requestParameters` or `responseElements` gives no request or response attributes. `source.address` (a public address) and `user_agent.original` were already written and stay; both are stored in ClickHouse. See the README of the extension for the diff against upstream.
+
 ### GCP log entry mapping
 
 | LogEntry field | Output key | Source |
@@ -148,7 +150,7 @@ The receiver type is `aws_s3`. The old name `awss3` still loads and logs a depre
 
 ### Source tagging
 
-The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The processor also sets the resource `cloud.service.name` from `log.source` when every sourced record of the resource agrees on one source and the resource has none (`cloudtrail`, `s3`, `elasticloadbalancing`, `eks`, `logs` and `auth0` on AWS; `cloudaudit.googleapis.com`, `run.googleapis.com` and `loadbalancing.googleapis.com` on GCP; `monitor` on Azure). The `auth0` receiver sets `cloud.provider` to `auth0`, with `cloud.account.id` and `cloud.region` from the envelope when it has them. `sourcetag/gcp` takes `cloud.region` from `gcp.label.location`, then `gcp.label.region`, then `gcp.label.zone` with the one-letter zone suffix dropped (`europe-west3-b` gives `europe-west3`, `global` stays), for every GCP source including `gcp.audit` and `gcp.lb`. No provider sets a severity: a record that arrives with none stays unset, and a CloudTrail record with `aws.error.code` is the one case raised to WARN. Load balancer logs from S3 (ALB and NLB) get `cloud.region` and `cloud.account.id` from the target group or certificate ARN in their lines; a classic load balancer line holds no ARN, so those two stay out. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
+The `sourcetag` processor sets `log.source` and `event.category` and fills cloud resource attributes. It takes one setting, `provider`, which is `aws`, `gcp` or `azure` and has no default. The processor also sets the resource `cloud.service.name` from `log.source` when every sourced record of the resource agrees on one source and the resource has none (`cloudtrail`, `s3`, `elasticloadbalancing`, `eks`, `logs` and `auth0` on AWS; `cloudaudit.googleapis.com`, `run.googleapis.com` and `loadbalancing.googleapis.com` on GCP; `monitor` on Azure). The `auth0` receiver sets `cloud.provider` to `auth0`, with `cloud.account.id` and `cloud.region` from the envelope when it has them. `sourcetag/gcp` takes `cloud.region` from `gcp.label.location`, then `gcp.label.region`, then `gcp.label.zone` with the one-letter zone suffix dropped (`europe-west3-b` gives `europe-west3`, `global` stays), for every GCP source including `audit` and `lb`. No provider sets a severity: a record that arrives with none stays unset, and a CloudTrail record with `aws.error.code` is the one case raised to WARN. Load balancer logs from S3 (ALB and NLB) get `cloud.region` and `cloud.account.id` from the target group or certificate ARN in their lines; a classic load balancer line holds no ARN, so those two stay out. The reference config runs one instance per provider in its logs pipeline, and holds no OTTL for tagging:
 
 ```yaml
 processors:
@@ -170,17 +172,19 @@ service:
 
 | Provider | `log.source` (`event.category`) | Resource attributes |
 |---|---|---|
-| `aws` | `aws.cloudtrail` (audit), `aws.s3access` and `aws.elb` (access), `aws.eks` (audit for the `kube-apiserver-audit` stream, else application), `aws.cloudwatch` (application) | `cloud.provider` and `cloud.region` from `aws.region`, when unset |
-| `gcp` | `gcp.audit` (audit), `gcp.cloudrun` (application), `gcp.lb` (access) | `cloud.provider`, `service.name`, `cloud.region`, `cloud.account.id` |
+| `aws` | `cloudtrail` (audit), `s3access` and `elb` (access), `eks` (audit for the `kube-apiserver-audit` stream, else application), `aws.cloudwatch` (application) | `cloud.provider` and `cloud.region` from `aws.region`, when unset |
+| `gcp` | `audit` (audit), `gcp.cloudrun` (application), `lb` (access) | `cloud.provider`, `service.name`, `cloud.region`, `cloud.account.id` |
 | `azure` | `azure.activity` (audit) | `cloud.provider` |
 
-The `aws.eks` source needs the resource attributes `cloudwatch.log.group.name` (starting with `/aws/eks/`) and `cloudwatch.log.stream`. A record that already has a `log.source`, such as `auth0`, keeps it, except for `aws.cloudtrail`, `aws.s3access` and `aws.elb` (when the scope `encoding.format` matches), `gcp.audit` and `azure.activity`, which overwrite it. `aws.eks`, `aws.cloudwatch`, `gcp.cloudrun` and `gcp.lb` only fill a missing one. Severity stays unset when the record has none, and is WARN for a CloudTrail record with `aws.error.code`.
+The `eks` source needs the resource attributes `cloudwatch.log.group.name` (starting with `/aws/eks/`) and `cloudwatch.log.stream`. A record that already has a `log.source`, such as `auth0`, keeps it, except for `cloudtrail`, `s3access` and `elb` (when the scope `encoding.format` matches), `gcp.audit` and `azure.activity`, which overwrite it. `aws.eks`, `aws.cloudwatch`, `gcp.cloudrun` and `gcp.lb` only fill a missing one. Severity stays unset when the record has none, and is WARN for a CloudTrail record with `aws.error.code`.
 
 `otelcol_sourcetag_records_unsourced` counts records that leave the processor without `log.source`, per `provider`. A rise after a roll means a source stopped matching its rule.
 
 `otelcol_sourcetag_records_uncategorized` counts records that leave without `event.category`, per `provider`. Every `aws`, `gcp` and `azure` record is expected to carry one, so a rise means a source kept its `log.source` but lost its category rule. The `auth0` receiver sets its own category.
 
 The processor gives the same output as the `transformprocessor` blocks it replaces, and running both in a row changes nothing. Roll the new image first, then change the values: the old image rejects a `sourcetag` entry at config load, and the new image still runs the old OTTL.
+
+**The six `log.source` values lost their prefix (breaking).** From 0.3.19 the tagger writes `elb`, `eks`, `s3access`, `lb`, `audit` and `cloudtrail` where it wrote `aws.elb`, `aws.eks`, `aws.s3access`, `gcp.lb`, `gcp.audit` and `aws.cloudtrail`. The other sources keep their names. Queries, alerts, dashboards and retention rules that filter on an old value must change, and rows already stored keep their old value. Roll the scrape collectors and the gateways together: a gateway that has the new branches claims no record from a scrape collector still on the old value, and `otelcol_logshape_unmatched` counts it under that value. A scrape config that sets `log.source` by hand uses `lb` for the second GCP load balancer path.
 
 ### Identity fill
 
@@ -235,7 +239,7 @@ The `aws_s3/alb` receiver reads Application Load Balancer access logs from S3 th
 - Objects are `.log.gz` files under `AWSLogs/<account>/elasticloadbalancing/<region>/`. The receiver strips `.gz` before it matches the encoding suffix, so the suffix is `.log`.
 - `ALB_PREFIX` is the prefix configured on the load balancer, for example `elb/`. It must be a prefix of every object key, with the trailing slash.
 - The S3 event notification needs the same prefix and the suffix `.log.gz`, sent to the SQS queue. Give the queue a redrive policy: a message the receiver cannot process returns on every poll until it moves.
-- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. `sourcetag/aws` labels the records `log.source=aws.elb` and `event.category=access`. A deployed config must list `sourcetag` in the `logs/aws` pipeline, or `log.source` stays empty.
+- The decoder is `aws_logs_encoding/elbaccess`. It sets `client.address`, `aws.elb.status.code`, `aws.elb.target_processing_time` and the other request fields. The record body is empty. `sourcetag/aws` labels the records `log.source=elb` and `event.category=access`. A deployed config must list `sourcetag` in the `logs/aws` pipeline, or `log.source` stays empty.
 - The collector role needs `s3:GetObject` on the prefix, `s3:ListBucket`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` and `sqs:GetQueueAttributes`.
 
 `alb_test.go` runs a synthetic line through the real decoder and `sourcetag/aws`. `alb_e2e_test.go` covers the gunzip and SQS path: it puts a gzipped log under an `.../elasticloadbalancing/.../*.log.gz` key in moto, sends the S3 notification to SQS, runs the built collector with the `aws_s3/alb` block, and checks the records at an OTLP sink and that the SQS message is deleted. A `.txt` object is dropped with an `Unsupported file format` warning, and its notification is deleted too. `test/scrape/restart-durability.sh` runs both tests; see the next section for the requirements.
@@ -409,6 +413,44 @@ give the receiver, not with an administrator account.
 **`snmp`.** One instance per device, as on the edge. Secrets (`community`, `auth_password`, `privacy_password`)
 come from `${env:NAME}`; `scripts/check-snmp-secrets.sh` fails the build when a sample holds a literal value.
 
+### IPP printer receiver
+
+The `ipp` receiver polls network printers and reports their state, supply levels and job queue. It is in the scrape
+image only, runs when a pipeline lists it, and emits metrics. The printer list is static; there is no discovery.
+
+**Operation.** Each poll sends one read-only IPP `Get-Printer-Attributes` request and no other operation. The request
+names `printer-state`, `printer-state-reasons`, `printer-is-accepting-jobs`, `queued-job-count`, `marker-levels`,
+`marker-names` and `marker-types`. The receiver sends the request itself and runs no command. IPP carries no
+authentication, so the config holds no credential. The printers poll independently: a slow or dead printer delays no other.
+
+**Keys.**
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `collection_interval` | `60s` | Time between two polls of one printer |
+| `timeout` | `10s` | Limit for one request, connect to last byte |
+| `printers` | none | List of `name` and `endpoint`; `name` is unique, `endpoint` is an `ipp://` or `ipps://` URI such as `ipp://host:631/ipp/print` |
+
+`Validate` fails an empty list, a duplicate name, an endpoint that is not an `ipp://` or `ipps://` URI, and an
+interval or timeout of 0 or less; the message names the entry. The port defaults to 631. An `ipps://` endpoint
+verifies the printer certificate against the system roots.
+
+**Series.** Every series carries `hw.type` `printer`, and `hw.id` and `hw.name` set to the printer `name`.
+
+| Series | Value | Extra attributes |
+|--------|-------|------------------|
+| `printer.ipp.state` | 1 for the current state | `printer.ipp.state`: `idle`, `processing` or `stopped` |
+| `printer.ipp.state_reason` | 1 per reason keyword; `none` gives no point | `printer.ipp.reason` (keyword without its `-report`, `-warning` or `-error` suffix), `printer.ipp.reason.severity` (the suffix; `error` when the keyword has none) |
+| `printer.ipp.marker.level` | Ratio 0 to 1; an unknown (negative) level gives no point | `printer.ipp.marker.name`, `printer.ipp.marker.type` |
+| `printer.ipp.accepting_jobs` | 1 when `printer-is-accepting-jobs` is true, else 0 | none |
+| `printer.ipp.queued_jobs` | `queued-job-count`, unit `{job}` | none |
+| `printer.ipp.reachable` | 1 after a good poll, 0 after a failed one | none |
+
+A failed poll (no answer within `timeout`, a refused connection, a TLS error, an HTTP error or an IPP status outside
+the successful class) emits `printer.ipp.reachable` 0 and no other series, and logs one warning per failure run. A
+printer that leaves out an attribute gives no series for it, and `reachable` stays 1. Alert rules and dashboards for
+the series are not part of this receiver.
+
 ### Cloud Run metrics
 
 The `googlecloudmonitoring` receiver polls Cloud Monitoring and feeds the `metrics/gcp` pipeline. It is alpha.
@@ -458,6 +500,10 @@ receivers:
 | `azure_event_hub` | Listen on the Event Hub through the connection string |
 | `auth0` | `sqs:ReceiveMessage` and `sqs:DeleteMessage` on its queue; `sts:AssumeRole` on `role_arn` when set |
 
+## Health probe sampling
+
+The image carries the `healthprobe` processor. It reads `http.response.status_code`, `url.path` and `user_agent.original`, and the `awselb` branch of `logshape` writes the first two, so a Route53 probe row of a load balancer is classified with the default lists and no override. A dedicated ELB pipeline can set `status_attribute: aws.elb.status.code` to classify by the status the load balancer logged. The reference config does not run `healthprobe`: add it to a pipeline after `logshape`, with `keep_ratio` set for that pipeline.
+
 ## Restart durability and credential scan
 
 `test/scrape/restart-durability.sh` builds the scratch collector for linux/amd64 and runs `TestRestartDurability` and the kill-at-intake tests below (build tag `durability`). It needs Docker and pulls `motoserver/moto` and `alpine`.
@@ -469,7 +515,7 @@ The test runs this procedure:
 1. With the sink refusing, all 9 records reach the sink as attempts and none are accepted.
 2. `docker kill` stops the collector. The volume still holds queue files.
 3. After `docker start` and 5 seconds, still none are accepted.
-4. After the sink is released, all 9 records arrive with `log.source=aws.cloudtrail`.
+4. After the sink is released, all 9 records arrive with `log.source=cloudtrail`.
 
 With `storage: file_storage` removed from `sending_queue`, the test fails at step 2, so it does detect a missing disk queue.
 

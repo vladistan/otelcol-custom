@@ -1,0 +1,142 @@
+[
+  {
+    "body": "Services updated: 0",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   Services updated: 0"
+    }
+  },
+  {
+    "body": "Configuration update complete:",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53] Configuration update complete:"
+    }
+  },
+  {
+    "body": "No changes for unbound, skipping update",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   No changes for unbound, skipping update"
+    }
+  },
+  {
+    "body": "No change in /etc/unbound/unbound.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:53]   No change in /etc/unbound/unbound.conf"
+    }
+  },
+  {
+    "body": "No changes for strongswan, skipping update",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:52]   No changes for strongswan, skipping update"
+    }
+  },
+  {
+    "body": "No change in /etc/ipsec.secrets",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:52]   No change in /etc/ipsec.secrets"
+    }
+  },
+  {
+    "body": "Fetching gw1-ipsec-secrets -\u003e /etc/ipsec.secrets",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   Fetching gw1-ipsec-secrets -\u003e /etc/ipsec.secrets"
+    }
+  },
+  {
+    "body": "No change in /etc/ipsec.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   No change in /etc/ipsec.conf"
+    }
+  },
+  {
+    "body": "Fetching gw1-ipsec-conf -\u003e /etc/ipsec.conf",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51]   Fetching gw1-ipsec-conf -\u003e /etc/ipsec.conf"
+    }
+  },
+  {
+    "body": "Processing service: strongswan",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-23 02:23:51] Processing service: strongswan"
+    }
+  },
+  {
+    "body": "tunnel up",
+    "severity": 9,
+    "severity_text": "INFO",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22 14:38:13] tunnel up"
+    }
+  },
+  {
+    "body": "peer handshake slow, warning",
+    "severity": 13,
+    "severity_text": "WARN",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22T14:38:14Z] peer handshake slow, warning"
+    }
+  },
+  {
+    "body": "connection error on tun0",
+    "severity": 17,
+    "severity_text": "ERROR",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[2026-11-22T14:38:15+01:00] connection error on tun0"
+    }
+  },
+  {
+    "body": "fatal: cannot open tun0",
+    "severity": 21,
+    "severity_text": "FATAL",
+    "scope": "",
+    "resource": {},
+    "attributes": {
+      "log.record.original": "[Sun Nov 22 14:38:16 UTC 2026] fatal: cannot open tun0"
+    }
+  }
+]

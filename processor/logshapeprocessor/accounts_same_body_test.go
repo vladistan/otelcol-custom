@@ -1,8 +1,6 @@
 // Copyright 2026 V-Lad
 // SPDX-License-Identifier: Apache-2.0
 
-// cspell:ignore awselb
-
 package logshapeprocessor
 
 import (
@@ -26,7 +24,7 @@ func TestConsume_SameLineFromTwoAccounts_GivesTheSameBodyAndSeverity(t *testing.
 		wantBody   string
 	}{
 		{
-			name:  "aws.elb",
+			name:  "elb",
 			attrs: awselbAttrs(nil),
 			lab:   awselbResource(),
 			other: map[string]any{"cloud.resource_id": "app/second-lb/0123456789abcdef", "cloud.account.id": "444455556666", "cloud.region": "eu-west-1"},
@@ -34,21 +32,21 @@ func TestConsume_SameLineFromTwoAccounts_GivesTheSameBodyAndSeverity(t *testing.
 			wantBody: "GET os.app.example.invalid/api/v1/bus/status 200 11ms",
 		},
 		{
-			name:     "aws.s3access",
+			name:     "s3access",
 			attrs:    s3accessAttrs(nil),
 			lab:      s3accessResource(),
 			other:    map[string]any{"aws.s3.bucket": "bucket-name", "cloud.account.id": "444455556666"},
 			wantBody: "BATCH.DELETE.OBJECT bucket-name/.chunks/ab/abcdef 204 174KiB",
 		},
 		{
-			name:     "aws.s3access without an account id",
+			name:     "s3access without an account id",
 			attrs:    s3accessAttrs(nil),
 			lab:      s3accessResource(),
 			other:    map[string]any{"aws.s3.bucket": "bucket-name"},
 			wantBody: "BATCH.DELETE.OBJECT bucket-name/.chunks/ab/abcdef 204 174KiB",
 		},
 		{
-			name:     "gcp.lb",
+			name:     "lb",
 			attrs:    gcplbAttrs(nil),
 			lab:      gcplbResource(),
 			other:    map[string]any{"gcp.label.project_id": "second-project", "gcp.label.backend_service_name": "k8s1-0a1b2c3d-monitoring-grafana-3000-4e5f6a7b"},

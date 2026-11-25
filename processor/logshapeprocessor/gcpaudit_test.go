@@ -18,7 +18,7 @@ func gcpAuditConfig() *Config {
 }
 
 func gcpAuditInput(attrs map[string]any, body string) input {
-	a := map[string]any{"log.source": "gcp.audit"}
+	a := map[string]any{"log.source": "audit"}
 	for k, v := range attrs {
 		a[k] = v
 	}
@@ -48,7 +48,7 @@ func TestConsume_GCPAudit_K8sRecord_ShapesEveryField(t *testing.T) {
 		gcpAuditK8sAttrs("service-123456@container-engine-robot.iam.gserviceaccount.com", nil),
 		"io.k8s.coordination.v1.leases.update coordination.k8s.io/v1/namespaces/kube-system/leases/test-lease"))
 
-	if got := lr.Body().Str(); got != "io.k8s.coordination.v1.leases.update coordination.k8s.io/v1/namespaces/kube-system/leases/test-lease" {
+	if got := lr.Body().Str(); got != "leases.update kube-system/test-lease" {
 		t.Fatalf("body = %q", got)
 	}
 	if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
@@ -58,7 +58,7 @@ func TestConsume_GCPAudit_K8sRecord_ShapesEveryField(t *testing.T) {
 	if attrStr(t, r, "service.name") != "gke-robot" || attrStr(t, r, "host.name") != "test-kube" || attrStr(t, r, "cloud.account.name") != "test-kube" {
 		t.Fatalf("resource = %v", r.AsRaw())
 	}
-	if attrStr(t, lr.Attributes(), "log.source") != "gcp.audit" {
+	if attrStr(t, lr.Attributes(), "log.source") != "audit" {
 		t.Fatalf("attributes = %v", lr.Attributes().AsRaw())
 	}
 }
@@ -69,7 +69,7 @@ func TestConsume_GCPAudit_FailedStatusWithName_AppendsNameAndIsError(t *testing.
 
 	lr, res := h.run(gcpAuditInput(attrs, "v1.compute.backendServices.get"))
 
-	if got := lr.Body().Str(); got != "v1.compute.backendServices.get NOT_FOUND" {
+	if got := lr.Body().Str(); got != "backendServices.get NOT_FOUND" {
 		t.Fatalf("body = %q", got)
 	}
 	if lr.SeverityNumber() != plog.SeverityNumberError || lr.SeverityText() != "ERROR" {
@@ -115,7 +115,7 @@ func TestConsume_GCPAudit_UnknownStatusNumber_UsesTheNumber(t *testing.T) {
 	}
 }
 
-func TestConsume_GCPAudit_NonK8sRowWithoutSeverity_StaysUnsetAndHasNoHost(t *testing.T) {
+func TestConsume_GCPAudit_NonK8sRowWithoutSeverity_StaysUnsetAndHostIsProjectAlias(t *testing.T) {
 	h := newHarness(t, gcpAuditConfig())
 	attrs := map[string]any{"user.email": "admin@example.invalid", "gcp.audit.service.name": "compute.googleapis.com"}
 
@@ -124,7 +124,9 @@ func TestConsume_GCPAudit_NonK8sRowWithoutSeverity_StaysUnsetAndHasNoHost(t *tes
 	if lr.SeverityNumber() != plog.SeverityNumberUnspecified || lr.SeverityText() != "" {
 		t.Fatalf("severity = %d %q", lr.SeverityNumber(), lr.SeverityText())
 	}
-	absent(t, res.Attributes(), "host.name")
+	if attrStr(t, res.Attributes(), "host.name") != "test-kube" {
+		t.Fatalf("resource = %v", res.Attributes().AsRaw())
+	}
 	if attrStr(t, res.Attributes(), "service.name") != "admin" || attrStr(t, res.Attributes(), "cloud.account.name") != "test-kube" {
 		t.Fatalf("resource = %v", res.Attributes().AsRaw())
 	}
@@ -161,15 +163,15 @@ func TestConsume_GCPAudit_PrincipalShortening_Cases(t *testing.T) {
 	}
 }
 
-func TestConsume_GCPAudit_NoAliasListed_HostIsProjectAndNoAccountName(t *testing.T) {
+func TestConsume_GCPAudit_NoAliasListed_HostAndAccountNameAreTheProject(t *testing.T) {
 	h := newHarness(t, defaultConfig())
 
 	_, res := h.run(gcpAuditInput(gcpAuditK8sAttrs("a@example.invalid", nil), "pods.get"))
 
-	if attrStr(t, res.Attributes(), "host.name") != gcpAuditTestProject {
+	if attrStr(t, res.Attributes(), "host.name") != gcpAuditTestProject ||
+		attrStr(t, res.Attributes(), "cloud.account.name") != gcpAuditTestProject {
 		t.Fatalf("resource = %v", res.Attributes().AsRaw())
 	}
-	absent(t, res.Attributes(), "cloud.account.name")
 }
 
 func TestConsume_GCPAudit_ProjectFromAccountIDFallback_IsUsed(t *testing.T) {
@@ -190,7 +192,7 @@ func TestConsume_GCPAudit_EmptyBodyWithMethodAndResource_ComposesBody(t *testing
 
 	lr, _ := h.run(gcpAuditInput(attrs, ""))
 
-	if lr.Body().Str() != "storage.objects.get projects/_/buckets/test-bucket" {
+	if lr.Body().Str() != "objects.get projects/_/buckets/test-bucket" {
 		t.Fatalf("body = %q", lr.Body().Str())
 	}
 }
@@ -247,13 +249,17 @@ func TestConsume_GCPAudit_Batch_CountInEqualsOut(t *testing.T) {
 	h := newHarness(t, gcpAuditConfig())
 	ld := plog.NewLogs()
 	rl := ld.ResourceLogs().AppendEmpty()
-	_ = rl.Resource().Attributes().FromRaw(map[string]any{"gcp.label.project_id": gcpAuditTestProject})
+	if err := rl.Resource().Attributes().FromRaw(map[string]any{"gcp.label.project_id": gcpAuditTestProject}); err != nil {
+		t.Fatal(err)
+	}
 	lrs := rl.ScopeLogs().AppendEmpty().LogRecords()
 	const n = 50
 	for range n {
 		lr := lrs.AppendEmpty()
 		lr.Body().SetStr("io.k8s.coordination.v1.leases.update")
-		_ = lr.Attributes().FromRaw(gcpAuditK8sAttrs("system:kube-controller-manager", map[string]any{"log.source": "gcp.audit"}))
+		if err := lr.Attributes().FromRaw(gcpAuditK8sAttrs("system:kube-controller-manager", map[string]any{"log.source": "audit"})); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if err := h.proc.ConsumeLogs(t.Context(), ld); err != nil {
@@ -276,7 +282,7 @@ func TestConsume_GCPAudit_MixedBatch_EachRecordKeepsItsOwnIdentity(t *testing.T)
 	cfg.AccountAliases = map[string]string{"proj-a": "alias-a", "proj-b": "alias-b"}
 	h := newHarness(t, cfg)
 	rec := func(body, email, project string) auditRec {
-		a := gcpAuditK8sAttrs(email, map[string]any{"log.source": "gcp.audit", "gcp.label.project_id": project})
+		a := gcpAuditK8sAttrs(email, map[string]any{"log.source": "audit", "gcp.label.project_id": project})
 		return auditRec{body: body, attrs: a}
 	}
 
@@ -305,16 +311,153 @@ func TestConsume_GCPAudit_BodyAlreadyEndsWithStatus_IsNotAppendedAgain(t *testin
 
 	lr, _ := h.run(gcpAuditInput(attrs, "v1.compute.backendServices.get NOT_FOUND"))
 
-	if got := lr.Body().Str(); got != "v1.compute.backendServices.get NOT_FOUND" {
+	if got := lr.Body().Str(); got != "backendServices.get NOT_FOUND" {
+		t.Fatalf("body = %q", got)
+	}
+}
+
+// A method with the io.k8s. prefix marks a Kubernetes row.
+func TestConsume_GCPAudit_MethodPrefixIoK8s_FlagsKubernetesAndIsInfo(t *testing.T) {
+	h := newHarness(t, gcpAuditConfig())
+	attrs := map[string]any{"user.email": "a@example.invalid", "gcp.audit.method.name": "io.k8s.core.v1.configmaps.get"}
+
+	lr, res := h.run(gcpAuditInput(attrs, "configmaps.get"))
+
+	if lr.SeverityNumber() != plog.SeverityNumberInfo || lr.SeverityText() != "INFO" {
+		t.Fatalf("severity = %d %q", lr.SeverityNumber(), lr.SeverityText())
+	}
+	if attrStr(t, res.Attributes(), "host.name") != "test-kube" {
+		t.Fatalf("resource = %v", res.Attributes().AsRaw())
+	}
+}
+
+// The host of a Kubernetes row is the cluster name, else the project.
+func TestConsume_GCPAudit_K8sHost_IsClusterNameElseProject(t *testing.T) {
+	cases := []struct {
+		name     string
+		resource map[string]any
+		want     string
+	}{
+		{"cluster name", map[string]any{"gcp.label.project_id": gcpAuditTestProject, "gcp.label.cluster_name": "test-cluster"}, "test-cluster"},
+		{"no cluster name", map[string]any{"gcp.label.project_id": gcpAuditTestProject}, "test-kube"},
+		{"empty cluster name", map[string]any{"gcp.label.project_id": gcpAuditTestProject, "gcp.label.cluster_name": ""}, "test-kube"},
+	}
+	for _, c := range cases {
+		h := newHarness(t, gcpAuditConfig())
+		in := gcpAuditInput(gcpAuditK8sAttrs("a@example.invalid", nil), "pods.get")
+		in.resource = c.resource
+
+		_, res := h.run(in)
+
+		if got := attrStr(t, res.Attributes(), "host.name"); got != c.want {
+			t.Errorf("%s: host.name = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// The host comes from the processor alone, so no identityfill runs.
+func TestConsume_GCPAudit_ComputeRow_HostIsProjectAlias(t *testing.T) {
+	h := newHarness(t, gcpAuditConfig())
+	attrs := map[string]any{"user.email": "a@example.invalid", "gcp.audit.method.name": "v1.compute.instances.insert"}
+
+	_, res := h.run(gcpAuditInput(attrs, "v1.compute.instances.insert"))
+
+	if attrStr(t, res.Attributes(), "host.name") != "test-kube" || attrStr(t, res.Attributes(), "cloud.account.name") != "test-kube" {
+		t.Fatalf("resource = %v", res.Attributes().AsRaw())
+	}
+}
+
+// The service falls back to user.id when user.email is empty.
+func TestConsume_GCPAudit_EmptyEmail_ServiceComesFromUserID(t *testing.T) {
+	cases := []struct {
+		name  string
+		attrs map[string]any
+		want  string
+	}{
+		{"user id", map[string]any{"user.email": "", "user.id": "deployer@example.invalid"}, "deployer"},
+		{"email wins", map[string]any{"user.email": "admin@example.invalid", "user.id": "deployer@example.invalid"}, "admin"},
+		{"neither", map[string]any{"user.email": ""}, "gcp-audit"},
+	}
+	for _, c := range cases {
+		h := newHarness(t, gcpAuditConfig())
+
+		_, res := h.run(gcpAuditInput(c.attrs, "x"))
+
+		if got := attrStr(t, res.Attributes(), "service.name"); got != c.want {
+			t.Errorf("%s: service.name = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// The body is the method pair, the short resource, then the status.
+func TestConsume_GCPAudit_Body_LeadsWithMethodPairAndShortResource(t *testing.T) {
+	cases := []struct {
+		name  string
+		attrs map[string]any
+		body  string
+		want  string
+	}{
+		{
+			"kubernetes namespace and name",
+			gcpAuditK8sAttrs("system:addon-manager", nil),
+			"io.k8s.coordination.v1.leases.update coordination.k8s.io/v1/namespaces/kube-system/leases/addon-manager",
+			"leases.update kube-system/addon-manager",
+		},
+		{
+			"compute zone and name",
+			map[string]any{"user.email": "a@example.invalid"},
+			"v1.compute.instances.insert projects/proj-example/zones/us-central1-a/instances/vm-1",
+			"instances.insert us-central1-a/vm-1",
+		},
+		{
+			"failed status ends the body",
+			gcpAuditK8sAttrs("a@example.invalid", map[string]any{"rpc.status_code": "5"}),
+			"io.k8s.coordination.v1.leases.update coordination.k8s.io/v1/namespaces/kube-system/leases/addon-manager",
+			"leases.update kube-system/addon-manager NOT_FOUND",
+		},
+		{
+			"no resource gives the pair and status",
+			gcpAuditK8sAttrs("a@example.invalid", map[string]any{"rpc.status_code": "7"}),
+			"io.k8s.coordination.v1.leases.update",
+			"leases.update PERMISSION_DENIED",
+		},
+		{
+			"cluster scoped resource stays whole",
+			gcpAuditK8sAttrs("a@example.invalid", nil),
+			"io.k8s.core.v1.nodes.get core/v1/nodes/test-node",
+			"nodes.get core/v1/nodes/test-node",
+		},
+	}
+	for _, c := range cases {
+		h := newHarness(t, gcpAuditConfig())
+
+		lr, _ := h.run(gcpAuditInput(c.attrs, c.body))
+
+		if got := lr.Body().Str(); got != c.want {
+			t.Errorf("%s: body = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+func TestConsume_GCPAudit_BodyFromAttributes_UsesShortResource(t *testing.T) {
+	h := newHarness(t, gcpAuditConfig())
+	attrs := map[string]any{
+		"gcp.audit.method.name":   "v1.compute.instances.insert",
+		"gcp.audit.resource.name": "projects/proj-example/zones/us-central1-a/instances/vm-1",
+	}
+
+	lr, _ := h.run(gcpAuditInput(attrs, ""))
+
+	if got := lr.Body().Str(); got != "instances.insert us-central1-a/vm-1" {
 		t.Fatalf("body = %q", got)
 	}
 }
 
 func TestConsume_GCPAudit_SecondPass_ChangesNothing(t *testing.T) {
 	recs := []auditRec{
-		{body: "v1.compute.backendServices.get", attrs: gcpAuditK8sAttrs("a@example.invalid", map[string]any{"log.source": "gcp.audit", "rpc.status_code": "5"})},
-		{body: "", attrs: map[string]any{"log.source": "gcp.audit", "gcp.audit.method.name": "storage.objects.get", "gcp.audit.resource.name": "projects/_/buckets/test-bucket"}},
-		{body: "pods.get", attrs: gcpAuditK8sAttrs("a@example.invalid", map[string]any{"log.source": "gcp.audit"})},
+		{body: "v1.compute.backendServices.get", attrs: gcpAuditK8sAttrs("a@example.invalid", map[string]any{"log.source": "audit", "rpc.status_code": "5"})},
+		{body: "", attrs: map[string]any{"log.source": "audit", "gcp.audit.method.name": "storage.objects.get", "gcp.audit.resource.name": "projects/_/buckets/test-bucket"}},
+		{body: "pods.get", attrs: gcpAuditK8sAttrs("a@example.invalid", map[string]any{"log.source": "audit"})},
 	}
 	assertTwoPassesEqual(t, gcpAuditConfig(), map[string]any{"gcp.label.project_id": gcpAuditTestProject}, recs)
 }

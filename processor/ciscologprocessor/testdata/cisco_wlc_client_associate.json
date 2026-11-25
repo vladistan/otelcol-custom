@@ -7,9 +7,9 @@
     "@timestamp": "1765849754602.126269",
     "attributes": {
       "client.hostname": "WifiPlug-1",
-      "client.mac": "c4:4f:33:91:a6:58",
+      "client.mac": "00:00:5e:00:53:08",
       "log.source": "syslog",
-      "message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+      "message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
       "net.host.ip": "::",
       "net.host.name": "::",
       "net.host.port": "4319",
@@ -17,12 +17,12 @@
       "net.peer.name": "wifi-ap.home.example.com",
       "net.peer.port": "44418",
       "net.transport": "IP.UDP",
-      "original_message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
+      "original_message": "DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1.",
       "priority": "133",
       "source.ip": "192.0.2.250"
     },
     "body": {
-      "text": "<133>DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: c4:4f:33:91:a6:58, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1."
+      "text": "<133>DownAP-Master: *apfMsConnTask_0: Dec 15 20:49:14.582: %APF-5-CLIENT_ASSOCIATE: apf_80211.c:13338 Client Association: Client MAC: 00:00:5e:00:53:08, AP Name: CiscoAP-Down, Radio: 2.4GHz , WLAN Id: 1."
     },
     "data_stream": {
       "dataset": "generic.otel",
